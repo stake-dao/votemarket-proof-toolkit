@@ -1,0 +1,20 @@
+.env
+
+# IDE settings
+.vscode/
+.vscode/settings.json
+
+# System files
+.DS_Store
+
+# Python files
+*.pyc
+*.pyo
+__pycache__/
+.hypothesis/
+.pytest_cache/
+venv/
+env/
+
+# Temporary files
+tmp/
