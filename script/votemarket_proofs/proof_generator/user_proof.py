@@ -1,3 +1,4 @@
+from typing import Tuple
 from eth_abi import encode
 from eth_utils import keccak
 from web3 import Web3
@@ -66,9 +67,8 @@ def generate_user_proof(
     protocol: str,
     gauge_address: str,
     user: str,
-    current_period: int,
     block_number: int,
-) -> bytes:
+) -> Tuple[bytes, bytes]:
     """
     Generate user proof for a given protocol, gauge, and user.
 
@@ -77,15 +77,11 @@ def generate_user_proof(
         protocol (str): The protocol name (e.g., "curve", "balancer").
         gauge_address (str): The gauge address.
         user (str): The user address.
-        current_period (int): The current period, rounded down to the nearest week.
-            This aligns with how the gauge controller tracks voting periods.
         block_number (int): The block number for which to generate the proof.
 
     Returns:
-        bytes: The encoded RLP proof.
+        Tuple[bytes, bytes]: The encoded RLP account proof and storage proof for the user.
     """
-    # Generate gauge proof (required for user proof)
-    #gauge_proof = generate_gauge_proof(w3, protocol, gauge_address, current_period)
 
     # Get base slots for last user vote and vote user slope
     last_user_vote_base_slot = ProofGeneratorConstants.GAUGES_SLOTS[protocol][
@@ -118,15 +114,12 @@ def generate_user_proof(
 
     # Calculate additional slots
     vote_user_slope_slope = vote_user_slope_slot
-    vote_user_slope_power = vote_user_slope_slot + 1
     vote_user_slope_end = vote_user_slope_slot + 2
 
     # Combine all slots
     slots = [
         w3.to_hex(last_user_vote_slot),
-        #*gauge_proof,
         w3.to_hex(vote_user_slope_slope),
-        w3.to_hex(vote_user_slope_power),
         w3.to_hex(vote_user_slope_end),
     ]
 

@@ -43,7 +43,9 @@ clean:
 user-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from votemarket_proofs.VMProofs import VoteMarketProofs; \
 		vm = VoteMarketProofs('$(RPC_URL)'); \
-		print(vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)).hex())"
+		account_proof, storage_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
+		print(f'Account Proof: {account_proof.hex()}'); \
+		print(f'Storage Proof: {storage_proof.hex()}')"
 
 # Generate gauge proof
 .PHONY: gauge-proof

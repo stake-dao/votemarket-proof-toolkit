@@ -15,16 +15,14 @@ class VoteMarketProofs:
         protocol: str,
         gauge_address: str,
         user: str,
-        current_period: int,
         block_number: int,
-    ) -> bytes:
+    ) -> Tuple[bytes, bytes]:
         try:
             return generate_user_proof(
                 self.web3_service.w3,
                 protocol,
                 gauge_address,
                 user,
-                current_period,
                 block_number,
             )
         except Exception as e:
