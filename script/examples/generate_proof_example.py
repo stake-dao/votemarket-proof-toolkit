@@ -1,5 +1,5 @@
 import os
-from votemarket_proofs.VMProofs import VoteMarketProofs
+from proofs.VMProofs import VoteMarketProofs
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -1,4 +1,5 @@
 .env
+cache/
 
 # IDE settings
 .vscode/
