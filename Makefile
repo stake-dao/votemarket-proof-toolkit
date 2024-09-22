@@ -1,4 +1,4 @@
-# Makefile for VoteMarket Proofs Generator
+# Makefile for VM Proofs
 
 # Python interpreter
 PYTHON := python3
@@ -10,26 +10,17 @@ VENV_ACTIVATE := . $(VENV)/bin/activate
 # Source directories
 SRC_DIR := script
 
-# Main script
-MAIN_SCRIPT := $(SRC_DIR)/examples/generate_proof_example.py
-
 # Default target
 .PHONY: all
-all: venv run
+all: install
 
-# Create virtual environment
-$(VENV)/bin/activate: requirements.txt
-	$(PYTHON) -m venv $(VENV)
-	$(VENV_ACTIVATE) && pip install -r requirements.txt
-
-# Install dependencies
+# Create virtual environment and install dependencies
 .PHONY: install
 install: $(VENV)/bin/activate
 
-# Run the main script
-.PHONY: run
-run: installm&k&
-	$(VENV_ACTIVATE) && $(PYTHON) $(MAIN_SCRIPT)
+$(VENV)/bin/activate: requirements.txt
+	$(PYTHON) -m venv $(VENV)
+	$(VENV_ACTIVATE) && pip install -r requirements.txt
 
 # Clean up
 .PHONY: clean
@@ -73,19 +64,17 @@ help:
 	@echo "VoteMarket Proofs Generator Makefile"
 	@echo ""
 	@echo "This Makefile is designed to facilitate the generation of RLP-encoded proofs"
-	@echo "for cross-chain VoteMarket v2. It includes targets for generating user proofs,"
-	@echo "gauge proofs, and block information, which are essential components for"
-	@echo "cross-chain voting mechanisms."
+	@echo "for VoteMarketV2. It includes targets for generating user proofs,"
+	@echo "gauge proofs, and block information"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  all         : Set up the environment and run the main script"
-	@echo "  install     : Set up the virtual environment and install dependencies"
-	@echo "  run         : Run the main proof generation script"
+	@echo "  all         : Set up the virtual environment and install dependencies"
+	@echo "  install     : Same as 'all'"
 	@echo "  clean       : Remove virtual environment and cached Python files"
-	@echo "  user-proof  : Generate a user proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, USER, CURRENT_PERIOD, BLOCK_NUMBER)"
+	@echo "  user-proof  : Generate a user proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
 	@echo "  gauge-proof : Generate a gauge proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, CURRENT_PERIOD, BLOCK_NUMBER)"
 	@echo "  block-info  : Get block information (requires RPC_URL, BLOCK_NUMBER)"
 	@echo "  help        : Display this help message"
 	@echo ""
 	@echo "Example usage:"
-	@echo "  make user-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... CURRENT_PERIOD=1234567890 BLOCK_NUMBER=12345678"
+	@echo "  make user-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
