@@ -1,18 +1,18 @@
-# Votemarket Proofs Script
+# VotemarketV2 Proofs Script
 
 ⚙️ Streamlined toolkit for generating Votemarket V2 proofs and interacting with the protocol
 
 ## Overview
 
-This toolkit provides a set of utilities for interacting with Votemarket V2, specifically designed for generating proofs from Ethereum and facilitating claim operations. It's an essential tool for cross-chain voting mechanisms and proof generation in the Votemarket ecosystem.
+This toolkit provides a set of utilities for interacting with Votemarket V2, specifically designed for generating proofs from Ethereum for claim operations. 
 
 ## Features
 
-- Generate user proofs for Votemarket V2
-- Generate gauge proofs for Votemarket V2
+- Generate user proofs
+- Generate gauge proofs
 - Retrieve block information
-- Interact with Votemarket V2 for claiming operations
 - Support for multiple protocols (Curve, Balancer, Frax, FXN)
+- WIP: Get voters; active bounties;
 
 ## Installation
 
@@ -29,7 +29,7 @@ This toolkit provides a set of utilities for interacting with Votemarket V2, spe
 
 ## Usage
 
-The toolkit provides several ways to generate proofs and interact with Votemarket V2:
+The toolkit provides a way to generate proofs for interacting with Votemarket V2:
 
 ### Using the Makefile
 
@@ -57,12 +57,6 @@ make block-info RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID BLOCK_NUMBE
 You can also use scripts directly for integration or chained actions. See the example script for basic usage:
 
 ``` python:script/examples/generate_proof_example.py ```
-
-
-## Configuration
-
-The toolkit supports protocols that have a gauge controller and are integrated with the Votemarket V2 platform. You can see integrated ones on :
-```shared/constants```
 
 
 ## TODO :
