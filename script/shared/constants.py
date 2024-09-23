@@ -1,5 +1,7 @@
 class GaugeControllerConstants:
-    VOTE_EVENT_HASH = "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
+    VOTE_EVENT_HASH = (
+        "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
+    )
 
     GAUGES_SLOTS = {
         "curve": {
@@ -36,4 +38,13 @@ class GaugeControllerConstants:
         "balancer": 14457014,
         "frax": 14052749,
         "fxn": 18156185,
+    }
+
+
+class GlobalConstants:
+    REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
+
+    CHAIN_ID_TO_RPC = {
+        56: "https://bsc-dataseed.binance.org/",
+        42161: "https://arb1.arbitrum.io/rpc",
     }

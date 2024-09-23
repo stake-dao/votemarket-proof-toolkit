@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants
 from votes.query_votes import query_gauge_votes
+from votes.query_campaigns import query_active_campaigns
 from shared.web3_service import Web3Service
 from shared.exceptions import VoteMarketVotesException
 from w3multicall.multicall import W3Multicall
@@ -79,3 +80,9 @@ class VMVotes:
             return eligible_users
         except Exception as e:
             raise VoteMarketVotesException(f"Error getting eligible users: {str(e)}")
+
+    def get_active_campaigns(self, chain_id: int, platform: str) -> List[Dict[str, Any]]:
+        try:
+            return query_active_campaigns(chain_id, platform)
+        except Exception as e:
+            raise VoteMarketVotesException(f"Error querying active campaigns: {str(e)}")

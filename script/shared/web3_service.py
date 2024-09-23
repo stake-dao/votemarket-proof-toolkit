@@ -90,7 +90,7 @@ class Web3Service:
     def get_contract(self, address: str, abi_name: str):
         key = (address, abi_name)
         if key not in self._contract_cache:
-            abi = load_json("abi/" + abi_name)
+            abi = load_json("abi/" + abi_name + ".json")
             self._contract_cache[key] = self.w3.eth.contract(
                 address=Web3.to_checksum_address(address.lower()), abi=abi
             )
