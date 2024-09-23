@@ -35,8 +35,9 @@ user-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
 		vm = VoteMarketProofs('$(RPC_URL)'); \
 		account_proof, storage_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
-		print(f'Account Proof: {account_proof.hex()}'); \
-		print(f'Storage Proof: {storage_proof.hex()}')"
+		print('User Proof:'); \
+		print(f'  Account Proof: 0x{account_proof.hex()}'); \
+		print(f'  Storage Proof (used for setAccountData): 0x{storage_proof.hex()}')"
 
 # Generate gauge proof
 .PHONY: gauge-proof
@@ -44,8 +45,9 @@ gauge-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
 		vm = VoteMarketProofs('$(RPC_URL)'); \
 		account_proof, storage_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)); \
-		print(f'Account Proof: {account_proof.hex()}'); \
-		print(f'Storage Proof: {storage_proof.hex()}')"
+		print('Gauge Proof:'); \
+		print(f'  Account Proof (used for setBlockData): 0x{account_proof.hex()}'); \
+		print(f'  Storage Proof (used for setPointData): 0x{storage_proof.hex()}')"
 
 # Get block info
 .PHONY: block-info
@@ -53,10 +55,11 @@ block-info: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
 		vm = VoteMarketProofs('$(RPC_URL)'); \
 		info = vm.get_block_info($(BLOCK_NUMBER)); \
-		print(f\"Block Number: {info['BlockNumber']}\"); \
-		print(f\"Block Hash: {info['BlockHash']}\"); \
-		print(f\"Block Timestamp: {info['BlockTimestamp']}\"); \
-		print(f\"RLP Block Header: {info['RlpBlockHeader']}\")"
+		print('Block Info:'); \
+		print(f'  Block Number: {info[\"BlockNumber\"]}'); \
+		print(f'  Block Hash: 0x{info[\"BlockHash\"]}'); \
+		print(f'  Block Timestamp: {info[\"BlockTimestamp\"]}'); \
+		print(f'  RLP Block Header (used for setBlockData): 0x{info[\"RlpBlockHeader\"]}')"
 
 # Help target
 .PHONY: help

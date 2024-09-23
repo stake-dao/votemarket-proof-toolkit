@@ -26,9 +26,7 @@ BLOCK_HEADER = (
     "parentBeaconBlockRoot",
 )
 
-
-def encode_block_header(w3: Web3, block_number: int) -> bytes:
-    block = w3.eth.get_block(block_number)
+def encode_block_header(block: Dict[str, Any]) -> bytes:
     block_header = [
         (
             HexBytes("0x")
@@ -43,7 +41,11 @@ def encode_block_header(w3: Web3, block_number: int) -> bytes:
 
 def get_block_info(w3: Web3, block_number: int) -> Dict[str, Any]:
     block = w3.eth.get_block(block_number)
-    encoded_header = encode_block_header(w3, block_number)
+
+    print(block)
+    encoded_header = encode_block_header(block)
+
+
     return {
         "BlockNumber": block_number,
         "BlockHash": block["hash"].hex(),

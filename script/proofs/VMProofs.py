@@ -8,7 +8,7 @@ from shared.exceptions import VoteMarketProofsException
 
 class VoteMarketProofs:
     def __init__(self, rpc_url: str):
-        self.web3_service = Web3Service(rpc_url)
+        self.web3_service = Web3Service(1, rpc_url)
 
     def get_user_proof(
         self,
@@ -19,7 +19,7 @@ class VoteMarketProofs:
     ) -> Tuple[bytes, bytes]:
         try:
             return generate_user_proof(
-                self.web3_service.w3,
+                self.web3_service.get_w3(),
                 protocol,
                 gauge_address,
                 user,
@@ -33,7 +33,7 @@ class VoteMarketProofs:
     ) -> Tuple[bytes, bytes]:
         try:
             return generate_gauge_proof(
-                self.web3_service.w3,
+                self.web3_service.get_w3(),
                 protocol,
                 gauge_address,
                 current_period,
@@ -44,6 +44,6 @@ class VoteMarketProofs:
 
     def get_block_info(self, block_number: int) -> Dict[str, Any]:
         try:
-            return get_block_info(self.web3_service.w3, block_number)
+            return get_block_info(self.web3_service.get_w3(), block_number)
         except Exception as e:
             raise VoteMarketProofsException(f"Error getting block info: {str(e)}")

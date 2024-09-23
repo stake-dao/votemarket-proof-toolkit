@@ -1,4 +1,4 @@
-import json
+import json, requests
 import rlp
 from typing import Any, Dict
 from hexbytes import HexBytes
@@ -26,3 +26,18 @@ def encode_rlp_proofs(proofs):
         for proof in proofs["storageProof"]
     ]
     return rlp.encode(account_proof), rlp.encode(storage_proofs)
+
+
+def get_closest_block_timestamp(chain, timestamp):
+    # https://coins.llama.fi/block/bsc/1717027200
+
+    response = requests.get(
+        "https://coins.llama.fi/block/" + str(chain) + "/" + str(timestamp)
+    )
+
+    if response.status_code != 200:
+        print(response.text)
+        raise Exception("Failed to get closest block timestamp")
+
+    result = response.json()
+    return result["height"]

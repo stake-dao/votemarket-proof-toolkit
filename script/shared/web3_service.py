@@ -5,28 +5,37 @@ from typing import Dict, Any, List, Tuple
 
 
 class Web3Service:
-    _instance = None
+    def __init__(self, default_chain_id, default_rpc_url=None):
+        self.w3 = {}
+        self.initialize(default_chain_id, default_rpc_url)
 
-    def __new__(cls, rpc_url):
-        if cls._instance is None:
-            cls._instance = super(Web3Service, cls).__new__(cls)
-            cls._instance.initialize(rpc_url)
-        return cls._instance
-
-    def initialize(self, rpc_url):
-        self.w3 = Web3(Web3.HTTPProvider(rpc_url))
+    def initialize(self, default_chain_id, default_rpc_url):
+        self.default_chain_id = default_chain_id
+        self.add_chain(default_chain_id, default_rpc_url)
         self._latest_block_cache = {}
         self._token_info_cache = {}
         self._contract_data_cache = {}
+        self._balance_cache = {}
         self._erc20_balance_cache = {}
         self._block_cache = {}
         self._contract_cache = {}
         self._gwei_cache = {}
 
-    def get_latest_block(self) -> Dict[str, Any]:
-        key = "latest"
+    def add_chain(self, chain_id, rpc_url):
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        self.w3[chain_id] = w3
+
+    def get_w3(self, chain_id=None):
+        if chain_id is None:
+            chain_id = self.default_chain_id
+        if chain_id not in self.w3:
+            raise ValueError(f"Chain ID {chain_id} not initialized")
+        return self.w3[chain_id]
+
+    def get_latest_block(self, chain_id=None) -> Dict[str, Any]:
+        key = (chain_id, "latest")
         if key not in self._latest_block_cache:
-            self._latest_block_cache[key] = self.w3.eth.get_block("latest")
+            self._latest_block_cache[key] = self.get_w3(chain_id).eth.get_block("latest")
         return self._latest_block_cache[key]
 
     def get_token_info(self, token_addresses: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -34,7 +43,7 @@ class Web3Service:
             addr for addr in token_addresses if addr not in self._token_info_cache
         ]
         if uncached_addresses:
-            multicall = W3Multicall(self.w3)
+            multicall = W3Multicall(self.get_w3())
             for address in uncached_addresses:
                 multicall.add(W3Multicall.Call(address, "name()(string)", []))
                 multicall.add(W3Multicall.Call(address, "symbol()(string)", []))
@@ -56,7 +65,7 @@ class Web3Service:
     ) -> Dict[str, Any]:
         key = (contract_address, tuple(function_calls))
         if key not in self._contract_data_cache:
-            multicall = W3Multicall(self.w3)
+            multicall = W3Multicall(self.get_w3())
             for func_name, return_type in function_calls:
                 multicall.add(
                     W3Multicall.Call(contract_address, f"{func_name}{return_type}", [])
@@ -82,7 +91,7 @@ class Web3Service:
 
     def get_block(self, block_identifier: int) -> Dict[str, Any]:
         if block_identifier not in self._block_cache:
-            self._block_cache[block_identifier] = self.w3.eth.get_block(
+            self._block_cache[block_identifier] = self.get_w3().eth.get_block(
                 block_identifier
             )
         return self._block_cache[block_identifier]
@@ -91,7 +100,7 @@ class Web3Service:
         key = (address, abi_name)
         if key not in self._contract_cache:
             abi = load_json("abi/" + abi_name + ".json")
-            self._contract_cache[key] = self.w3.eth.contract(
+            self._contract_cache[key] = self.get_w3().eth.contract(
                 address=Web3.to_checksum_address(address.lower()), abi=abi
             )
         return self._contract_cache[key]
@@ -108,9 +117,9 @@ class Web3Service:
 web3_service = None
 
 
-def initialize_web3_service(rpc_url):
+def initialize_web3_service(default_chain_id, default_rpc_url):
     global web3_service
-    web3_service = Web3Service(rpc_url)
+    web3_service = Web3Service(default_chain_id, default_rpc_url)
 
 
 def get_web3_service():
