@@ -1,8 +1,6 @@
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants
-from shared.utils import load_json
 from votes.query_votes import query_gauge_votes
-from votes.query_bounties import query_active_bounties
 from shared.web3_service import Web3Service
 from shared.exceptions import VoteMarketVotesException
 from w3multicall.multicall import W3Multicall

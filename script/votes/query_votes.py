@@ -1,38 +1,73 @@
-import json
 import os
 from typing import List, Dict, Any
 from web3 import Web3
 from shared.constants import GaugeControllerConstants
 from shared.etherscan_service import get_logs_by_address_and_topics
+from shared.parquet_cache_service import ParquetCache
 import logging
 import asyncio
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 CACHE_DIR = "cache"
-VOTES_CACHE_FILE = os.path.join(CACHE_DIR, "{protocol}_votes_cache.json")
+VOTES_CACHE_FILE = "{protocol}_votes_cache.parquet"
+
+cache = ParquetCache(CACHE_DIR)
 
 
 async def query_gauge_votes(
     w3: Web3, protocol: str, gauge_address: str, block_number: int
 ) -> List[Dict[str, Any]]:
     cache_file = VOTES_CACHE_FILE.format(protocol=protocol)
-    cached_data = load_cached_data(cache_file)
-
-    start_block = cached_data.get(
-        "latest_block", GaugeControllerConstants.CREATION_BLOCKS[protocol]
+    start_block_list = cache.get_columns(cache_file, ["latest_block"]).get(
+        "latest_block", []
     )
+    start_block = (
+        start_block_list[0]
+        if start_block_list
+        else GaugeControllerConstants.CREATION_BLOCKS[protocol]
+    )
+
     end_block = block_number
 
     if start_block < end_block:
         new_votes = await fetch_new_votes(w3, protocol, start_block, end_block)
-        all_votes = cached_data.get("votes", []) + new_votes
-        save_cached_data(cache_file, {"latest_block": end_block, "votes": all_votes})
+
+        cached_data = cache.get_columns(
+            cache_file, ["time", "user", "gauge_addr", "weight"]
+        )
+        cached_votes = [
+            {"time": t, "user": u, "gauge_addr": g, "weight": w}
+            for t, u, g, w in zip(
+                cached_data["time"],
+                cached_data["user"],
+                cached_data["gauge_addr"],
+                cached_data["weight"],
+            )
+        ]
+        all_votes = cached_votes + new_votes
+        print(f"All votes length: {len(all_votes)}")
+        cache.save_votes(cache_file, end_block, all_votes)
     else:
-        all_votes = cached_data.get("votes", [])
+        cached_data = cache.get_columns(
+            cache_file, ["time", "user", "gauge_addr", "weight"]
+        )
+        all_votes = [
+            {"time": t, "user": u, "gauge_addr": g, "weight": w}
+            for t, u, g, w in zip(
+                cached_data["time"],
+                cached_data["user"],
+                cached_data["gauge_addr"],
+                cached_data["weight"],
+            )
+        ]
 
     # Filter votes for the specific gauge address
-    filtered_votes = [vote for vote in all_votes if vote["gauge_addr"].lower() == gauge_address.lower()]
+    filtered_votes = [
+        vote
+        for vote in all_votes
+        if vote["gauge_addr"].lower() == gauge_address.lower()
+    ]
 
     return filtered_votes
 
@@ -67,19 +102,6 @@ async def fetch_votes_chunk(
 
     logging.info(f"{len(votes_logs)} votes logs found")
     return [_decode_vote_log(log) for log in votes_logs]
-
-
-def load_cached_data(cache_file: str) -> Dict[str, Any]:
-    if os.path.exists(cache_file):
-        with open(cache_file, "r") as f:
-            return json.load(f)
-    return {}
-
-
-def save_cached_data(cache_file: str, data: Dict[str, Any]):
-    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-    with open(cache_file, "w") as f:
-        json.dump(data, f)
 
 
 def _decode_vote_log(log: Dict[str, Any]) -> Dict[str, Any]:
