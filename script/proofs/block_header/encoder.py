@@ -41,14 +41,12 @@ def encode_block_header(block: Dict[str, Any]) -> bytes:
 
 def get_block_info(w3: Web3, block_number: int) -> Dict[str, Any]:
     block = w3.eth.get_block(block_number)
-
-    print(block)
     encoded_header = encode_block_header(block)
 
 
     return {
         "BlockNumber": block_number,
-        "BlockHash": block["hash"].hex(),
+        "BlockHash": "0x" + block["hash"].hex(),
         "BlockTimestamp": block["timestamp"],
-        "RlpBlockHeader": encoded_header.hex(),
+        "RlpBlockHeader": "0x" + encoded_header.hex(),
     }

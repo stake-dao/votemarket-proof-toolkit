@@ -1,4 +1,4 @@
-import os
+import logging
 from typing import List, Dict, Any
 from web3 import Web3
 from shared.constants import GaugeControllerConstants
@@ -40,8 +40,9 @@ async def query_gauge_votes(
     )
 
     end_block = block_number
+    logging.info(f"Getting votes for {gauge_address} from {start_block} to {end_block}")
 
-    if start_block < end_block: # Fetch starting from the latest cached block
+    if start_block < end_block:
         new_votes = await fetch_new_votes(w3, protocol, start_block, end_block)
 
         cached_data = cache.get_columns(
@@ -60,6 +61,7 @@ async def query_gauge_votes(
         print(f"All votes length: {len(all_votes)}")
         cache.save_votes(cache_file, end_block, all_votes)
     else:
+        logging.info("Using cached data as start block is not less than end block")
         cached_data = cache.get_columns(
             cache_file, ["time", "user", "gauge_addr", "weight"]
         )

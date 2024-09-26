@@ -35,17 +35,17 @@ gauge_account_proof, gauge_storage_proof = vm_proofs.get_gauge_proof(
 block_info = vm_proofs.get_block_info(block_number)
 
 if __name__ == "__main__":
-    print("User Proof:")
-    print(f"Account Proof: {user_account_proof.hex()}")
-    print(f"Storage Proof: {user_storage_proof.hex()}")
-    print("\nGauge Proof:")
-    print(f"Account Proof: {gauge_account_proof.hex()}")
-    print(f"Storage Proof: {gauge_storage_proof.hex()}")
-    print("\nBlock Info:")
+    print("Block Info:")
     print(f"Block Number: {block_info['BlockNumber']}")
     print(f"Block Hash: {block_info['BlockHash']}")
     print(f"Block Timestamp: {block_info['BlockTimestamp']}")
     print(f"RLP Block Header: {block_info['RlpBlockHeader']}")
 
+    print("\nProof for Block (Gauge Controller):")
+    print(f"0x{gauge_account_proof.hex()}")
 
-# Integrate an interaction (set data in Oracle, Claim) with Votemarket (+ multicall)
+    print("\nProof for Gauge (Point):")
+    print(f"0x{gauge_storage_proof.hex()}")
+
+    print("\nUser Proof (Account Data):")
+    print(f"0x{user_storage_proof.hex()}")

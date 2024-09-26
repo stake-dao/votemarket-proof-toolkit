@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Tuple
 
 
 class Web3Service:
-    def __init__(self, default_chain_id, default_rpc_url=None):
+    def __init__(self, default_chain_id=1, default_rpc_url="https://eth.meowrpc.com	"):
         self.w3 = {}
         self.initialize(default_chain_id, default_rpc_url)
 
@@ -25,7 +25,7 @@ class Web3Service:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
         self.w3[chain_id] = w3
 
-    def get_w3(self, chain_id=None):
+    def get_w3(self, chain_id=1): # Default to mainnet
         if chain_id is None:
             chain_id = self.default_chain_id
         if chain_id not in self.w3:

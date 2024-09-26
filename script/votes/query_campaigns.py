@@ -61,7 +61,6 @@ def query_active_campaigns(chain_id: int, platform: str) -> List[Dict[str, Any]]
 
     return active_gauges
 
-
 def get_all_platforms(arb_rpc_url: str) -> List[Dict[str, Any]]:
     """
     Get all platforms via Registry.
@@ -76,4 +75,4 @@ def get_all_platforms(arb_rpc_url: str) -> List[Dict[str, Any]]:
     campaign_id = 1
     campaign = registry.functions.campaignById(campaign_id).call()
 
-    print(campaign)
+    return [{"chain_id": 42161, "platform": "0x0000000000000000000000000000000000"}]

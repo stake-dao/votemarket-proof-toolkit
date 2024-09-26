@@ -36,8 +36,7 @@ user-proof: install
 		vm = VoteMarketProofs('$(RPC_URL)'); \
 		account_proof, storage_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
 		print('User Proof:'); \
-		print(f'  Account Proof: 0x{account_proof.hex()}'); \
-		print(f'  Storage Proof (used for setAccountData): 0x{storage_proof.hex()}')"
+		print(f' Proof for account data : 0x{storage_proof.hex()}')"
 
 # Generate gauge proof
 .PHONY: gauge-proof
@@ -46,8 +45,8 @@ gauge-proof: install
 		vm = VoteMarketProofs('$(RPC_URL)'); \
 		account_proof, storage_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)); \
 		print('Gauge Proof:'); \
-		print(f'  Account Proof (used for setBlockData): 0x{account_proof.hex()}'); \
-		print(f'  Storage Proof (used for setPointData): 0x{storage_proof.hex()}')"
+		print(f'  Proof for block (Gauge controller) : 0x{account_proof.hex()}'); \
+		print(f'  Proof for point (Gauge data): 0x{storage_proof.hex()}')"
 
 # Get block info
 .PHONY: block-info
