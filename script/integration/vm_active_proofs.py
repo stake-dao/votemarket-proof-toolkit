@@ -44,7 +44,7 @@ async def process_protocol(
         current_period=current_period,
         block_number=block_number,
     )
-    protocol_data["gauge_controller_proof"] = gauge_controller_proof.hex()
+    protocol_data["gauge_controller_proof"] = "0x" + gauge_controller_proof.hex()
 
     for chain_id, platform in chain_platforms:
         # active_gauges = query_active_campaigns(chain_id, platform)
@@ -65,7 +65,7 @@ async def process_protocol(
                 current_period=current_period,
                 block_number=block_number,
             )
-            gauge_data["point_data_proof"] = point_data_proof.hex()
+            gauge_data["point_data_proof"] = "0x" + point_data_proof.hex()
 
             # Get eligible users
             eligible_users = await vm_votes.get_eligible_users(
@@ -82,7 +82,7 @@ async def process_protocol(
                     block_number=block_number,
                 )
                 gauge_data["users"][user_address] = {
-                    "storage_proof": user_storage_proof.hex(),
+                    "storage_proof": "0x" + user_storage_proof.hex(),
                     "last_vote": user["last_vote"],
                     "slope": user["slope"],
                     "power": user["power"],
