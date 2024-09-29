@@ -47,7 +47,7 @@ async def process_protocol(
     protocol_data["gauge_controller_proof"] = "0x" + gauge_controller_proof.hex()
 
     for chain_id, platform in chain_platforms:
-        # active_gauges = query_active_campaigns(chain_id, platform)
+        # active_campaigns = query_active_campaigns(chain_id, platform)
         active_gauges = ["0xfb18127c1471131468a1aad4785c19678e521d86", "0x059e0db6bf882f5fe680dc5409c7adeb99753736"]
         platform_data = {
             "chain_id": chain_id,

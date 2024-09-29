@@ -46,7 +46,7 @@ def get_block_info(w3: Web3, block_number: int) -> Dict[str, Any]:
 
     return {
         "BlockNumber": block_number,
-        "BlockHash": "0x" + block["hash"].hex(),
+        "BlockHash": block["hash"].hex(),
         "BlockTimestamp": block["timestamp"],
         "RlpBlockHeader": "0x" + encoded_header.hex(),
     }

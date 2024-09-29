@@ -1,0 +1,130 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      { "name": "_oracle", "type": "address", "internalType": "address" },
+      {
+        "name": "_gaugeController",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_lastVoteMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_userSlopeMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_weightMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "LAST_VOTE_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ORACLE",
+    "inputs": [],
+    "outputs": [
+      { "name": "", "type": "address", "internalType": "contract IOracle" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SOURCE_GAUGE_CONTROLLER_HASH",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bytes32", "internalType": "bytes32" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "USER_SLOPE_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "WEIGHT_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setAccountData",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "userSlope",
+        "type": "tuple",
+        "internalType": "struct IOracle.VotedSlope",
+        "components": [
+          { "name": "slope", "type": "uint256", "internalType": "uint256" },
+          { "name": "end", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastVote", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setBlockData",
+    "inputs": [
+      { "name": "blockHeader", "type": "bytes", "internalType": "bytes" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPointData",
+    "inputs": [
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "weight",
+        "type": "tuple",
+        "internalType": "struct IOracle.Point",
+        "components": [
+          { "name": "bias", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  { "type": "error", "name": "ALREADY_REGISTERED", "inputs": [] },
+  { "type": "error", "name": "GAUGE_CONTROLLER_NOT_FOUND", "inputs": [] },
+  { "type": "error", "name": "INVALID_BLOCK_HASH", "inputs": [] },
+  { "type": "error", "name": "INVALID_BLOCK_NUMBER", "inputs": [] },
+  { "type": "error", "name": "INVALID_HASH", "inputs": [] },
+  { "type": "error", "name": "INVALID_PROOF_LENGTH", "inputs": [] },
+  { "type": "error", "name": "NO_BLOCK_NUMBER", "inputs": [] }
+]

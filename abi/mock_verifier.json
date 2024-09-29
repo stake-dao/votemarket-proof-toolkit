@@ -1,0 +1,218 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_gaugeController",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_lastVoteMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_userSlopeMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_weightMappingSlot",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "LAST_VOTE_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SOURCE_GAUGE_CONTROLLER_HASH",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bytes32", "internalType": "bytes32" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "USER_SLOPE_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "WEIGHT_MAPPING_SLOT",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "decodeBlockHeader",
+    "inputs": [
+      { "name": "blockHeader", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "parsed",
+        "type": "tuple",
+        "internalType": "struct StateProofVerifier.BlockHeader",
+        "components": [
+          { "name": "hash", "type": "bytes32", "internalType": "bytes32" },
+          {
+            "name": "stateRootHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "number", "type": "uint256", "internalType": "uint256" },
+          { "name": "timestamp", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "extractAccountData",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "userSlope",
+        "type": "tuple",
+        "internalType": "struct IOracle.VotedSlope",
+        "components": [
+          { "name": "slope", "type": "uint256", "internalType": "uint256" },
+          { "name": "end", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastVote", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "extractGaugeControllerAccount",
+    "inputs": [
+      {
+        "name": "blockStateRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "account",
+        "type": "tuple",
+        "internalType": "struct StateProofVerifier.Account",
+        "components": [
+          { "name": "exists", "type": "bool", "internalType": "bool" },
+          { "name": "nonce", "type": "uint256", "internalType": "uint256" },
+          { "name": "balance", "type": "uint256", "internalType": "uint256" },
+          {
+            "name": "storageRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "codeHash", "type": "bytes32", "internalType": "bytes32" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "extractLastVote",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "extractPointData",
+    "inputs": [
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "proof", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "weight",
+        "type": "tuple",
+        "internalType": "struct IOracle.Point",
+        "components": [
+          { "name": "bias", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "extractUserSlope",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "proofSlope", "type": "bytes", "internalType": "bytes" },
+      { "name": "proofEnd", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "userSlope",
+        "type": "tuple",
+        "internalType": "struct IOracle.VotedSlope",
+        "components": [
+          { "name": "slope", "type": "uint256", "internalType": "uint256" },
+          { "name": "end", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastVote", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "extractWeight",
+    "inputs": [
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "proofBias", "type": "bytes", "internalType": "bytes" }
+    ],
+    "outputs": [
+      {
+        "name": "weight",
+        "type": "tuple",
+        "internalType": "struct IOracle.Point",
+        "components": [
+          { "name": "bias", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  { "type": "error", "name": "INVALID_PROOF_LENGTH", "inputs": [] }
+]

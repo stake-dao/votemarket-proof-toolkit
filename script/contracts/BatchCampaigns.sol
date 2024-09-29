@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.19;
 
 interface IVotemarket {
     struct Campaign {
@@ -49,15 +49,26 @@ interface IVotemarket {
         bool updated;
     }
 
-    function getRemainingPeriods(uint256 campaignId, uint256 epoch) external view returns (uint256 periodsLeft);
+    function getRemainingPeriods(
+        uint256 campaignId,
+        uint256 epoch
+    ) external view returns (uint256 periodsLeft);
 
     function getCampaign(uint256) external view returns (Campaign memory);
 
-    function getCampaignUpgrade(uint256, uint256) external view returns (CampaignUpgrade memory);
+    function getCampaignUpgrade(
+        uint256,
+        uint256
+    ) external view returns (CampaignUpgrade memory);
 
-    function getAddressesByCampaign(uint256) external view returns (address[] memory);
+    function getAddressesByCampaign(
+        uint256
+    ) external view returns (address[] memory);
 
-    function getPeriodPerCampaign(uint256 campaignId, uint256 epoch) external view returns (Period memory);
+    function getPeriodPerCampaign(
+        uint256 campaignId,
+        uint256 epoch
+    ) external view returns (Period memory);
 
     function currentEpoch() external view returns (uint256);
 
@@ -71,7 +82,6 @@ interface IVotemarket {
 }
 
 contract BatchCampaignData {
-
     struct CampaignData {
         uint256 id;
         IVotemarket.Campaign campaign;
@@ -82,7 +92,7 @@ contract BatchCampaignData {
         uint256 periodLeft;
     }
 
-    constructor (address platform, uint256 skip, uint256 limit) {
+    constructor(address platform, uint256 skip, uint256 limit) {
         IVotemarket votemarket = IVotemarket(platform);
         limit = limit == 0 ? votemarket.campaignCount() : limit;
 
@@ -97,20 +107,26 @@ contract BatchCampaignData {
             c.isWhitelistOnly = votemarket.whitelistOnly(i);
             c.addresses = votemarket.getAddressesByCampaign(i);
 
-            uint256 currentEpoch =  votemarket.currentEpoch();
-            uint256 lastPeriod = c.isClosed ? c.campaign.endTimestamp : currentEpoch;
+            uint256 currentEpoch = votemarket.currentEpoch();
+            uint256 lastPeriod = c.isClosed
+                ? c.campaign.endTimestamp
+                : currentEpoch;
             c.currentPeriod = votemarket.getPeriodPerCampaign(i, lastPeriod);
             c.periodLeft = votemarket.getRemainingPeriods(i, currentEpoch);
 
             // Check for latest upgrade
             uint256 checkedEpoch = currentEpoch;
             while (checkedEpoch > c.campaign.startTimestamp) {
-                IVotemarket.CampaignUpgrade memory campaignUpgrade = votemarket.getCampaignUpgrade(i, checkedEpoch);
+                IVotemarket.CampaignUpgrade memory campaignUpgrade = votemarket
+                    .getCampaignUpgrade(i, checkedEpoch);
                 // If an upgrade is found, add the latest upgrade
                 if (campaignUpgrade.totalRewardAmount != 0) {
-                    c.campaign.numberOfPeriods = campaignUpgrade.numberOfPeriods;
-                    c.campaign.totalRewardAmount = campaignUpgrade.totalRewardAmount;
-                    c.campaign.maxRewardPerVote = campaignUpgrade.maxRewardPerVote;
+                    c.campaign.numberOfPeriods = campaignUpgrade
+                        .numberOfPeriods;
+                    c.campaign.totalRewardAmount = campaignUpgrade
+                        .totalRewardAmount;
+                    c.campaign.maxRewardPerVote = campaignUpgrade
+                        .maxRewardPerVote;
                     c.campaign.endTimestamp = campaignUpgrade.endTimestamp;
                     break;
                 }

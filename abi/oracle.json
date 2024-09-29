@@ -1,0 +1,212 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      { "name": "_governance", "type": "address", "internalType": "address" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "acceptGovernance",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "authorizedBlockNumberProviders",
+    "inputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "authorizedDataProviders",
+    "inputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epochBlockNumber",
+    "inputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "outputs": [
+      { "name": "hash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "stateRootHash", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "number", "type": "uint256", "internalType": "uint256" },
+      { "name": "timestamp", "type": "uint256", "internalType": "uint256" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "futureGovernance",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "governance",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "insertAddressEpochData",
+    "inputs": [
+      { "name": "voter", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      {
+        "name": "slope",
+        "type": "tuple",
+        "internalType": "struct Oracle.VotedSlope",
+        "components": [
+          { "name": "slope", "type": "uint256", "internalType": "uint256" },
+          { "name": "end", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastVote", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "insertBlockNumber",
+    "inputs": [
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      {
+        "name": "blockData",
+        "type": "tuple",
+        "internalType": "struct StateProofVerifier.BlockHeader",
+        "components": [
+          { "name": "hash", "type": "bytes32", "internalType": "bytes32" },
+          {
+            "name": "stateRootHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          { "name": "number", "type": "uint256", "internalType": "uint256" },
+          { "name": "timestamp", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "insertPoint",
+    "inputs": [
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" },
+      {
+        "name": "point",
+        "type": "tuple",
+        "internalType": "struct Oracle.Point",
+        "components": [
+          { "name": "bias", "type": "uint256", "internalType": "uint256" },
+          { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pointByEpoch",
+    "inputs": [
+      { "name": "", "type": "address", "internalType": "address" },
+      { "name": "", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [
+      { "name": "bias", "type": "uint256", "internalType": "uint256" },
+      { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "revokeAuthorizedBlockNumberProvider",
+    "inputs": [
+      {
+        "name": "blockNumberProvider",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "revokeAuthorizedDataProvider",
+    "inputs": [
+      { "name": "dataProvider", "type": "address", "internalType": "address" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setAuthorizedBlockNumberProvider",
+    "inputs": [
+      {
+        "name": "blockNumberProvider",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setAuthorizedDataProvider",
+    "inputs": [
+      { "name": "dataProvider", "type": "address", "internalType": "address" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferGovernance",
+    "inputs": [
+      { "name": "_governance", "type": "address", "internalType": "address" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "votedSlopeByEpoch",
+    "inputs": [
+      { "name": "", "type": "address", "internalType": "address" },
+      { "name": "", "type": "address", "internalType": "address" },
+      { "name": "", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [
+      { "name": "slope", "type": "uint256", "internalType": "uint256" },
+      { "name": "end", "type": "uint256", "internalType": "uint256" },
+      { "name": "lastVote", "type": "uint256", "internalType": "uint256" },
+      { "name": "lastUpdate", "type": "uint256", "internalType": "uint256" }
+    ],
+    "stateMutability": "view"
+  },
+  { "type": "error", "name": "AUTH_GOVERNANCE_ONLY", "inputs": [] },
+  { "type": "error", "name": "INVALID_EPOCH", "inputs": [] },
+  {
+    "type": "error",
+    "name": "NOT_AUTHORIZED_BLOCK_NUMBER_PROVIDER",
+    "inputs": []
+  },
+  { "type": "error", "name": "NOT_AUTHORIZED_DATA_PROVIDER", "inputs": [] },
+  { "type": "error", "name": "ZERO_ADDRESS", "inputs": [] }
+]

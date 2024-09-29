@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants
+from shared.types import Campaign
 from votes.query_votes import query_gauge_votes
 from votes.query_campaigns import query_active_campaigns
 from shared.web3_service import Web3Service
@@ -84,7 +85,7 @@ class VMVotes:
 
     def get_active_campaigns(
         self, chain_id: int, platform: str
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Campaign]:
         try:
             return query_active_campaigns(chain_id, platform)
         except Exception as e:
