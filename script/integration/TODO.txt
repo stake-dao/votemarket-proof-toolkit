@@ -1,0 +1,5 @@
+Remove integration scripts, will be done by automation jobs directly .
+
+- 1 : Get set block ; set and store JSON (check if block not already set) (Script A)
+- 2 : Get all platorms via registry + chains -> Query active campaigns
+- 3 : Get all voters eligibles ==> JSON (Script B)
