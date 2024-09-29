@@ -4,8 +4,6 @@ import time
 from votes.VMVotes import VMVotes
 from dotenv import load_dotenv
 
-from votes.query_campaigns import get_all_platforms
-
 load_dotenv()
 
 vm_votes = VMVotes(

@@ -34,8 +34,6 @@ if __name__ == "__main__":
     # Block infos
     block_info = vm_proofs.get_block_info(block)
 
-    # TODO : Add calldata to be handled via Pigeon
-
     json_data = {
         "epoch": current_period,
         "block_header": block_info,

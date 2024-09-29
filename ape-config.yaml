@@ -1,0 +1,46 @@
+name: curve-stablecoin
+
+plugins:
+- name: alchemy
+- name: hardhat
+- name: arbitrum
+
+ethereum:
+  default_network: mainnet-fork
+  mainnet_fork:
+    default_provider: hardhat
+    transaction_acceptance_timeout: 99999999
+  mainnet:
+    transaction_acceptance_timeout: 99999999
+
+arbitrum:
+  default_network: mainnet-fork
+  mainnet_fork:
+    default_provider: hardhat
+    transaction_acceptance_timeout: 99999999
+  mainnet:
+    transaction_acceptance_timeout: 99999999
+
+hardhat:
+  port: auto
+  fork:
+    ethereum:
+      mainnet:
+        upstream_provider: alchemy
+        enable_hardhat_deployments: true
+    arbitrum:
+      mainnet:
+        upstream_provider: alchemy
+        enable_hardhat_deployments: true
+
+geth:
+  ethereum:
+    mainnet:
+      uri: http://localhost:9090
+  arbitrum:
+    mainnet:
+      uri: http://localhost:9091
+
+test:
+  mnemonic: test test test test test test test test test test test junk
+  number_of_accounts: 5

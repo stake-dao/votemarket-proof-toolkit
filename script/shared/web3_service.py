@@ -25,7 +25,7 @@ class Web3Service:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
         self.w3[chain_id] = w3
 
-    def get_w3(self, chain_id=1): # Default to mainnet
+    def get_w3(self, chain_id=None):
         if chain_id is None:
             chain_id = self.default_chain_id
         if chain_id not in self.w3:
@@ -35,15 +35,17 @@ class Web3Service:
     def get_latest_block(self, chain_id=None) -> Dict[str, Any]:
         key = (chain_id, "latest")
         if key not in self._latest_block_cache:
-            self._latest_block_cache[key] = self.get_w3(chain_id).eth.get_block("latest")
+            self._latest_block_cache[key] = self.get_w3(chain_id).eth.get_block(
+                "latest"
+            )
         return self._latest_block_cache[key]
 
-    def get_token_info(self, token_addresses: List[str]) -> Dict[str, Dict[str, Any]]:
+    def get_token_info(self, token_addresses: List[str], chain_id=None) -> Dict[str, Dict[str, Any]]:
         uncached_addresses = [
             addr for addr in token_addresses if addr not in self._token_info_cache
         ]
         if uncached_addresses:
-            multicall = W3Multicall(self.get_w3())
+            multicall = W3Multicall(self.get_w3(chain_id))
             for address in uncached_addresses:
                 multicall.add(W3Multicall.Call(address, "name()(string)", []))
                 multicall.add(W3Multicall.Call(address, "symbol()(string)", []))
@@ -61,11 +63,11 @@ class Web3Service:
         return {addr: self._token_info_cache[addr] for addr in token_addresses}
 
     def get_contract_data(
-        self, contract_address: str, function_calls: List[Tuple[str, str]]
+        self, contract_address: str, function_calls: List[Tuple[str, str]], chain_id=None
     ) -> Dict[str, Any]:
         key = (contract_address, tuple(function_calls))
         if key not in self._contract_data_cache:
-            multicall = W3Multicall(self.get_w3())
+            multicall = W3Multicall(self.get_w3(chain_id))
             for func_name, return_type in function_calls:
                 multicall.add(
                     W3Multicall.Call(contract_address, f"{func_name}{return_type}", [])
@@ -80,37 +82,49 @@ class Web3Service:
 
         return self._contract_data_cache[key]
 
-    def get_erc20_balance(self, address: str, contract_address: str) -> int:
+    def get_erc20_balance(self, address: str, contract_address: str, chain_id=None) -> int:
         key = (address, contract_address)
         if key not in self._erc20_balance_cache:
-            contract = self.get_contract(contract_address, "erc20")
+            contract = self.get_contract(contract_address, "erc20", chain_id)
             self._erc20_balance_cache[key] = contract.functions.balanceOf(
                 address
             ).call()
         return self._erc20_balance_cache[key]
 
-    def get_block(self, block_identifier: int) -> Dict[str, Any]:
+    def get_block(self, block_identifier: int, chain_id=None) -> Dict[str, Any]:
         if block_identifier not in self._block_cache:
-            self._block_cache[block_identifier] = self.get_w3().eth.get_block(
+            self._block_cache[block_identifier] = self.get_w3(chain_id).eth.get_block(
                 block_identifier
             )
         return self._block_cache[block_identifier]
 
-    def get_contract(self, address: str, abi_name: str):
+    def get_contract(self, address: str, abi_name: str, chain_id=None):
         key = (address, abi_name)
         if key not in self._contract_cache:
             abi = load_json("abi/" + abi_name + ".json")
-            self._contract_cache[key] = self.get_w3().eth.contract(
+            self._contract_cache[key] = self.get_w3(chain_id).eth.contract(
                 address=Web3.to_checksum_address(address.lower()), abi=abi
             )
         return self._contract_cache[key]
 
-    def get_gwei_price(self, block_number: int) -> float:
+    def get_gwei_price(self, block_number: int, chain_id=None) -> float:
         key = block_number
         if key not in self._gwei_cache:
-            block = self.get_block(block_number)
+            block = self.get_block(block_number, chain_id)
             self._gwei_cache[key] = block["baseFeePerGas"]
         return self._gwei_cache[key] / 1e9
+
+    def deploy_and_call_contract(self, abi, bytecode, constructor_args, chain_id=None):
+        w3 = self.get_w3(chain_id)
+        contract = w3.eth.contract(abi=abi, bytecode=bytecode)
+        construct_txn = contract.constructor(*constructor_args).build_transaction(
+            {
+                "from": "0x0000000000000000000000000000000000000000",  # This address doesn't matter for a call
+                "nonce": 0,  # This nonce doesn't matter for a call
+            }
+        )
+        result = w3.eth.call(construct_txn)
+        return result
 
 
 # Global instance
