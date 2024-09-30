@@ -54,10 +54,4 @@ make block-info RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID BLOCK_NUMBE
 
 
 ### Using in a flow via scripts
-You can also use scripts directly for integration or chained actions. See the example script for basic usage:
-
-``` python:script/examples/generate_proof_example.py ```
-
-
-## TODO :
-Package and example script checking all deployed VMs using Stake DAO address book + voters for active bounties + encoding all
+You can also use scripts directly for integration or chained actions. See the examples script for basic usage

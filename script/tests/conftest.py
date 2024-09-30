@@ -1,9 +1,9 @@
 import os
 import pytest
 import ape
-from ape import accounts, project, Contract
+from ape import accounts, Contract
 from shared.utils import load_json
-from shared.web3_service import initialize_web3_service
+from shared.web3_service import Web3Service
 from proofs.main import VoteMarketProofs
 from votes.main import VMVotes
 from eth_utils import to_checksum_address
@@ -29,27 +29,27 @@ GOVERNANCE_ADDRESS = to_checksum_address(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def initialize_web3():
-    initialize_web3_service(42161, "http://localhost:8545")
+def web3_service():
+    return Web3Service(42161, "http://localhost:8545")
 
 
 @pytest.fixture(scope="session")
 def vm_proofs():
     return VoteMarketProofs(
-        "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
+        1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
     )
 
 
 @pytest.fixture(scope="session")
 def vm_votes():
     return VMVotes(
-        "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
+        1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
     )
 
 
 @pytest.fixture(scope="session")
 def arb_token():
-    return Contract(ARB_TOKEN_ADDRESS)
+    return Contract(ARB_TOKEN_ADDRESS, abi=load_json("abi/erc20.json"))
 
 
 @pytest.fixture(scope="session")
@@ -84,16 +84,6 @@ def whale(accounts):
 @pytest.fixture(scope="session")
 def governance(accounts):
     return accounts[GOVERNANCE_ADDRESS]
-
-
-"""
-@pytest.fixture(scope="session")
-def curve_mock_verifier():
-    return Contract(
-        MOCK_VERIFIER_ADDRESS,
-        abi=load_json("abi/mock_verifier.json"),
-    )
-"""
 
 
 @pytest.fixture(scope="session")

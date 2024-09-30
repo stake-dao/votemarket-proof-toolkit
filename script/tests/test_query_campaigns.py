@@ -1,50 +1,8 @@
-import pytest
-from ape import Contract
-from eth_utils import to_checksum_address
-from shared.utils import load_json
+from ape import networks
 from votes.query_campaigns import query_active_campaigns
-from shared.web3_service import initialize_web3_service
-
-ARB_TOKEN_ADDRESS = to_checksum_address(
-    "0x912CE59144191C1204E64559FE8253a0e49E6548".lower()
-)
-WHALE_ADDRESS = to_checksum_address(
-    "0xF977814e90dA44bFA03b6295A0616a897441aceC".lower()
-)
 
 
-@pytest.fixture(scope="session")
-def arb_token():
-    return Contract(ARB_TOKEN_ADDRESS)
-
-
-@pytest.fixture(scope="session")
-def votemarket():
-    return Contract(
-        "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
-        abi=load_json("abi/vm_platform.json"),
-    )
-
-
-@pytest.fixture(scope="session")
-def verifier():
-    return Contract(
-        "0x348d1bd2a18c9a93eb9ab8e5f55852da3036e225",
-        abi=load_json("abi/verifier.json"),
-    )
-
-
-@pytest.fixture(scope="session")
-def whale(accounts):
-    return accounts[WHALE_ADDRESS]
-
-
-@pytest.fixture(scope="session", autouse=True)
-def initialize_web3():
-    initialize_web3_service(42161, "http://localhost:8545")
-
-
-def test_query_active_campaigns(setup_environment):
+def test_query_active_campaigns(setup_environment, web3_service):
     votemarket = setup_environment["votemarket"]
     whale = setup_environment["whale"]
     campaign1_id = setup_environment["campaign1_id"]
@@ -53,7 +11,7 @@ def test_query_active_campaigns(setup_environment):
     print(f"Campaign count: {votemarket.campaignCount()}")
 
     # Query active campaigns
-    active_campaigns = query_active_campaigns(42161, votemarket.address)
+    active_campaigns = query_active_campaigns(web3_service, 42161, votemarket.address)
     print(f"Active campaigns: {active_campaigns}")
 
     # Assert that we have exactly two active campaigns

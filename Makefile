@@ -7,7 +7,7 @@ VENV_ACTIVATE := . $(VENV)/bin/activate
 SRC_DIR := script
 
 # Phony targets declaration
-.PHONY: all install clean user-proof gauge-proof block-info help
+.PHONY: all install clean user-proof gauge-proof block-info test help
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
@@ -67,6 +67,11 @@ block-info: install
 		print(f'  Block Hash: 0x{info[\"BlockHash\"]}'); \
 		print(f'  Block Timestamp: {info[\"BlockTimestamp\"]}'); \
 		print(f'  RLP Block Header (used for setBlockData): 0x{info[\"RlpBlockHeader\"]}')"
+
+
+# Run tests
+test: install
+	$(VENV_ACTIVATE) && ape test --network arbitrum:mainnet-fork
 
 # Display help information
 help:
