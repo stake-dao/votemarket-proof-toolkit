@@ -1,24 +1,24 @@
 import os
-from typing import List, Dict, Any
+from web3 import Web3
+from typing import List
 import logging
 from contracts.contract_reader import ContractReader
 from shared.constants import GlobalConstants
-from shared.types import Campaign
+from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
-from shared.web3_service import get_web3_service
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
-
-def query_active_campaigns(chain_id: int, platform: str) -> List[Campaign]:
+def query_active_campaigns(
+    w3_service: Web3Service, chain_id: int, platform: str
+) -> List[Campaign]:
     """
     Query active campaigns for a given chain + platform using a single RPC call
     """
-    web3_service = get_web3_service()
 
     # Get the campaign count
-    platform_contract = web3_service.get_contract(platform, "vm_platform", chain_id)
+    platform_contract = w3_service.get_contract(platform, "vm_platform", chain_id)
     campaigns_count = platform_contract.functions.campaignCount().call()
 
     # Read the Solidity contract source
@@ -78,7 +78,7 @@ def query_active_campaigns(chain_id: int, platform: str) -> List[Campaign]:
     return formatted_campaigns
 
 
-def get_all_platforms(arb_rpc_url: str) -> List[Dict[str, Any]]:
+def get_all_platforms(arb_rpc_url: str) -> List[Platform]:
     """
     Get all platforms via Registry.
     """
@@ -87,9 +87,5 @@ def get_all_platforms(arb_rpc_url: str) -> List[Dict[str, Any]]:
     # Registry on Arbitrum
     w3_arbitrum = Web3Service(arb_rpc_url)
     registry = w3_arbitrum.get_contract(GlobalConstants.REGISTRY, "registry")
-
-    # Get id 1
-    campaign_id = 1
-    campaign = registry.functions.campaignById(campaign_id).call()
 
     return [{"chain_id": 42161, "platform": "0x0000000000000000000000000000000000"}]

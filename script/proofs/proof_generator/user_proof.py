@@ -1,10 +1,11 @@
+""" User proof generator """
+
 from typing import Tuple
 from eth_abi import encode
 from eth_utils import keccak
 from web3 import Web3
 from shared.utils import encode_rlp_proofs
 from shared.constants import GaugeControllerConstants
-from proofs.proof_generator.gauge_proof import generate_gauge_proof
 
 
 def _encode_user_gauge_data(user: str, gauge: str, base_slot: int) -> bytes:
@@ -63,7 +64,7 @@ def get_user_gauge_storage_slot_pre_vyper03(
 
 
 def generate_user_proof(
-    w3: Web3,
+    web_3: Web3,
     protocol: str,
     gauge_address: str,
     user: str,
@@ -93,22 +94,22 @@ def generate_user_proof(
 
     # Calculate last user vote storage slot
     last_user_vote_slot = get_user_gauge_storage_slot(
-        w3.to_checksum_address(user.lower()),
-        w3.to_checksum_address(gauge_address.lower()),
+        web_3.to_checksum_address(user.lower()),
+        web_3.to_checksum_address(gauge_address.lower()),
         last_user_vote_base_slot,
     )
 
     # Calculate vote user slope storage slot (different for Curve protocol)
     if protocol == "curve":
         vote_user_slope_slot = get_user_gauge_storage_slot_pre_vyper03(
-            w3.to_checksum_address(user.lower()),
-            w3.to_checksum_address(gauge_address.lower()),
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
     else:
         vote_user_slope_slot = get_user_gauge_storage_slot(
-            w3.to_checksum_address(user.lower()),
-            w3.to_checksum_address(gauge_address.lower()),
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
 
@@ -118,14 +119,14 @@ def generate_user_proof(
 
     # Combine all slots
     slots = [
-        w3.to_hex(last_user_vote_slot),
-        w3.to_hex(vote_user_slope_slope),
-        w3.to_hex(vote_user_slope_end),
+        web_3.to_hex(last_user_vote_slot),
+        web_3.to_hex(vote_user_slope_slope),
+        web_3.to_hex(vote_user_slope_end),
     ]
 
     # Get raw proof from the blockchain
-    raw_proof = w3.eth.get_proof(
-        w3.to_checksum_address(
+    raw_proof = web_3.eth.get_proof(
+        web_3.to_checksum_address(
             GaugeControllerConstants.GAUGE_CONTROLLER[protocol].lower()
         ),
         slots,

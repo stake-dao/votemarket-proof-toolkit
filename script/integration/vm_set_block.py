@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from eth_utils import keccak
 from eth_abi import encode as eth_abi_encode
-from proofs.VMProofs import VoteMarketProofs
+from proofs.main import VoteMarketProofs
 from shared.utils import get_closest_block_timestamp
 import json
 
@@ -25,7 +25,6 @@ def get_current_period():
     return current_timestamp - (current_timestamp % (7 * 24 * 3600))
 
 
-
 if __name__ == "__main__":
     current_period = get_current_period()
 
@@ -43,4 +42,3 @@ if __name__ == "__main__":
     os.makedirs(TEMP_DIR, exist_ok=True)
     with open(TEMP_DIR + "/current_period_block_data.json", "w") as f:
         json.dump(json_data, f)
-

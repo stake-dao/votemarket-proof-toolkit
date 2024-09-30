@@ -1,7 +1,11 @@
+""" Block header encoder """
+
 from typing import Any, Dict
 from web3 import Web3
 from hexbytes import HexBytes
 import rlp
+
+from shared.types import BlockInfo
 
 BLOCK_HEADER = (
     "parentHash",
@@ -26,7 +30,9 @@ BLOCK_HEADER = (
     "parentBeaconBlockRoot",
 )
 
+
 def encode_block_header(block: Dict[str, Any]) -> bytes:
+    """Encode a block header -> RLP encoded"""
     block_header = [
         (
             HexBytes("0x")
@@ -39,10 +45,10 @@ def encode_block_header(block: Dict[str, Any]) -> bytes:
     return rlp.encode(block_header)
 
 
-def get_block_info(w3: Web3, block_number: int) -> Dict[str, Any]:
-    block = w3.eth.get_block(block_number)
+def get_block_info(web_3: Web3, block_number: int) -> BlockInfo:
+    """Get block info -> block number, block hash, block timestamp, rlp encoded block header"""
+    block = web_3.eth.get_block(block_number)
     encoded_header = encode_block_header(block)
-
 
     return {
         "BlockNumber": block_number,

@@ -14,6 +14,7 @@ VOTES_CACHE_FILE = "{protocol}_votes_cache.parquet"
 
 cache = ParquetCache(CACHE_DIR)
 
+
 async def query_gauge_votes(
     w3: Web3, protocol: str, gauge_address: str, block_number: int
 ) -> List[Dict[str, Any]]:
@@ -84,6 +85,7 @@ async def query_gauge_votes(
 
     return filtered_votes
 
+
 async def fetch_new_votes(
     w3: Web3, protocol: str, start_block: int, end_block: int
 ) -> List[Dict[str, Any]]:
@@ -112,6 +114,7 @@ async def fetch_new_votes(
     chunks = await asyncio.gather(*tasks)
     return [vote for chunk in chunks for vote in chunk]
 
+
 async def fetch_votes_chunk(
     w3: Web3, protocol: str, start_block: int, end_block: int
 ) -> List[Dict[str, Any]]:
@@ -137,6 +140,7 @@ async def fetch_votes_chunk(
 
     logging.info(f"{len(votes_logs)} votes logs found")
     return [_decode_vote_log(log) for log in votes_logs]
+
 
 def _decode_vote_log(log: Dict[str, Any]) -> Dict[str, Any]:
     """

@@ -1,58 +1,66 @@
-# Makefile for VM Proofs
+# Makefile for VoteMarket Proofs Generation
 
-# Python interpreter
+# Configuration
 PYTHON := python3
-
-# Virtual environment
 VENV := venv
 VENV_ACTIVATE := . $(VENV)/bin/activate
-
-# Source directories
 SRC_DIR := script
 
-# Default target
-.PHONY: all
+# Phony targets declaration
+.PHONY: all install clean user-proof gauge-proof block-info help
+
+# Default target: Set up the virtual environment and install dependencies
 all: install
 
 # Create virtual environment and install dependencies
-.PHONY: install
 install: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: requirements.txt
 	$(PYTHON) -m venv $(VENV)
 	$(VENV_ACTIVATE) && pip install -r requirements.txt
 
-# Clean up
-.PHONY: clean
+# Remove virtual environment and cached Python files
 clean:
 	rm -rf $(VENV)
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
 
-# Generate user proof
-.PHONY: user-proof
+# Generate user proof for VoteMarketV2
+# Required variables:
+# - RPC_URL: Ethereum node RPC URL
+# - PROTOCOL: Protocol name (e.g., 'curve')
+# - GAUGE_ADDRESS: Ethereum address of the gauge
+# - USER: Ethereum address of the user
+# - BLOCK_NUMBER: Ethereum block number for the proof
 user-proof: install
-	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
-		vm = VoteMarketProofs('$(RPC_URL)'); \
-		account_proof, storage_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
+		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
+		user_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
 		print('User Proof:'); \
-		print(f' Proof for account data : 0x{storage_proof.hex()}')"
+		print(f'0x{user_proof[\"storage_proof\"].hex()}')"
 
-# Generate gauge proof
-.PHONY: gauge-proof
+# Generate gauge proof for VoteMarketV2
+# Required variables:
+# - RPC_URL: Ethereum node RPC URL
+# - PROTOCOL: Protocol name (e.g., 'curve')
+# - GAUGE_ADDRESS: Ethereum address of the gauge
+# - CURRENT_PERIOD: Current voting period
+# - BLOCK_NUMBER: Ethereum block number for the proof
 gauge-proof: install
-	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
-		vm = VoteMarketProofs('$(RPC_URL)'); \
-		account_proof, storage_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)); \
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
+		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
+		gauge_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)); \
 		print('Gauge Proof:'); \
-		print(f'  Proof for block (Gauge controller) : 0x{account_proof.hex()}'); \
-		print(f'  Proof for point (Gauge data): 0x{storage_proof.hex()}')"
+		print(f'  Proof for block (Gauge controller) : 0x{gauge_proof[\"gauge_controller_proof\"].hex()}'); \
+		print(f'  Proof for point (Gauge data): 0x{gauge_proof[\"point_data_proof\"].hex()}')"
 
-# Get block info
-.PHONY: block-info
+# Get block information for VoteMarketV2
+# Required variables:
+# - RPC_URL: Ethereum node RPC URL
+# - BLOCK_NUMBER: Ethereum block number to retrieve information for
 block-info: install
-	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.VMProofs import VoteMarketProofs; \
-		vm = VoteMarketProofs('$(RPC_URL)'); \
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
+		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
 		info = vm.get_block_info($(BLOCK_NUMBER)); \
 		print('Block Info:'); \
 		print(f'  Block Number: {info[\"BlockNumber\"]}'); \
@@ -60,14 +68,12 @@ block-info: install
 		print(f'  Block Timestamp: {info[\"BlockTimestamp\"]}'); \
 		print(f'  RLP Block Header (used for setBlockData): 0x{info[\"RlpBlockHeader\"]}')"
 
-# Help target
-.PHONY: help
+# Display help information
 help:
 	@echo "VoteMarket Proofs Generator Makefile"
 	@echo ""
-	@echo "This Makefile is designed to facilitate the generation of RLP-encoded proofs"
-	@echo "for VoteMarketV2. It includes targets for generating user proofs,"
-	@echo "gauge proofs, and block information"
+	@echo "This Makefile facilitates the generation of RLP-encoded proofs for VoteMarketV2."
+	@echo "It includes targets for generating user proofs, gauge proofs, and block information."
 	@echo ""
 	@echo "Available targets:"
 	@echo "  all         : Set up the virtual environment and install dependencies"

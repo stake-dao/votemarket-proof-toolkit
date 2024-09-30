@@ -6,8 +6,8 @@ import argparse
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
-from proofs.VMProofs import VoteMarketProofs
-from votes.VMVotes import VMVotes
+from proofs.main import VoteMarketProofs
+from votes.main import VMVotes
 from votes.query_campaigns import get_all_platforms, query_active_campaigns
 
 load_dotenv()
@@ -23,6 +23,7 @@ vm_votes = VMVotes(
     "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
 )
 
+
 async def process_protocol(
     protocol: str, block_number: int, current_period: int
 ) -> Dict[str, Any]:
@@ -31,11 +32,7 @@ async def process_protocol(
     chain_platforms = [
         (1, "0x0000000000000000000000000000000000000000"),
     ]
-    protocol_data = {
-        "name": protocol,
-        "gauge_controller_proof": "",
-        "platforms": {}
-    }
+    protocol_data = {"name": protocol, "gauge_controller_proof": "", "platforms": {}}
 
     # Get gauge controller proof once for the protocol
     gauge_controller_proof, _ = vm_proofs.get_gauge_proof(
@@ -48,11 +45,14 @@ async def process_protocol(
 
     for chain_id, platform in chain_platforms:
         # active_campaigns = query_active_campaigns(chain_id, platform)
-        active_gauges = ["0xfb18127c1471131468a1aad4785c19678e521d86", "0x059e0db6bf882f5fe680dc5409c7adeb99753736"]
+        active_gauges = [
+            "0xfb18127c1471131468a1aad4785c19678e521d86",
+            "0x059e0db6bf882f5fe680dc5409c7adeb99753736",
+        ]
         platform_data = {
             "chain_id": chain_id,
             "platform_address": platform,
-            "gauges": {}
+            "gauges": {},
         }
 
         for gauge_address in active_gauges:
@@ -95,6 +95,7 @@ async def process_protocol(
 
     return protocol_data
 
+
 async def main(protocols: List[str], block_number: int, current_period: int):
     for protocol in protocols:
         protocol_data = await process_protocol(protocol, block_number, current_period)
@@ -102,7 +103,7 @@ async def main(protocols: List[str], block_number: int, current_period: int):
         json_data = {
             "block_number": block_number,
             "period": current_period,
-            "protocol": protocol_data
+            "protocol": protocol_data,
         }
 
         # Store in a json file
@@ -114,9 +115,15 @@ async def main(protocols: List[str], block_number: int, current_period: int):
             f"Saved data for {protocol} to {TEMP_DIR}/{protocol}_active_proofs.json"
         )
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate active proofs for protocols")
-    parser.add_argument("protocols", type=str, nargs='+', help="List of protocol names (e.g., 'curve', 'balancer')")
+    parser.add_argument(
+        "protocols",
+        type=str,
+        nargs="+",
+        help="List of protocol names (e.g., 'curve', 'balancer')",
+    )
     parser.add_argument("block_number", type=int, help="Block number to use for proofs")
     parser.add_argument("current_period", type=int, help="Current period timestamp")
 

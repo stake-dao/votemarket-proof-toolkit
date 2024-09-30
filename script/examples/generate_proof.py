@@ -1,23 +1,29 @@
+""" Example of how to generate proofs for a user and gauge. """
+
 import os
 from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from shared.types import UserProof, GaugeProof, BlockInfo
+from eth_utils import to_checksum_address
 
 load_dotenv()
 
 vm_proofs = VoteMarketProofs(
-    "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
+    1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
 )
 
 # Example parameters
 PROTOCOL = "curve"
-GAUGE_ADDRESS = "0x059e0db6bf882f5fe680dc5409c7adeb99753736"
-USER = "0xa219712cc2aaa5aa98ccf2a7ba055231f1752323"
+GAUGE_ADDRESS = to_checksum_address(
+    "0x059e0db6bf882f5fe680dc5409c7adeb99753736".lower()
+)
+USER = to_checksum_address("0xa219712cc2aaa5aa98ccf2a7ba055231f1752323".lower())
 CURRENT_PERIOD = 1723680000
 BLOCK_NUMBER = 20530737
 
 
 def main():
+    """Proof for gauge (account + storage) and user (storage only needed)"""
     # Get user proof
     user_proof: UserProof = vm_proofs.get_user_proof(
         protocol=PROTOCOL,

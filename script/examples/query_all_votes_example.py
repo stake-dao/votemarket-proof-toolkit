@@ -13,7 +13,7 @@ vm_votes = VMVotes(
 # Example parameters
 protocol = "curve"
 gauge_address = "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A"  # sdCRV gauge
-block_number = 20864159  # Max block number to check
+block_number = 20811522  # Max block number to check
 
 
 async def main():

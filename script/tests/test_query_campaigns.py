@@ -1,12 +1,16 @@
-from typing import List
 import pytest
-from ape import accounts, project, Contract
+from ape import Contract
+from eth_utils import to_checksum_address
 from shared.utils import load_json
 from votes.query_campaigns import query_active_campaigns
 from shared.web3_service import initialize_web3_service
 
-ARB_TOKEN_ADDRESS = "0x912CE59144191C1204E64559FE8253a0e49E6548"
-WHALE_ADDRESS = "0xF977814e90dA44bFA03b6295A0616a897441aceC"
+ARB_TOKEN_ADDRESS = to_checksum_address(
+    "0x912CE59144191C1204E64559FE8253a0e49E6548".lower()
+)
+WHALE_ADDRESS = to_checksum_address(
+    "0xF977814e90dA44bFA03b6295A0616a897441aceC".lower()
+)
 
 
 @pytest.fixture(scope="session")

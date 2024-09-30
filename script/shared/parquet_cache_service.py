@@ -29,7 +29,9 @@ class ParquetCache:
         df = pd.DataFrame(data)
         df.to_parquet(cache_file)
 
-    def get_columns(self, filename: str, column_names: List[str]) -> Dict[str, List[Any]]:
+    def get_columns(
+        self, filename: str, column_names: List[str]
+    ) -> Dict[str, List[Any]]:
         cache_file = self._get_cache_file_path(filename)
         if os.path.exists(cache_file):
             try:
@@ -50,5 +52,5 @@ class ParquetCache:
     def save_votes(self, filename: str, latest_block: int, votes: List[Dict[str, Any]]):
         cache_file = self._get_cache_file_path(filename)
         df_votes = pd.DataFrame(votes)
-        df_votes['latest_block'] = latest_block
+        df_votes["latest_block"] = latest_block
         df_votes.to_parquet(cache_file)

@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants
-from shared.types import Campaign
+from shared.types import Campaign, EligibleUser
 from votes.query_votes import query_gauge_votes
 from votes.query_campaigns import query_active_campaigns
 from shared.web3_service import Web3Service
@@ -8,9 +8,10 @@ from shared.exceptions import VoteMarketVotesException
 from w3multicall.multicall import W3Multicall
 from eth_utils import to_checksum_address
 
+
 class VMVotes:
-    def __init__(self, rpc_url: str):
-        self.web3_service = Web3Service(1, rpc_url)
+    def __init__(self, chain_id: int, rpc_url: str):
+        self.web3_service = Web3Service(chain_id, rpc_url)
 
     async def get_gauge_votes(
         self, protocol: str, gauge_address: str, block_number: int
@@ -24,7 +25,7 @@ class VMVotes:
 
     async def get_eligible_users(
         self, protocol: str, gauge_address: str, current_period: int, block_number: int
-    ) -> List[Dict[str, Any]]:
+    ) -> List[EligibleUser]:
         try:
             w3 = self.web3_service.get_w3()
 
@@ -61,7 +62,7 @@ class VMVotes:
 
             results = multicall.call(block_number)
 
-            eligible_users = []
+            eligible_users: List[EligibleUser] = []
 
             for i in range(0, len(results), 2):
                 user = unique_users[i // 2]
@@ -70,23 +71,21 @@ class VMVotes:
 
                 if current_period < end and current_period > last_vote:
                     eligible_users.append(
-                        {
-                            "user": user,
-                            "last_vote": last_vote,
-                            "slope": slope,
-                            "power": power,
-                            "end": end,
-                        }
+                        EligibleUser(
+                            user=user,
+                            last_vote=last_vote,
+                            slope=slope,
+                            power=power,
+                            end=end,
+                        )
                     )
 
             return eligible_users
         except Exception as e:
             raise VoteMarketVotesException(f"Error getting eligible users: {str(e)}")
 
-    def get_active_campaigns(
-        self, chain_id: int, platform: str
-    ) -> List[Campaign]:
+    def get_active_campaigns(self, chain_id: int, platform: str) -> List[Campaign]:
         try:
-            return query_active_campaigns(chain_id, platform)
+            return query_active_campaigns(self.web3_service, chain_id, platform)
         except Exception as e:
             raise VoteMarketVotesException(f"Error querying active campaigns: {str(e)}")
