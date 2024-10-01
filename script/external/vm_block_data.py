@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from eth_utils import keccak
 from eth_abi import encode as eth_abi_encode
 from proofs.main import VoteMarketProofs
+from shared.constants import GlobalConstants
 from shared.utils import get_closest_block_timestamp
 import json
 
@@ -15,7 +16,7 @@ TEMP_DIR = "temp"
 
 # Initialize Web3 and VoteMarketProofs
 vm_proofs = VoteMarketProofs(
-    "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
+    1, GlobalConstants.CHAIN_ID_TO_RPC[1]
 )
 
 
@@ -42,3 +43,5 @@ if __name__ == "__main__":
     os.makedirs(TEMP_DIR, exist_ok=True)
     with open(TEMP_DIR + "/current_period_block_data.json", "w") as f:
         json.dump(json_data, f)
+
+    logging.info(f"Saved data to {TEMP_DIR}/current_period_block_data.json")

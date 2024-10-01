@@ -1,5 +1,6 @@
 import os
 from web3 import Web3
+from eth_utils import to_checksum_address
 from typing import List
 import logging
 from contracts.contract_reader import ContractReader
@@ -10,12 +11,28 @@ from shared.web3_service import Web3Service
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
+def get_all_platforms(protocol: str) -> List[Platform]:
+    # Query on ARBITRUM registry all the platforms for the protocol
+
+    # TODO once registry is ready
+
+    return [
+        {
+            "protocol": "curve",
+            "chain_id": 42161,
+            "address": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
+        }
+    ]
+
+
 def query_active_campaigns(
     w3_service: Web3Service, chain_id: int, platform: str
 ) -> List[Campaign]:
     """
     Query active campaigns for a given chain + platform using a single RPC call
     """
+
+    platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
     platform_contract = w3_service.get_contract(platform, "vm_platform", chain_id)
@@ -45,47 +62,30 @@ def query_active_campaigns(
     )
 
     # Convert the decoded data to a more readable format
-    formatted_campaigns = []
+    formatted_campaigns: List[Campaign] = []
+
     for campaign in campaign_data:
-        formatted_campaign = {
+        formatted_campaign: Campaign = {
             "id": campaign[0],
-            "campaign": {
-                "chainId": campaign[1][0],
-                "gauge": campaign[1][1],
-                "manager": campaign[1][2],
-                "rewardToken": campaign[1][3],
-                "numberOfPeriods": campaign[1][4],
-                "maxRewardPerVote": campaign[1][5],
-                "totalRewardAmount": campaign[1][6],
-                "totalDistributed": campaign[1][7],
-                "startTimestamp": campaign[1][8],
-                "endTimestamp": campaign[1][9],
-                "hook": campaign[1][10],
-            },
-            "isClosed": campaign[2],
-            "isWhitelistOnly": campaign[3],
-            "addresses": campaign[4],
-            "currentPeriod": {
-                "rewardPerPeriod": campaign[5][0],
-                "rewardPerVote": campaign[5][1],
-                "leftover": campaign[5][2],
-                "updated": campaign[5][3],
-            },
-            "periodLeft": campaign[6],
+            "chain_id": campaign[1][0],
+            "gauge": campaign[1][1],
+            "blacklist": list(campaign[4]),
         }
         formatted_campaigns.append(formatted_campaign)
 
     return formatted_campaigns
 
 
-def get_all_platforms(arb_rpc_url: str) -> List[Platform]:
+def get_all_platforms(protocol: str) -> List[Platform]:
     """
     Get all platforms via Registry.
     """
     # TODO : Implement with real registry
 
     # Registry on Arbitrum
-    w3_arbitrum = Web3Service(arb_rpc_url)
+    w3_arbitrum = Web3Service(42161, GlobalConstants.CHAIN_ID_TO_RPC[42161])
     registry = w3_arbitrum.get_contract(GlobalConstants.REGISTRY, "registry")
 
-    return [{"chain_id": 42161, "platform": "0x0000000000000000000000000000000000"}]
+    return [
+        {"chain_id": 42161, "platform": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e"}
+    ]

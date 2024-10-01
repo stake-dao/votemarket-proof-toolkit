@@ -1,6 +1,9 @@
 """ All constants for the project """
 
 
+import os
+
+
 class GaugeControllerConstants:
     """Global class constants Gauge Controller related ops"""
 
@@ -63,6 +66,7 @@ class GlobalConstants:
     REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
 
     CHAIN_ID_TO_RPC = {
+        1: "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY"),
         56: "https://bsc-dataseed.binance.org/",
-        42161: "https://arb1.arbitrum.io/rpc",
+        42161: "https://arb-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY"),
     }

@@ -1,6 +1,5 @@
 import os
 import pytest
-import ape
 from ape import accounts, Contract
 from shared.utils import load_json
 from shared.web3_service import Web3Service
@@ -95,7 +94,7 @@ def create_campaign(votemarket, whale, arb_token):
         number_of_periods: int = 4,
         max_reward_per_vote: int = 1000 * 10**18,
         total_reward_amount: int = 100_000 * 10**18,
-        addresses: list = [],
+        addresses: list = ["0xDEAD000000000000000000000000000000000000", "0x0100000000000000000000000000000000000000"],
         hook: str = "0x0000000000000000000000000000000000000000",
         is_whitelist: bool = False,
     ):
