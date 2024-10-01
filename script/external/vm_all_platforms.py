@@ -13,8 +13,23 @@ load_dotenv()
 
 TEMP_DIR = "temp"
 
+"""
+This script generates a JSON file containing information about all platforms
+for specified protocols. It's designed to be used in conjunction with
+vm_active_proofs.py as part of the automated process of generating proofs.
+"""
 
 def process_protocol(protocol: str, period: int) -> Dict[str, List[Dict[str, str]]]:
+    """
+    Process a single protocol to gather platform information.
+
+    Args:
+        protocol (str): The name of the protocol to process.
+        period (int): The period to use for fetching data.
+
+    Returns:
+        Dict[str, List[Dict[str, str]]]: A dictionary containing the protocol name and a list of platform data.
+    """
     platforms = get_all_platforms(protocol)
     web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
@@ -73,8 +88,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--period",
         type=int,
-        default=0,
-        help="Period to use for fetching data (default: 0)",
+        required=True,
+        help="Period to use for fetching data",
     )
 
     args = parser.parse_args()

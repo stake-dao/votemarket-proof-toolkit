@@ -8,10 +8,9 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from shared.constants import GlobalConstants
-from shared.types import Platform
 from shared.web3_service import Web3Service
 from votes.main import VMVotes
-from votes.query_campaigns import get_all_platforms, query_active_campaigns
+from votes.query_campaigns import query_active_campaigns
 
 load_dotenv()
 
@@ -19,21 +18,28 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 TEMP_DIR = "temp"
 
-vm_proofs = VoteMarketProofs(
-    1, GlobalConstants.CHAIN_ID_TO_RPC[1]
-)
-vm_votes = VMVotes(
-    1, GlobalConstants.CHAIN_ID_TO_RPC[1]
-)
+"""
+This script generates active proofs, based on inputs
+provided by vm_all_platforms.py. It's part of automated process for
+generating and storing proofs to be used in the API.
+"""
 
+vm_proofs = VoteMarketProofs(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
+vm_votes = VMVotes(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
-async def process_protocol(
-    protocol: str, block_number: int, current_period: int
-) -> Dict[str, Any]:
-    # Get all platforms for the protocol
-    chain_platforms: List[Platform] = get_all_platforms(protocol)
+async def process_protocol(protocol_data: Dict[str, Any], current_period: int) -> Dict[str, Any]:
+    """
+    Process a protocol to generate active proofs.
 
-    print(chain_platforms)
+    Args:
+        protocol_data (Dict[str, Any]): The data for a single protocol.
+        current_period (int): The current voting period.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the processed protocol data with active proofs.
+    """
+    protocol = protocol_data["protocol"]
+    platforms = protocol_data["platforms"]
 
     protocol_data = {"name": protocol, "gauge_controller_proof": "", "platforms": {}}
 
@@ -42,26 +48,28 @@ async def process_protocol(
         protocol=protocol,
         gauge_address="0x0000000000000000000000000000000000000000",  # Dummy address
         current_period=current_period,
-        block_number=block_number,
+        block_number=platforms[0]["latest_setted_block"],  # Use the first platform's block number
     )
 
     protocol_data["gauge_controller_proof"] = "0x" + gauge_proofs["gauge_controller_proof"].hex()
 
     web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
-    for platform_data in chain_platforms:
+    for platform_data in platforms:
         chain_id = platform_data['chain_id']
         platform = platform_data['platform']
+        block_number = platform_data['latest_setted_block']
+
         if chain_id not in web3_service.w3:
             web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
         active_campaigns = query_active_campaigns(web3_service, chain_id, platform)
 
-        # TODO : remove this
+        # TODO: remove this dummy data once the real function is implemented
         active_campaigns = [
             {
                 "id": 0,
-                "chain_id": 42161,
+                "chain_id": chain_id,
                 "gauge": "0xf1bb643f953836725c6e48bdd6f1816f871d3e07",
                 "blacklist": [
                     "0xdead000000000000000000000000000000000000",
@@ -70,7 +78,7 @@ async def process_protocol(
             },
             {
                 "id": 1,
-                "chain_id": 42161,
+                "chain_id": chain_id,
                 "gauge": "0x059e0db6bf882f5fe680dc5409c7adeb99753736",
                 "blacklist": [
                     "0xdead000000000000000000000000000000000000",
@@ -82,6 +90,7 @@ async def process_protocol(
         platform_data = {
             "chain_id": chain_id,
             "platform_address": platform,
+            "block_number": block_number,
             "gauges": {},
         }
 
@@ -142,38 +151,42 @@ async def process_protocol(
 
     return protocol_data
 
+async def main(all_platforms_file: str, current_period: int):
+    """
+    Main function to process all protocols and generate active proofs.
 
-async def main(protocols: List[str], block_number: int, current_period: int):
-    for protocol in protocols:
-        protocol_data = await process_protocol(protocol, block_number, current_period)
+    Args:
+        all_platforms_file (str): Path to the JSON file containing all platforms data.
+        current_period (int): The current voting period.
+    """
+    with open(all_platforms_file, 'r') as f:
+        all_platforms_data = json.load(f)
+
+    for protocol_data in all_platforms_data["protocols"]:
+        processed_data = await process_protocol(protocol_data, current_period)
 
         json_data = {
-            "block_number": block_number,
             "period": current_period,
-            **protocol_data
+            **processed_data
         }
 
         # Store in a json file
         os.makedirs(TEMP_DIR, exist_ok=True)
-        with open(f"{TEMP_DIR}/{protocol}_active_proofs.json", "w") as f:
+        output_file = f"{TEMP_DIR}/{processed_data['name']}_active_proofs.json"
+        with open(output_file, "w") as f:
             json.dump(json_data, f, indent=2)
 
-        logging.info(
-            f"Saved data for {protocol} to {TEMP_DIR}/{protocol}_active_proofs.json"
-        )
-
+        logging.info(f"Saved data for {processed_data['name']} to {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate active proofs for protocols")
     parser.add_argument(
-        "protocols",
+        "all_platforms_file",
         type=str,
-        nargs="+",
-        help="List of protocol names (e.g., 'curve', 'balancer')",
+        help="Path to the JSON file containing all platforms data",
     )
-    parser.add_argument("block_number", type=int, help="Block number to use for proofs")
     parser.add_argument("current_period", type=int, help="Current period timestamp")
 
     args = parser.parse_args()
 
-    asyncio.run(main(args.protocols, args.block_number, args.current_period))
+    asyncio.run(main(args.all_platforms_file, args.current_period))
