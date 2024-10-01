@@ -12,7 +12,8 @@ This toolkit provides a set of utilities for interacting with Votemarket V2, spe
 - Generate gauge proofs
 - Retrieve block information
 - Support for multiple protocols (Curve, Balancer, Frax, FXN)
-- WIP: Get voters; active bounties;
+- Get voters for a gauge
+- Get active campaigns on Votemarket
 
 ## Installation
 
