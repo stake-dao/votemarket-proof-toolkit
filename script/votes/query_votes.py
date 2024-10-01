@@ -131,15 +131,21 @@ async def fetch_votes_chunk(
         List[Dict[str, Any]]: List of votes in the chunk.
     """
     logging.info(f"Getting logs from {start_block} to {end_block}")
-    votes_logs = get_logs_by_address_and_topics(
-        GaugeControllerConstants.GAUGE_CONTROLLER[protocol],
-        start_block,
-        end_block,
-        {"0": GaugeControllerConstants.VOTE_EVENT_HASH},
-    )
-
-    logging.info(f"{len(votes_logs)} votes logs found")
-    return [_decode_vote_log(log) for log in votes_logs]
+    try:
+        votes_logs = get_logs_by_address_and_topics(
+            GaugeControllerConstants.GAUGE_CONTROLLER[protocol],
+            start_block,
+            end_block,
+            {"0": GaugeControllerConstants.VOTE_EVENT_HASH},
+        )
+        logging.info(f"{len(votes_logs)} votes logs found")
+        return [_decode_vote_log(log) for log in votes_logs]
+    except Exception as e:
+        if "No records found" in str(e):
+            logging.info(f"No votes found from {start_block} to {end_block}")
+            return []
+        else:
+            raise  # Re-raise the exception if it's not a "No records found" error
 
 
 def _decode_vote_log(log: Dict[str, Any]) -> Dict[str, Any]:

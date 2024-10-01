@@ -67,26 +67,33 @@ def delay(ms: int):
 
 
 def get_logs_by_address_and_topics(
-    address: str, from_block: int, to_block: int, topics: Dict[str, str]
-) -> Dict[str, Any]:
+    address: str,
+    from_block: int,
+    to_block: int,
+    topics: Dict[str, str],
+) -> List[Dict[str, Any]]:
     """
-    Get logs by address and topics from the Etherscan API.
+    Get logs for a given address and topics from the Etherscan API.
 
     Args:
-        address (str): Contract address.
+        address (str): Contract address to query logs for.
         from_block (int): Starting block number.
         to_block (int): Ending block number.
-        topics (Dict[str, str]): Dictionary of topics to filter logs.
+        topics (Dict[str, str]): Topics to filter logs.
 
     Returns:
-        Dict[str, Any]: Logs matching the given criteria.
+        List[Dict[str, Any]]: List of logs.
     """
-    url = f"https://api.etherscan.io/api?module=logs&action=getLogs&fromBlock={from_block}&toBlock={to_block}&address={address}&apikey={ETHERSCAN_KEY}"
+    topic0 = topics.get("0", "")
+    url = f"https://api.etherscan.io/api?module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={ETHERSCAN_KEY}"
 
-    for key, value in topics.items():
-        url += f"&topic{key}_{int(key)+1}_opr=and&topic{key}={value}"
-
-    return _make_request_with_retry(url, "logs")
+    try:
+        response = _make_request_with_retry(url, "logs")
+        return response if response else []
+    except Exception as e:
+        if "No records found" in str(e):
+            return []
+        raise
 
 
 def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
