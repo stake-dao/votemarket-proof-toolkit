@@ -41,7 +41,7 @@ def main():
     verifier_address = to_checksum_address(
         "0x348d1bd2a18c9a93eb9ab8e5f55852da3036e225"
     )  # Arbitrum example one
-    verifier = web3_service.get_contract(verifier_address, "verifier")
+    verifier = web3_service.get_contract(verifier_address, "verifier", 42161)
 
     # Encode data for setBlockData (block must be set on the oracle first)
     block_data_input = verifier.encodeABI(

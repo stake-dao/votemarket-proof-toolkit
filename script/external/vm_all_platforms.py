@@ -3,34 +3,55 @@ import os
 import argparse
 from typing import List, Dict
 
+from eth_utils import to_checksum_address
 from dotenv import load_dotenv
+from shared.constants import GlobalConstants
+from shared.web3_service import Web3Service
 from votes.query_campaigns import get_all_platforms
 
 load_dotenv()
 
 TEMP_DIR = "temp"
 
-def process_protocol(protocol: str) -> Dict[str, List[Dict[str, str]]]:
-    # Get all platforms for the protocol
+
+def process_protocol(protocol: str, period: int) -> Dict[str, List[Dict[str, str]]]:
     platforms = get_all_platforms(protocol)
+    web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
-    return {
-        "protocol": protocol,
-        "platforms": platforms
-    }
+    for platform in platforms:
+        chain_id = platform["chain_id"]
+        platform_address = platform["platform"]
+        """" TODO : Put back once prod ready
+        if chain_id not in web3_service.w3:
+            web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
-def main(protocols: List[str]):
+        # Fetch the oracle address from platform
+        platform_contract = web3_service.get_contract(platform_address, "vm_platform", chain_id)
+        oracle_address = platform_contract.functions.ORACLE().call()
+        oracle_address = to_checksum_address(oracle_address.lower())
+
+        if oracle_address != "0x0000000000000000000000000000000000000000":
+            oracle = web3_service.get_contract(oracle_address, "oracle", chain_id)
+            latest_setted_block = oracle.functions.epochBlockNumber(period).call()
+        else:
+            latest_setted_block = web3_service.w3[chain_id].eth.get_block('latest')['number']
+
+        platform['latest_setted_block'] = latest_setted_block
+        """
+        platform["latest_setted_block"] = 20873530
+
+    return {"protocol": protocol, "platforms": platforms}
+
+
+def main(protocols: List[str], period: int):
     all_protocols_data = []
 
     for protocol in protocols:
-        protocol_data = process_protocol(protocol)
+        protocol_data = process_protocol(protocol, period)
         all_protocols_data.append(protocol_data)
 
-    json_data = {
-        "protocols": all_protocols_data
-    }
+    json_data = {"protocols": all_protocols_data}
 
-    # Store in a json file
     os.makedirs(TEMP_DIR, exist_ok=True)
     output_file = f"{TEMP_DIR}/all_platforms.json"
     with open(output_file, "w") as f:
@@ -38,15 +59,23 @@ def main(protocols: List[str]):
 
     print(f"Saved data for all protocols to {output_file}")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate a list of all platforms for given protocols")
+    parser = argparse.ArgumentParser(
+        description="Generate a list of all platforms for given protocols"
+    )
     parser.add_argument(
         "protocols",
         type=str,
         nargs="+",
         help="List of protocol names (e.g., 'curve', 'balancer')",
     )
+    parser.add_argument(
+        "--period",
+        type=int,
+        default=0,
+        help="Period to use for fetching data (default: 0)",
+    )
 
     args = parser.parse_args()
-
-    main(args.protocols)
+    main(args.protocols, args.period)
