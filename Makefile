@@ -1,4 +1,4 @@
-"# Makefile for VoteMarket Proofs Generation
+# Makefile for VoteMarket Proofs Generation
 
 # Configuration
 PYTHON := python3
