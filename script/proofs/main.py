@@ -13,6 +13,8 @@ class VoteMarketProofs:
 
     def __init__(self, chain_id: int):
         rpc_url = os.getenv("ETHEREUM_MAINNET_RPC_URL")
+
+        print("Used rpc url: ", rpc_url)
         if not rpc_url:
             raise ValueError("ETHEREUM_MAINNET_RPC_URL environment variable is not set")
         self.web3_service = Web3Service(chain_id, rpc_url)
