@@ -4,13 +4,12 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
+from shared.constants import GlobalConstants
 from votes.main import VMVotes
 
 load_dotenv()
 
-vm_votes = VMVotes(
-    1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
-)
+vm_votes = VMVotes(1)
 
 # Example parameters
 PROTOCOL = "curve"
@@ -29,9 +28,9 @@ async def main():
     print(len(gauge_votes))
 
     # Get eligible users
-    current_period = 1723680000
+    CURRENT_EPOCH = 1723680000
     eligible_users = await vm_votes.get_eligible_users(
-        PROTOCOL, GAUGE_ADDRESS, current_period, BLOCK_NUMBER
+        PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER
     )
 
     print(f"\n{len(eligible_users)} users eligible for gauge {GAUGE_ADDRESS}:")

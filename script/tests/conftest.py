@@ -34,16 +34,12 @@ def web3_service():
 
 @pytest.fixture(scope="session")
 def vm_proofs():
-    return VoteMarketProofs(
-        1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
-    )
+    return VoteMarketProofs(1)
 
 
 @pytest.fixture(scope="session")
 def vm_votes():
-    return VMVotes(
-        1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
-    )
+    return VMVotes(1)
 
 
 @pytest.fixture(scope="session")

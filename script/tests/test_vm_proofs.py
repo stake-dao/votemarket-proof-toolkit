@@ -5,7 +5,7 @@ from eth_utils import to_checksum_address
 
 # Using test values to match with previous prod proofs and votes on Votemarket v1 : https://github.com/stake-dao/votemarket-data/blob/main/bounties/x-chain/1723680000/
 
-PERIOD = 1723680000
+EPOCH = 1723680000
 BLOCK_NUMBER = 20530737
 BLOCK_TIMESTAMP = 1723685159
 
@@ -40,7 +40,7 @@ async def test_block_header(vm_proofs, setup_environment, oracle, whale):
     # Insert in the oracle block info
     with accounts.use_sender(whale):
         oracle.insertBlockNumber(
-            PERIOD,
+            EPOCH,
             (
                 block_info["BlockHash"],
                 "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -50,7 +50,7 @@ async def test_block_header(vm_proofs, setup_environment, oracle, whale):
         )
 
     # Assert the block in the oracle
-    epoch_block_number = oracle.epochBlockNumber(PERIOD)
+    epoch_block_number = oracle.epochBlockNumber(EPOCH)
 
     # Assert the block hash
     assert (

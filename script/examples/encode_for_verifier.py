@@ -4,17 +4,17 @@ import os
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
+from shared.constants import GlobalConstants
 from shared.types import UserProof, GaugeProof, BlockInfo
 from shared.web3_service import get_web3_service
 
 load_dotenv()
 
 # Initialize VoteMarket services
-vm_proofs = VoteMarketProofs(
-    1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
-)
+vm_proofs = VoteMarketProofs(1)
 
 web3_service = get_web3_service()
+web3_service.add_chain(42161, GlobalConstants.CHAIN_ID_TO_RPC[42161])
 
 # Example parameters
 PROTOCOL = "curve"
@@ -22,7 +22,7 @@ GAUGE_ADDRESS = to_checksum_address(
     "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A"
 )  # sdCRV gauge
 BLOCK_NUMBER = 20864159
-CURRENT_PERIOD = 1723680000
+CURRENT_EPOCH = 1723680000
 USER = to_checksum_address("0xa219712cc2aaa5aa98ccf2a7ba055231f1752323")
 
 
@@ -31,7 +31,7 @@ def main():
     # Get necessary proofs and info
     block_info: BlockInfo = vm_proofs.get_block_info(BLOCK_NUMBER)
     gauge_proof: GaugeProof = vm_proofs.get_gauge_proof(
-        PROTOCOL, GAUGE_ADDRESS, CURRENT_PERIOD, BLOCK_NUMBER
+        PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER
     )
     user_proof: UserProof = vm_proofs.get_user_proof(
         PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER
@@ -54,7 +54,7 @@ def main():
     # Encode data for setPointData
     point_data_input = verifier.encodeABI(
         fn_name="setPointData",
-        args=[GAUGE_ADDRESS, CURRENT_PERIOD, gauge_proof["point_data_proof"]],
+        args=[GAUGE_ADDRESS, CURRENT_EPOCH, gauge_proof["point_data_proof"]],
     )
     print("\nEncoded data for setPointData:")
     print(point_data_input)
@@ -62,7 +62,7 @@ def main():
     # Encode data for setAccountData
     account_data_input = verifier.encodeABI(
         fn_name="setAccountData",
-        args=[USER, GAUGE_ADDRESS, CURRENT_PERIOD, user_proof["storage_proof"]],
+        args=[USER, GAUGE_ADDRESS, CURRENT_EPOCH, user_proof["storage_proof"]],
     )
     print("\nEncoded data for setAccountData:")
     print(account_data_input)

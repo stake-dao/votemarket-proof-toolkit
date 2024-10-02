@@ -14,7 +14,7 @@ def _encode_gauge_time(gauge: str, time: int, base_slot: int) -> bytes:
 
     Args:
         gauge (str): The gauge address.
-        time (int): The current period.
+        time (int): The current epoch.
         base_slot (int): The base slot for point weights.
 
     Returns:
@@ -30,7 +30,7 @@ def get_gauge_time_storage_slot(gauge: str, time: int, base_slot: int) -> int:
 
     Args:
         gauge (str): The gauge address.
-        time (int): The current period.
+        time (int): The current epoch.
         base_slot (int): The base slot for point weights.
 
     Returns:
@@ -48,7 +48,7 @@ def get_gauge_time_storage_slot_pre_vyper03(
 
     Args:
         gauge (str): The gauge address.
-        time (int): The current period.
+        time (int): The current epoch.
         base_slot (int): The base slot for point weights.
 
     Returns:
@@ -63,7 +63,7 @@ def generate_gauge_proof(
     web_3: Web3,
     protocol: str,
     gauge_address: str,
-    current_period: int,
+    CURRENT_EPOCH: int,
     block_number: int,
 ) -> Tuple[bytes, bytes]:
     """
@@ -73,7 +73,7 @@ def generate_gauge_proof(
         web_3 (Web3): Web3 instance.
         protocol (str): The protocol name (e.g., "curve", "balancer").
         gauge_address (str): The gauge address.
-        current_period (int): The current period, rounded down to the nearest week.
+        CURRENT_EPOCH (int): The current epoch, rounded down to the nearest week.
             This aligns with how the gauge controller tracks voting periods.
         block_number (int): The block number for which to generate the proof.
 
@@ -92,7 +92,7 @@ def generate_gauge_proof(
     get_position = position_functions.get(protocol, position_functions["default"])
     point_weights_position = get_position(
         web_3.to_checksum_address(gauge_address.lower()),
-        current_period,
+        CURRENT_EPOCH,
         point_weights_base_slot,
     )
 

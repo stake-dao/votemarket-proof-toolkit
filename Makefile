@@ -44,12 +44,12 @@ user-proof: install
 # - RPC_URL: Ethereum node RPC URL
 # - PROTOCOL: Protocol name (e.g., 'curve')
 # - GAUGE_ADDRESS: Ethereum address of the gauge
-# - CURRENT_PERIOD: Current voting period
+# - CURRENT_EPOCH: Current voting epoch
 # - BLOCK_NUMBER: Ethereum block number for the proof
 gauge-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
 		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
-		gauge_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_PERIOD), $(BLOCK_NUMBER)); \
+		gauge_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_EPOCH), $(BLOCK_NUMBER)); \
 		print('Gauge Proof:'); \
 		print(f'  Proof for block (Gauge controller) : 0x{gauge_proof[\"gauge_controller_proof\"].hex()}'); \
 		print(f'  Proof for point (Gauge data): 0x{gauge_proof[\"point_data_proof\"].hex()}')"
@@ -85,7 +85,7 @@ help:
 	@echo "  install     : Same as 'all'"
 	@echo "  clean       : Remove virtual environment and cached Python files"
 	@echo "  user-proof  : Generate a user proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
-	@echo "  gauge-proof : Generate a gauge proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, CURRENT_PERIOD, BLOCK_NUMBER)"
+	@echo "  gauge-proof : Generate a gauge proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER)"
 	@echo "  block-info  : Get block information (requires RPC_URL, BLOCK_NUMBER)"
 	@echo "  help        : Display this help message"
 	@echo ""

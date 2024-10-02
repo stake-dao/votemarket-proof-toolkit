@@ -1,7 +1,9 @@
 """Example of how to query active campaigns for a platform."""
+
 import os
 from typing import List
 from dotenv import load_dotenv
+from shared.constants import GlobalConstants
 from shared.types import Campaign
 from votes.main import VMVotes
 from eth_utils import to_checksum_address
@@ -14,10 +16,7 @@ PLATFORM_ADDRESS = to_checksum_address(
 )
 
 
-vm_votes = VMVotes(
-    CHAIN_ID,
-    "https://arb-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY"),
-)
+vm_votes = VMVotes(CHAIN_ID)
 
 
 def main():

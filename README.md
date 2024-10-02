@@ -44,7 +44,7 @@ make user-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=cu
 Generate gauge proof:
 
 ```
-make gauge-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=curve GAUGE_ADDRESS=0x... CURRENT_PERIOD=1234567890 BLOCK_NUMBER=12345678
+make gauge-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=curve GAUGE_ADDRESS=0x... CURRENT_EPOCH=1234567890 BLOCK_NUMBER=12345678
 ```
 
 Get block information:

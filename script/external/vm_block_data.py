@@ -15,33 +15,40 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 TEMP_DIR = "temp"
 
 # Initialize Web3 and VoteMarketProofs
-vm_proofs = VoteMarketProofs(
-    1, GlobalConstants.CHAIN_ID_TO_RPC[1]
-)
+vm_proofs = VoteMarketProofs(1)
 
-
-def get_current_period():
+def get_current_epoch():
+    logging.info("Fetching current epoch")
     current_block = vm_proofs.web3_service.get_w3().eth.get_block("latest")
     current_timestamp = current_block["timestamp"]
-    return current_timestamp - (current_timestamp % (7 * 24 * 3600))
-
+    epoch = current_timestamp - (current_timestamp % (7 * 24 * 3600))
+    logging.info(f"Current epoch: {epoch}")
+    return epoch
 
 if __name__ == "__main__":
-    current_period = get_current_period()
+    logging.info("Starting vm_block_data script")
 
-    block = get_closest_block_timestamp("ethereum", current_period)
+    current_epoch = get_current_epoch()
 
-    # Block infos
+    logging.info(f"Getting closest block for timestamp: {current_epoch}")
+    block = get_closest_block_timestamp("ethereum", current_epoch)
+    logging.info(f"Closest block number: {block}")
+
+    logging.info("Fetching block info")
     block_info = vm_proofs.get_block_info(block)
+    logging.info(f"Block info retrieved for block {block}")
 
     json_data = {
-        "epoch": current_period,
+        "epoch": current_epoch,
         "block_header": block_info,
     }
 
-    # Store in a json file
+    logging.info("Preparing to save data")
     os.makedirs(TEMP_DIR, exist_ok=True)
-    with open(TEMP_DIR + "/current_period_block_data.json", "w") as f:
-        json.dump(json_data, f)
+    output_file = f"{TEMP_DIR}/current_epoch_block_data.json"
 
-    logging.info(f"Saved data to {TEMP_DIR}/current_period_block_data.json")
+    with open(output_file, "w") as f:
+        json.dump(json_data, f, indent=2)
+
+    logging.info(f"Saved data to {output_file}")
+    logging.info("vm_block_data script completed")

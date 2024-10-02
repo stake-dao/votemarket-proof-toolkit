@@ -1,5 +1,6 @@
 """This module provides functionality for generating and managing proofs for VoteMarket."""
 
+import os
 from proofs.proof_generator.user_proof import generate_user_proof
 from proofs.proof_generator.gauge_proof import generate_gauge_proof
 from proofs.block_header.encoder import get_block_info
@@ -7,11 +8,13 @@ from shared.web3_service import Web3Service
 from shared.exceptions import VoteMarketProofsException
 from shared.types import UserProof, GaugeProof, BlockInfo
 
-
 class VoteMarketProofs:
     """A global class for generating and managing proofs"""
 
-    def __init__(self, chain_id: int, rpc_url: str):
+    def __init__(self, chain_id: int):
+        rpc_url = os.getenv("ETHEREUM_MAINNET_RPC_URL")
+        if not rpc_url:
+            raise ValueError("ETHEREUM_MAINNET_RPC_URL environment variable is not set")
         self.web3_service = Web3Service(chain_id, rpc_url)
 
     def get_user_proof(
@@ -49,15 +52,15 @@ class VoteMarketProofs:
             raise VoteMarketProofsException("Error generating user proof")
 
     def get_gauge_proof(
-        self, protocol: str, gauge_address: str, current_period: int, block_number: int
+        self, protocol: str, gauge_address: str, CURRENT_EPOCH: int, block_number: int
     ) -> GaugeProof:
-        """Generate a gauge proof for a given protocol, gauge, current period, and block number"""
+        """Generate a gauge proof for a given protocol, gauge, current epoch, and block number"""
         try:
             gauge_controller_proof, point_data_proof = generate_gauge_proof(
                 self.web3_service.get_w3(),
                 protocol,
                 gauge_address,
-                current_period,
+                CURRENT_EPOCH,
                 block_number,
             )
             return GaugeProof(

@@ -1,5 +1,6 @@
+import os
 from typing import List, Dict, Any
-from shared.constants import GaugeControllerConstants
+from shared.constants import GaugeControllerConstants, GlobalConstants
 from shared.types import Campaign, EligibleUser
 from votes.query_votes import query_gauge_votes
 from votes.query_campaigns import query_active_campaigns
@@ -10,7 +11,10 @@ from eth_utils import to_checksum_address
 
 
 class VMVotes:
-    def __init__(self, chain_id: int, rpc_url: str):
+    def __init__(self, chain_id: int):
+        rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+        if not rpc_url:
+            raise ValueError("RPC URL is not set")
         self.web3_service = Web3Service(chain_id, rpc_url)
 
     async def get_gauge_votes(
@@ -24,7 +28,7 @@ class VMVotes:
             raise VoteMarketVotesException(f"Error querying gauge votes: {str(e)}")
 
     async def get_eligible_users(
-        self, protocol: str, gauge_address: str, current_period: int, block_number: int
+        self, protocol: str, gauge_address: str, current_epoch: int, block_number: int
     ) -> List[EligibleUser]:
         try:
             w3 = self.web3_service.get_w3()
@@ -69,7 +73,7 @@ class VMVotes:
                 last_vote = results[i]
                 slope, power, end = results[i + 1]
 
-                if current_period < end and current_period > last_vote:
+                if current_epoch < end and current_epoch > last_vote:
                     eligible_users.append(
                         EligibleUser(
                             user=user,

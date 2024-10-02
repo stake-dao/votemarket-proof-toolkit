@@ -3,14 +3,13 @@
 import os
 from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
+from shared.constants import GlobalConstants
 from shared.types import UserProof, GaugeProof, BlockInfo
 from eth_utils import to_checksum_address
 
 load_dotenv()
 
-vm_proofs = VoteMarketProofs(
-    1, "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY")
-)
+vm_proofs = VoteMarketProofs(1)
 
 # Example parameters
 PROTOCOL = "curve"
@@ -18,7 +17,7 @@ GAUGE_ADDRESS = to_checksum_address(
     "0x059e0db6bf882f5fe680dc5409c7adeb99753736".lower()
 )
 USER = to_checksum_address("0xa219712cc2aaa5aa98ccf2a7ba055231f1752323".lower())
-CURRENT_PERIOD = 1723680000
+CURRENT_EPOCH = 1723680000
 BLOCK_NUMBER = 20530737
 
 
@@ -36,7 +35,7 @@ def main():
     gauge_proof: GaugeProof = vm_proofs.get_gauge_proof(
         protocol=PROTOCOL,
         gauge_address=GAUGE_ADDRESS,
-        current_period=CURRENT_PERIOD,
+        CURRENT_EPOCH=CURRENT_EPOCH,
         block_number=BLOCK_NUMBER,
     )
 

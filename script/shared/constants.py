@@ -1,10 +1,9 @@
 """ All constants for the project """
 
-
 import os
-import dotenv
+from dotenv import load_dotenv
 
-dotenv.load_dotenv()
+load_dotenv()
 
 
 class GaugeControllerConstants:
@@ -69,7 +68,7 @@ class GlobalConstants:
     REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
 
     CHAIN_ID_TO_RPC = {
-        1: "https://eth-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY"),
-        56: "https://bsc-dataseed.binance.org/",
-        42161: "https://arb-mainnet.g.alchemy.com/v2/" + os.getenv("WEB3_ALCHEMY_API_KEY"),
+        1: os.getenv("ETHEREUM_MAINNET_RPC_URL"),
+        56: os.getenv("BSC_MAINNET_RPC_URL"),
+        42161: os.getenv("ARBITRUM_MAINNET_RPC_URL"),
     }
