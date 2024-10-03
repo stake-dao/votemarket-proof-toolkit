@@ -34,7 +34,7 @@ clean:
 # - BLOCK_NUMBER: Ethereum block number for the proof
 user-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
-		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
+		vm = VoteMarketProofs(1); \
 		user_proof = vm.get_user_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', '$(USER)', $(BLOCK_NUMBER)); \
 		print('User Proof:'); \
 		print(f'0x{user_proof[\"storage_proof\"].hex()}')"
@@ -48,7 +48,7 @@ user-proof: install
 # - BLOCK_NUMBER: Ethereum block number for the proof
 gauge-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
-		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
+		vm = VoteMarketProofs(1); \
 		gauge_proof = vm.get_gauge_proof('$(PROTOCOL)', '$(GAUGE_ADDRESS)', $(CURRENT_EPOCH), $(BLOCK_NUMBER)); \
 		print('Gauge Proof:'); \
 		print(f'  Proof for block (Gauge controller) : 0x{gauge_proof[\"gauge_controller_proof\"].hex()}'); \
@@ -60,13 +60,13 @@ gauge-proof: install
 # - BLOCK_NUMBER: Ethereum block number to retrieve information for
 block-info: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
-		vm = VoteMarketProofs(1, '$(RPC_URL)'); \
+		vm = VoteMarketProofs(1); \
 		info = vm.get_block_info($(BLOCK_NUMBER)); \
 		print('Block Info:'); \
 		print(f'  Block Number: {info[\"BlockNumber\"]}'); \
-		print(f'  Block Hash: 0x{info[\"BlockHash\"]}'); \
+		print(f'  Block Hash: {info[\"BlockHash\"]}'); \
 		print(f'  Block Timestamp: {info[\"BlockTimestamp\"]}'); \
-		print(f'  RLP Block Header (used for setBlockData): 0x{info[\"RlpBlockHeader\"]}')"
+		print(f'  RLP Block Header (used for setBlockData): {info[\"RlpBlockHeader\"]}')"
 
 
 # Run tests
