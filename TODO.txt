@@ -1,0 +1,1 @@
+- What if multiple bounties with same gauge ? (same protocol)

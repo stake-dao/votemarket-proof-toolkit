@@ -14,7 +14,6 @@ class VoteMarketProofs:
     def __init__(self, chain_id: int):
         rpc_url = os.getenv("ETHEREUM_MAINNET_RPC_URL")
 
-        print("Used rpc url: ", rpc_url)
         if not rpc_url:
             raise ValueError("ETHEREUM_MAINNET_RPC_URL environment variable is not set")
         self.web3_service = Web3Service(chain_id, rpc_url)
@@ -54,7 +53,7 @@ class VoteMarketProofs:
             raise VoteMarketProofsException("Error generating user proof")
 
     def get_gauge_proof(
-        self, protocol: str, gauge_address: str, CURRENT_EPOCH: int, block_number: int
+        self, protocol: str, gauge_address: str, current_epoch: int, block_number: int
     ) -> GaugeProof:
         """Generate a gauge proof for a given protocol, gauge, current epoch, and block number"""
         try:
@@ -62,7 +61,7 @@ class VoteMarketProofs:
                 self.web3_service.get_w3(),
                 protocol,
                 gauge_address,
-                CURRENT_EPOCH,
+                current_epoch,
                 block_number,
             )
             return GaugeProof(
