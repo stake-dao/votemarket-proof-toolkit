@@ -27,7 +27,6 @@ clean:
 
 # Generate user proof for VoteMarketV2
 # Required variables:
-# - RPC_URL: Ethereum node RPC URL
 # - PROTOCOL: Protocol name (e.g., 'curve')
 # - GAUGE_ADDRESS: Ethereum address of the gauge
 # - USER: Ethereum address of the user
@@ -84,10 +83,10 @@ help:
 	@echo "  all         : Set up the virtual environment and install dependencies"
 	@echo "  install     : Same as 'all'"
 	@echo "  clean       : Remove virtual environment and cached Python files"
-	@echo "  user-proof  : Generate a user proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
-	@echo "  gauge-proof : Generate a gauge proof (requires RPC_URL, PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER)"
-	@echo "  block-info  : Get block information (requires RPC_URL, BLOCK_NUMBER)"
+	@echo "  user-proof  : Generate a user proof (requires PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
+	@echo "  gauge-proof : Generate a gauge proof (requires PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER)"
+	@echo "  block-info  : Get block information (requires BLOCK_NUMBER)"
 	@echo "  help        : Display this help message"
 	@echo ""
 	@echo "Example usage:"
-	@echo "  make user-proof RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
+	@echo "  make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
