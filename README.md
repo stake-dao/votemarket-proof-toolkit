@@ -1,5 +1,5 @@
 <div align="center">
-<img src="./assets/votemarket-logo.png" width="200">
+<img src="./assets/Inspector.svg" width="200">
 
 # VotemarketV2 Proofs Toolkit
 
