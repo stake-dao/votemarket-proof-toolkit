@@ -29,9 +29,8 @@ def query_active_campaigns(
     w3_service: Web3Service, chain_id: int, platform: str
 ) -> List[Campaign]:
     """
-    Query active campaigns for a given chain + platform using a single RPC call
+    Query active campaigns for a given chain + platform using multiple RPC calls in batches of 10
     """
-
     platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
@@ -45,33 +44,38 @@ def query_active_campaigns(
     with open(contract_path, "r") as file:
         contract_source = file.read()
 
-    # Read contract data
-    result = ContractReader.read_contract_data(
-        contract_source, [platform, 0, campaigns_count], chain_id
-    )
-
-    # Decode the result
-    campaign_data = ContractReader.decode_result(
-        [
-            "(uint256,("
-            "uint256,address,address,address,uint8,uint256,uint256,uint256,uint256,uint256,address),"
-            "bool,bool,address[],"
-            "(uint256,uint256,uint256,bool),uint256)[]"
-        ],
-        result,
-    )
-
-    # Convert the decoded data to a more readable format
     formatted_campaigns: List[Campaign] = []
+    batch_size = 10
 
-    for campaign in campaign_data:
-        formatted_campaign: Campaign = {
-            "id": campaign[0],
-            "chain_id": campaign[1][0],
-            "gauge": campaign[1][1],
-            "blacklist": list(campaign[4]),
-        }
-        formatted_campaigns.append(formatted_campaign)
+    # Process campaigns in batches of 10
+    for start_index in range(0, campaigns_count, batch_size):
+        end_index = min(start_index + batch_size, campaigns_count)
+
+        # Read contract data for the current batch
+        result = ContractReader.read_contract_data(
+            contract_source, [platform, start_index, end_index], chain_id
+        )
+
+        # Decode the result
+        campaign_data = ContractReader.decode_result(
+            [
+                "(uint256,("
+                "uint256,address,address,address,uint8,uint256,uint256,uint256,uint256,uint256,address),"
+                "bool,bool,address[],"
+                "(uint256,uint256,uint256,bool),uint256)[]"
+            ],
+            result,
+        )
+
+        # Convert the decoded data to a more readable format
+        for campaign in campaign_data:
+            formatted_campaign: Campaign = {
+                "id": campaign[0],
+                "chain_id": campaign[1][0],
+                "gauge": campaign[1][1],
+                "blacklist": list(campaign[4]),
+            }
+            formatted_campaigns.append(formatted_campaign)
 
     return formatted_campaigns
 

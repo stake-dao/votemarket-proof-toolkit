@@ -45,7 +45,12 @@ async def process_protocol(
     protocol = protocol_data["protocol"]
     platforms = protocol_data["platforms"]
 
-    protocol_data = {"name": protocol, "gauge_controller_proof": "", "platforms": {}}
+    # Initialize the output dictionary with block_data at the beginning
+    output_data = {
+        "block_data": platforms[list(platforms.keys())[0]]["block_data"],
+        "gauge_controller_proof": "",
+        "platforms": {},
+    }
 
     # Get gauge controller proof once for the protocol
     logging.info(f"Generating gauge controller proof for {protocol}")
@@ -58,7 +63,7 @@ async def process_protocol(
         ],  # Use the first platform's block number
     )
 
-    protocol_data["gauge_controller_proof"] = (
+    output_data["gauge_controller_proof"] = (
         "0x" + gauge_proofs["gauge_controller_proof"].hex()
     )
 
@@ -75,7 +80,9 @@ async def process_protocol(
             web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
         logging.info(f"Querying active campaigns for platform: {platform_address}")
-        # active_campaigns = query_active_campaigns(web3_service, chain_id, platform_address)
+        active_campaigns = query_active_campaigns(
+            web3_service, chain_id, platform_address
+        )
 
         # TODO: remove this dummy data once the real function is implemented
         active_campaigns = [
@@ -174,13 +181,10 @@ async def process_protocol(
 
             platform_data["gauges"][gauge_address] = gauge_data
 
-        protocol_data["platforms"][platform_address] = platform_data
-
-    # Add block_data at the end of protocol_data
-    protocol_data["block_data"] = platforms[list(platforms.keys())[0]]["block_data"]
+        output_data["platforms"][platform_address] = platform_data
 
     logging.info(f"Finished processing protocol: {protocol}")
-    return protocol_data
+    return output_data
 
 
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
