@@ -51,8 +51,8 @@ def get_block_info(web_3: Web3, block_number: int) -> BlockInfo:
     encoded_header = encode_block_header(block)
 
     return {
-        "BlockNumber": block_number,
-        "BlockHash": block["hash"].hex(),
-        "BlockTimestamp": block["timestamp"],
-        "RlpBlockHeader": "0x" + encoded_header.hex(),
+        "block_number": block_number,
+        "block_hash": block["hash"].hex(),
+        "block_timestamp": block["timestamp"],
+        "rlp_block_header": "0x" + encoded_header.hex(),
     }

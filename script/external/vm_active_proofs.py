@@ -90,7 +90,7 @@ async def process_protocol(
                 "id": 0,
                 "chain_id": chain_id,
                 "gauge": "0xf1bb643f953836725c6e48bdd6f1816f871d3e07",
-                "blacklist": [
+                "listed_users": [
                     "0xdead000000000000000000000000000000000000",
                     "0x0100000000000000000000000000000000000000",
                 ],
@@ -99,7 +99,7 @@ async def process_protocol(
                 "id": 1,
                 "chain_id": chain_id,
                 "gauge": "0x059e0db6bf882f5fe680dc5409c7adeb99753736",
-                "blacklist": [
+                "listed_users": [
                     "0xdead000000000000000000000000000000000000",
                     "0x0100000000000000000000000000000000000000",
                 ],
@@ -109,7 +109,6 @@ async def process_protocol(
         platform_data = {
             "chain_id": chain_id,
             "platform_address": platform_address,
-            "block_number": block_number,
             "gauges": {},
         }
 
@@ -121,7 +120,7 @@ async def process_protocol(
             gauge_data = {
                 "point_data_proof": "",
                 "users": {},
-                "blacklisted_users": {},
+                "listed_users": {},
             }
 
             # Get point data proof for the specific gauge
@@ -163,19 +162,19 @@ async def process_protocol(
                     "end": user["end"],
                 }
 
-            # Process blacklisted users
-            logging.info(f"Processing blacklisted users for gauge: {gauge_address}")
-            for blacklisted_user in campaign["blacklist"]:
+            # Process listed (white + blacklist) users
+            logging.info(f"Processing whitelisted or blacklisted users for gauge: {gauge_address}")
+            for listed_user in campaign["listed_users"]:
                 logging.info(
-                    f"Generating proof for blacklisted user: {blacklisted_user}"
+                    f"Generating proof for listed user: {listed_user}"
                 )
                 user_proofs = vm_proofs.get_user_proof(
                     protocol=protocol,
                     gauge_address=gauge_address,
-                    user=blacklisted_user,
+                    user=listed_user,
                     block_number=block_number,
                 )
-                gauge_data["blacklisted_users"][blacklisted_user] = {
+                gauge_data["listed_users"][listed_user] = {
                     "storage_proof": "0x" + user_proofs["storage_proof"].hex(),
                 }
 

@@ -43,10 +43,10 @@ def main():
     block_info: BlockInfo = vm_proofs.get_block_info(BLOCK_NUMBER)
 
     print("Block Info:")
-    print(f"Block Number: {block_info['BlockNumber']}")
-    print(f"Block Hash: {block_info['BlockHash']}")
-    print(f"Block Timestamp: {block_info['BlockTimestamp']}")
-    print(f"RLP Block Header: {block_info['RlpBlockHeader']}")
+    print(f"Block Number: {block_info['block_number']}")
+    print(f"Block Hash: {block_info['block_hash']}")
+    print(f"Block Timestamp: {block_info['block_timestamp']}")
+    print(f"RLP Block Header: {block_info['rlp_block_header']}")
 
     print("\nProof for Block (Gauge Controller):")
     print(f"0x{gauge_proof['gauge_controller_proof'].hex()}")

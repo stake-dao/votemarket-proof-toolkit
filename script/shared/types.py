@@ -7,7 +7,7 @@ class Campaign(TypedDict):
     id: int
     chain_id: int
     gauge: str
-    blacklist: List[str]
+    listed_users: List[str]
 
 
 class Platform(TypedDict):
@@ -27,10 +27,10 @@ class GaugeProof(TypedDict):
 
 
 class BlockInfo(TypedDict):
-    BlockNumber: int
-    BlockHash: str
-    BlockTimestamp: int
-    RlpBlockHeader: str
+    block_number: int
+    block_hash: str
+    block_timestamp: int
+    rlp_block_header: str
 
 
 class EligibleUser(TypedDict):

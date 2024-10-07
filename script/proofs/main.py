@@ -77,10 +77,10 @@ class VoteMarketProofs:
         try:
             block_info = get_block_info(self.web3_service.get_w3(), block_number)
             return BlockInfo(
-                BlockNumber=block_info["BlockNumber"],
-                BlockHash=block_info["BlockHash"],
-                BlockTimestamp=block_info["BlockTimestamp"],
-                RlpBlockHeader=block_info["RlpBlockHeader"],
+                block_number=block_info["block_number"],
+                block_hash=block_info["block_hash"],
+                block_timestamp=block_info["block_timestamp"],
+                rlp_block_header=block_info["rlp_block_header"],
             )
         except Exception:
             raise VoteMarketProofsException("Error getting block info")

@@ -29,10 +29,10 @@ def get_block_data(block_number: int) -> Dict:
     vm_proofs = VoteMarketProofs(1)
     block_info = vm_proofs.get_block_info(block_number)
     return {
-        "BlockNumber": block_info["BlockNumber"],
-        "BlockHash": block_info["BlockHash"],
-        "BlockTimestamp": block_info["BlockTimestamp"],
-        "RlpBlockHeader": block_info["RlpBlockHeader"],
+        "block_number": block_info["block_number"],
+        "block_hash": block_info["block_hash"],
+        "block_timestamp": block_info["block_timestamp"],
+        "rlp_block_header": block_info["rlp_block_header"],
     }
 
 
@@ -91,7 +91,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
         # Get block data for the latest setted block
         block_data = get_block_data(latest_setted_block)
-        timestamp = block_data["BlockTimestamp"]
+        timestamp = block_data["block_timestamp"]
         block_period_timestamp = (
             timestamp // GlobalConstants.WEEK
         ) * GlobalConstants.WEEK

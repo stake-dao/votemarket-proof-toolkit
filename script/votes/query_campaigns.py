@@ -73,7 +73,7 @@ def query_active_campaigns(
                 "id": campaign[0],
                 "chain_id": campaign[1][0],
                 "gauge": campaign[1][1],
-                "blacklist": list(campaign[4]),
+                "listed_users": list(campaign[4]),
             }
             formatted_campaigns.append(formatted_campaign)
 
