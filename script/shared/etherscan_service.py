@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ETHERSCAN_KEY = os.getenv("ETHERSCAN_API_KEY", "")
+ETHERSCAN_KEY = os.getenv("ETHERSCAN_TOKEN", "")
 
 
 class RateLimiter:
