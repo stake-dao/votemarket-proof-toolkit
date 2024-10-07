@@ -205,11 +205,11 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
 
         # Store in a json file
         os.makedirs(TEMP_DIR, exist_ok=True)
-        output_file = f"{TEMP_DIR}/{processed_data['name']}.json"
+        output_file = f"{TEMP_DIR}/{protocol}.json"
         with open(output_file, "w") as f:
             json.dump(json_data, f, indent=2)
 
-        logging.info(f"Saved data for {processed_data['name']} to {output_file}")
+        logging.info(f"Saved data for {protocol} to {output_file}")
 
     logging.info("Finished generating active proofs for all protocols")
 
