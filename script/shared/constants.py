@@ -65,6 +65,8 @@ class GaugeVotesConstants:
 class GlobalConstants:
     """Global class constants for the project"""
 
+    WEEK = 604800
+
     REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
 
     CHAIN_ID_TO_RPC = {

@@ -1,6 +1,6 @@
 """ Types for the project """
 
-from typing import List, TypedDict
+from typing import List, TypedDict, Dict, Any
 
 
 class Campaign(TypedDict):
@@ -38,3 +38,10 @@ class EligibleUser(TypedDict):
     slope: int
     power: int
     end: int
+
+class ProtocolData(TypedDict):
+    protocol: str
+    platforms: Dict[str, Dict[str, Any]]
+
+class AllProtocolsData(TypedDict):
+    protocols: Dict[str, ProtocolData]

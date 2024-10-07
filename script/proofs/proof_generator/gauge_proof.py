@@ -63,7 +63,7 @@ def generate_gauge_proof(
     web_3: Web3,
     protocol: str,
     gauge_address: str,
-    CURRENT_EPOCH: int,
+    current_epoch: int,
     block_number: int,
 ) -> Tuple[bytes, bytes]:
     """
@@ -73,7 +73,7 @@ def generate_gauge_proof(
         web_3 (Web3): Web3 instance.
         protocol (str): The protocol name (e.g., "curve", "balancer").
         gauge_address (str): The gauge address.
-        CURRENT_EPOCH (int): The current epoch, rounded down to the nearest week.
+        current_epoch (int): The current epoch, rounded down to the nearest week.
             This aligns with how the gauge controller tracks voting periods.
         block_number (int): The block number for which to generate the proof.
 
@@ -92,7 +92,7 @@ def generate_gauge_proof(
     get_position = position_functions.get(protocol, position_functions["default"])
     point_weights_position = get_position(
         web_3.to_checksum_address(gauge_address.lower()),
-        CURRENT_EPOCH,
+        current_epoch,
         point_weights_base_slot,
     )
 
