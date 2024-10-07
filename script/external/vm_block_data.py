@@ -17,6 +17,7 @@ TEMP_DIR = "temp"
 # Initialize Web3 and VoteMarketProofs
 vm_proofs = VoteMarketProofs(1)
 
+
 def get_current_epoch():
     logging.info("Fetching current epoch")
     current_block = vm_proofs.web3_service.get_w3().eth.get_block("latest")
@@ -24,6 +25,7 @@ def get_current_epoch():
     epoch = current_timestamp - (current_timestamp % (7 * 24 * 3600))
     logging.info(f"Current epoch: {epoch}")
     return epoch
+
 
 if __name__ == "__main__":
     logging.info("Starting vm_block_data script")

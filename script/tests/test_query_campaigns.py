@@ -3,6 +3,7 @@ from ape import networks
 from votes.query_campaigns import query_active_campaigns
 from shared.types import Campaign
 
+
 def test_query_active_campaigns(setup_environment, web3_service):
     votemarket = setup_environment["votemarket"]
     campaign1_id = setup_environment["campaign1_id"]
@@ -43,15 +44,29 @@ def test_query_active_campaigns(setup_environment, web3_service):
 
     # Verify that the returned campaigns match the expected values
     for expected, actual in zip(expected_campaigns, active_campaigns):
-        assert actual["id"] == expected["id"], f"Campaign ID mismatch for campaign {expected['id']}"
-        assert not votemarket.isClosedCampaign(actual["id"]), f"Campaign {actual['id']} should not be closed"
+        assert (
+            actual["id"] == expected["id"]
+        ), f"Campaign ID mismatch for campaign {expected['id']}"
+        assert not votemarket.isClosedCampaign(
+            actual["id"]
+        ), f"Campaign {actual['id']} should not be closed"
 
         # Check campaign details
-        assert actual["chain_id"] == expected["chain_id"], f"Incorrect chain ID for campaign {actual['id']}"
-        assert actual["gauge"].lower() == expected["gauge"].lower(), f"Incorrect gauge for campaign {actual['id']}"
+        assert (
+            actual["chain_id"] == expected["chain_id"]
+        ), f"Incorrect chain ID for campaign {actual['id']}"
+        assert (
+            actual["gauge"].lower() == expected["gauge"].lower()
+        ), f"Incorrect gauge for campaign {actual['id']}"
 
         # Check blacklist
-        assert isinstance(actual["blacklist"], list), f"Blacklist for campaign {actual['id']} should be a list"
-        assert len(actual["blacklist"]) == len(expected["blacklist"]), f"Incorrect number of blacklisted addresses for campaign {actual['id']}"
+        assert isinstance(
+            actual["blacklist"], list
+        ), f"Blacklist for campaign {actual['id']} should be a list"
+        assert len(actual["blacklist"]) == len(
+            expected["blacklist"]
+        ), f"Incorrect number of blacklisted addresses for campaign {actual['id']}"
         for addr in expected["blacklist"]:
-            assert addr.lower() in [a.lower() for a in actual["blacklist"]], f"Address {addr} not found in campaign {actual['id']} blacklist"
+            assert addr.lower() in [
+                a.lower() for a in actual["blacklist"]
+            ], f"Address {addr} not found in campaign {actual['id']} blacklist"

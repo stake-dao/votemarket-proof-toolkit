@@ -9,6 +9,7 @@ class Campaign(TypedDict):
     gauge: str
     blacklist: List[str]
 
+
 class Platform(TypedDict):
     protocol: str
     chain_id: int
@@ -39,9 +40,11 @@ class EligibleUser(TypedDict):
     power: int
     end: int
 
+
 class ProtocolData(TypedDict):
     protocol: str
     platforms: Dict[str, Dict[str, Any]]
+
 
 class AllProtocolsData(TypedDict):
     protocols: Dict[str, ProtocolData]

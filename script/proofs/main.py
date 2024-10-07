@@ -8,6 +8,7 @@ from shared.web3_service import Web3Service
 from shared.exceptions import VoteMarketProofsException
 from shared.types import UserProof, GaugeProof, BlockInfo
 
+
 class VoteMarketProofs:
     """A global class for generating and managing proofs"""
 

@@ -32,8 +32,9 @@ def get_block_data(block_number: int) -> Dict:
         "BlockNumber": block_info["BlockNumber"],
         "BlockHash": block_info["BlockHash"],
         "BlockTimestamp": block_info["BlockTimestamp"],
-        "RlpBlockHeader": block_info["RlpBlockHeader"]
+        "RlpBlockHeader": block_info["RlpBlockHeader"],
     }
+
 
 def process_protocol(protocol: str, epoch: int) -> ProtocolData:
     """
@@ -83,7 +84,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
         latest_setted_block = 20873530
 
-        platform['latest_setted_block'] = latest_setted_block
+        platform["latest_setted_block"] = latest_setted_block
         logging.info(
             f"Set latest_setted_block for platform {platform_address} on epoch {epoch}: {platform['latest_setted_block']}"
         )
@@ -91,18 +92,25 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         # Get block data for the latest setted block
         block_data = get_block_data(latest_setted_block)
         timestamp = block_data["BlockTimestamp"]
-        block_period_timestamp = (timestamp // GlobalConstants.WEEK) * GlobalConstants.WEEK
+        block_period_timestamp = (
+            timestamp // GlobalConstants.WEEK
+        ) * GlobalConstants.WEEK
 
-        current_period_timestamp = (epoch // GlobalConstants.WEEK) * GlobalConstants.WEEK
+        current_period_timestamp = (
+            epoch // GlobalConstants.WEEK
+        ) * GlobalConstants.WEEK
 
         if block_period_timestamp < current_period_timestamp:
-            logging.error(f"Latest setted block period ({block_period_timestamp}) is less than current period ({current_period_timestamp}) for platform {platform_address}. Skipping this platform.")
+            logging.error(
+                f"Latest setted block period ({block_period_timestamp}) is less than current period ({current_period_timestamp}) for platform {platform_address}. Skipping this platform."
+            )
             continue
 
-        platform['block_data'] = block_data
+        platform["block_data"] = block_data
         protocol_data["platforms"][platform_address] = platform
 
     return protocol_data
+
 
 def main(protocols: List[str], epoch: int) -> AllProtocolsData:
     all_protocols_data: AllProtocolsData = {"protocols": {}}
@@ -118,6 +126,7 @@ def main(protocols: List[str], epoch: int) -> AllProtocolsData:
 
     print(f"Saved data for all protocols to {output_file}")
     return all_protocols_data
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
