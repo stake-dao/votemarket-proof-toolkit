@@ -26,15 +26,21 @@ def get_all_platforms(protocol: str) -> List[Platform]:
 
 
 def query_active_campaigns(
-    w3_service: Web3Service, chain_id: int, platform: str
+    web3_service: Web3Service, chain_id: int, platform: str
 ) -> List[Campaign]:
     """
     Query active campaigns for a given chain + platform using multiple RPC calls in batches of 10
     """
+
+    if chain_id not in web3_service.w3:
+        logging.info(f"Adding new chain to Web3 service: {chain_id}")
+        web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
+
+    print(platform)
     platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
-    platform_contract = w3_service.get_contract(platform, "vm_platform", chain_id)
+    platform_contract = web3_service.get_contract(platform, "vm_platform", chain_id)
     campaigns_count = platform_contract.functions.campaignCount().call()
 
     # Read the Solidity contract source

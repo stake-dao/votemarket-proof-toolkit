@@ -52,9 +52,14 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
 ## Configuration
 
 1. Create a `.env` file in the root directory of the project.
-2. Add your Ethereum node RPC URL to the `.env` file:
+2. Add your RPC URLs to the `.env` file:
    ```
-   ETHEREUM_MAINNET_RPC_URL=https://mainnet.infura.io/v3/YOUR-PROJECT-ID
+   ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/API_KEY
+
+   ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/API_KEY
+
+   ... (depending on where VM are deployed)
+
    ```
 
 ## Usage
@@ -89,9 +94,3 @@ For detailed information on each component and function, please refer to the inl
 - `proofs/main.py`: Main interface for generating proofs
 - `votes/main.py`: Functions for querying votes and campaigns
 - `shared/`: Utility functions and shared constants
-
----
-
-<div align="center">
-  <strong>Built with ❤️ by the Stake DAO team</strong>
-</div>

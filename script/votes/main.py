@@ -1,4 +1,3 @@
-import os
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants, GlobalConstants
 from shared.types import Campaign, EligibleUser
@@ -10,7 +9,7 @@ from w3multicall.multicall import W3Multicall
 from eth_utils import to_checksum_address
 
 
-class VMVotes:
+class VoteMarketVotes:
     def __init__(self, chain_id: int):
         rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
         if not rpc_url:

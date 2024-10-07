@@ -3,9 +3,8 @@
 import os
 from typing import List
 from dotenv import load_dotenv
-from shared.constants import GlobalConstants
 from shared.types import Campaign
-from votes.main import VMVotes
+from votes.main import VoteMarketVotes
 from eth_utils import to_checksum_address
 
 load_dotenv()
@@ -16,7 +15,7 @@ PLATFORM_ADDRESS = to_checksum_address(
 )
 
 
-vm_votes = VMVotes(CHAIN_ID)
+vm_votes = VoteMarketVotes(CHAIN_ID)
 
 
 def main():

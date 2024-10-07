@@ -68,6 +68,17 @@ block-info: install
 		print(f'  RLP Block Header (used for setBlockData): {info[\"RlpBlockHeader\"]}')"
 
 
+# Get active campaigns for a given chain + platform
+# Required variables:
+# - CHAIN_ID: Chain ID (e.g., 1 for Ethereum Mainnet)
+# - PLATFORM: Platform address (e.g., '0x...')
+get-active-campaigns: install
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from votes.main import VoteMarketVotes; \
+		vm = VoteMarketVotes($(CHAIN_ID)); \
+		campaigns = vm.get_active_campaigns($(CHAIN_ID), '$(PLATFORM)'); \
+		print('Active Campaigns:'); \
+		[print(f'  Campaign ID: {campaign[\"id\"]}, Gauge: {campaign[\"gauge\"]}, Listed Users: {campaign[\"listed_users\"]}') for campaign in campaigns]"
+
 # Run tests
 test: install
 	$(VENV_ACTIVATE) && ape test --network arbitrum:mainnet-fork
