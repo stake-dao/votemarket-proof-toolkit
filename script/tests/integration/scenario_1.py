@@ -1,150 +1,167 @@
 """Claim scenario : Create a campaign for sdCRV / CRV gauge, and skip to the reward week"""
 
-""" No block data bridged """
-
-from web3 import Web3
 from eth_utils import to_checksum_address
-from external.vm_all_platforms import get_block_data
 from proofs.main import VoteMarketProofs
-from setup import setup, RPC_URL
-from helpers import (
-    approve_dai,
+from tests.integration.helpers.chain import fast_forward, take_snapshot, restore_snapshot
+from tests.integration.helpers.vm import (
+    setup,
+    approve_erc20,
     create_campaign,
     insert_block_number,
     set_block_data,
     set_point_data,
     set_account_data,
     claim,
-    increase_time,
-    send_eth_to,
 )
 from shared.utils import get_closest_block_timestamp, get_rounded_epoch, load_json
+from tests.integration.helpers.web3 import W3, get_latest_block
+import json
 
 DAI = to_checksum_address("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1")
 DAI_WHALE = to_checksum_address("0x2d070ed1321871841245D8EE5B84bD2712644322")
 GOV = to_checksum_address("0xE9847f18710ebC1c46b049e594c658B9412cba6e")
+VOTEMARKET = to_checksum_address("0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e")
+
+# Constants for the scenario
+PROTOCOL = "curve"
+GAUGE_ADDRESS = "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A"
+USER_ADDRESS = "0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6"
+CAMPAIGN_MANAGER = DAI_WHALE
+REWARD_TOKEN = DAI
+NUMBER_OF_PERIODS = 4
+MAX_REWARD_PER_VOTE = 100 * 10**18
+TOTAL_REWARD_AMOUNT = 1000 * 10**18
 
 
-def scenario_create(w3):
-    """
+def scenario_create():
     vm_proofs = VoteMarketProofs(1)
+    snapshots = {}
 
-    print("Running scenario: Create Campaign")
-
+    print(f"Running scenario: Create Campaign for {PROTOCOL} protocol")
+    
     # Setup
-    setup(w3)
+    setup()
+    snapshots['before_setup'] = take_snapshot()
 
-    # Send ETH to accounts
-    send_eth_to(w3, GOV, 5 * 10**18)
-    send_eth_to(w3, DAI_WHALE, 5 * 10**18)
+    try:
+        # Approve reward token
+        snapshots['before_approve'] = take_snapshot()
+        approve_erc20(REWARD_TOKEN, VOTEMARKET, TOTAL_REWARD_AMOUNT, CAMPAIGN_MANAGER)
 
-    # Approve DAI
-    approve_dai(w3)
+        # Create campaign
+        snapshots['before_create_campaign'] = take_snapshot()
+        create_campaign(
+            gauge=GAUGE_ADDRESS,
+            manager=CAMPAIGN_MANAGER,
+            reward_token=REWARD_TOKEN,
+            number_of_periods=NUMBER_OF_PERIODS,
+            max_reward_per_vote=MAX_REWARD_PER_VOTE,
+            total_reward_amount=TOTAL_REWARD_AMOUNT,
+            addresses=["0x0000000000000000000000000000000000000000"],
+            hook="0x0000000000000000000000000000000000000000",
+            is_whitelist=False,
+            from_address=CAMPAIGN_MANAGER,
+        )
 
-    # Create campaign
-    create_campaign(
-        w3,
-        "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",  # gauge
-        DAI_WHALE,  # manager
-        DAI,  # reward_token
-        4,  # number_of_periods
-        100 * 10**18,  # max_reward_per_vote
-        1000 * 10**18,  # total_reward_amount
-        ["0x0000000000000000000000000000000000000000"],  # addresses
-        "0x0000000000000000000000000000000000000000",  # hook
-        False,  # is_whitelist
-    )
+        # Increase time
+        snapshots['before_fast_forward'] = take_snapshot()
+        fast_forward(days=1)  # Skip next period
 
-    # Increase time
-    increase_time(w3, 86400)  # Skip next period
+        # Get rounded epoch
+        epoch = get_rounded_epoch(get_latest_block()["timestamp"])
 
+        # Get nearest block for our current timestamp on Ethereum
+        nearest_block = get_closest_block_timestamp("ethereum", epoch)
 
-    # Get rounded epoch
-    epoch = get_rounded_epoch(w3.eth.get_block("latest").timestamp)
+        # Get block data
+        block_info = vm_proofs.get_block_info(nearest_block)
 
-    # Get nearest block for our current timestamp on Ethereum
-    nearest_block = get_closest_block_timestamp(
-        "ethereum", epoch
-    )
+        # Insert block number
+        snapshots['before_insert_block'] = take_snapshot()
+        insert_block_number(
+            epoch=epoch,
+            block_number=block_info["block_number"],
+            block_hash=block_info["block_hash"],
+            block_timestamp=block_info["block_timestamp"],
+            from_address=GOV,
+        )
 
-    # Get block data
-    block_info = vm_proofs.get_block_info(nearest_block)
+        # Get proofs (gauge controller)
+        print(f"Generating gauge controller proof for {PROTOCOL}")
+        gauge_proofs = vm_proofs.get_gauge_proof(
+            protocol=PROTOCOL,
+            gauge_address=GAUGE_ADDRESS,
+            current_epoch=epoch,
+            block_number=block_info["block_number"],
+        )
 
-    # Insert block number
-    insert_block_number(
-        w3,
-        epoch=epoch,
-        block_number=block_info["block_number"],
-        block_hash=block_info["block_hash"],
-        block_timestamp=block_info["block_timestamp"],
-    )
+        # Set block data
+        snapshots['before_set_block_data'] = take_snapshot()
+        set_block_data(
+            rlp_block_header=block_info["rlp_block_header"],
+            controller_proof=gauge_proofs["gauge_controller_proof"],
+            from_address=GOV,
+        )
 
-    # Get proofs (gauge controller)
-    print(f"Generating gauge controller proof for curve")
-    gauge_proofs = vm_proofs.get_gauge_proof(
-        protocol="curve",
-        gauge_address="0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",
-        current_epoch=epoch,
-        block_number=block_info["block_number"],
-    )
+        # Set point data
+        snapshots['before_set_point_data'] = take_snapshot()
+        set_point_data(
+            gauge=GAUGE_ADDRESS,
+            epoch=epoch,
+            storage_proof=gauge_proofs["point_data_proof"],
+            from_address=GOV,
+        )
 
+        # Get proofs (user)
+        user_proofs = vm_proofs.get_user_proof(
+            protocol=PROTOCOL,
+            gauge_address=GAUGE_ADDRESS,
+            user=USER_ADDRESS,
+            block_number=block_info["block_number"],
+        )
 
-    print(f"Gauge proofs: {gauge_proofs}")
+        # Set user data
+        snapshots['before_set_user_data'] = take_snapshot()
+        set_account_data(
+            account=USER_ADDRESS,
+            gauge=GAUGE_ADDRESS,
+            epoch=epoch,
+            storage_proof=user_proofs["storage_proof"],
+            from_address=GOV,
+        )
 
-    # Set block data
-    set_block_data(w3, block_info["rlp_block_header"], gauge_proofs["gauge_controller_proof"])
+        # Check reward token balance before claim
+        reward_contract = W3.eth.contract(address=REWARD_TOKEN, abi=load_json("abi/erc20.json"))
+        print(
+            f"Reward token balance before claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
+        )
 
+        # Claim
+        snapshots['before_claim'] = take_snapshot()
+        claim(
+            campaign_id=0,
+            account=USER_ADDRESS,
+            epoch=epoch,
+            hook_data="0x0000000000000000000000000000000000000000",
+            from_address=CAMPAIGN_MANAGER,
+        )
 
-    set_point_data(w3, "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A", epoch, gauge_proofs["point_data_proof"])
+        # Check reward token balance after claim
+        print(
+            f"Reward token balance after claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
+        )
 
+        print("Scenario completed.")
 
-    # Get proofs (user)
-    user_proofs = vm_proofs.get_user_proof(
-        protocol="curve",
-        gauge_address="0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",
-        user="0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6",
-        block_number=block_info["block_number"],
-    )
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # Save snapshots to a file
+        with open('temp/snapshots.json', 'w') as f:
+            json.dump({k: v['result'] for k, v in snapshots.items()}, f)
 
-    # Set user data
-    set_account_data(w3, "0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6", "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A", epoch, user_proofs["storage_proof"])
-    """
-
-    dai_contract = w3.eth.contract(address=DAI, abi=load_json("abi/erc20.json"))
-
-    print(f"DAI balance: {dai_contract.functions.balanceOf("0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6").call()}")
-
-    claim(
-        w3,
-        0,
-        "0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6",
-        1727913600,
-        "0x0000000000000000000000000000000000000000",
-    )
-
-    print(f"DAI balance: {dai_contract.functions.balanceOf("0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6").call()}")
-
-    # Show campaign details
-    votemarket_contract = w3.eth.contract(
-        address=to_checksum_address("0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e"), abi=load_json("abi/vm_platform.json")
-    )
-    campaign = votemarket_contract.functions.campaignById(0).call()
-    print(campaign)
-
-    print('Current timestamp:', w3.eth.get_block("latest")["timestamp"])
-
-    """
-    # Read on Lens "getAccountVotes"
-    lens_oracle_contract = w3.eth.contract(
-        address=to_checksum_address("0xa20b142c2d52193e9de618dc694eba673410693f"), abi=load_json("abi/lens_oracle.json")
-    )
-
-    print(lens_oracle_contract.functions.getAccountVotes("0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6", "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A", 1727913600).call())
-
-    """
-    print("Scenario completed.")
+    print("Scenario completed. Snapshots saved.")
 
 
 if __name__ == "__main__":
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
-    scenario_create(w3)
+    scenario_create()

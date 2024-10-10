@@ -7,7 +7,7 @@ VENV_ACTIVATE := . $(VENV)/bin/activate
 SRC_DIR := script
 
 # Phony targets declaration
-.PHONY: all install clean user-proof gauge-proof block-info test help
+.PHONY: all install clean user-proof gauge-proof block-info test help integration
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
@@ -99,3 +99,6 @@ help:
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
+
+integration:
+	@make -f script/tests/integration/Makefile $(TARGET)
