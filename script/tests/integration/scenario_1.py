@@ -2,7 +2,11 @@
 
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
-from tests.integration.helpers.chain import fast_forward, take_snapshot, restore_snapshot
+from tests.integration.helpers.chain import (
+    fast_forward,
+    take_snapshot,
+    restore_snapshot,
+)
 from tests.integration.helpers.vm import (
     setup,
     approve_erc20,
@@ -38,18 +42,17 @@ def scenario_create():
     snapshots = {}
 
     print(f"Running scenario: Create Campaign for {PROTOCOL} protocol")
-    
     # Setup
     setup()
-    snapshots['before_setup'] = take_snapshot()
+    snapshots["before_setup"] = take_snapshot()
 
     try:
         # Approve reward token
-        snapshots['before_approve'] = take_snapshot()
+        snapshots["before_approve"] = take_snapshot()
         approve_erc20(REWARD_TOKEN, VOTEMARKET, TOTAL_REWARD_AMOUNT, CAMPAIGN_MANAGER)
 
         # Create campaign
-        snapshots['before_create_campaign'] = take_snapshot()
+        snapshots["before_create_campaign"] = take_snapshot()
         create_campaign(
             gauge=GAUGE_ADDRESS,
             manager=CAMPAIGN_MANAGER,
@@ -64,7 +67,7 @@ def scenario_create():
         )
 
         # Increase time
-        snapshots['before_fast_forward'] = take_snapshot()
+        snapshots["before_fast_forward"] = take_snapshot()
         fast_forward(days=1)  # Skip next period
 
         # Get rounded epoch
@@ -77,7 +80,7 @@ def scenario_create():
         block_info = vm_proofs.get_block_info(nearest_block)
 
         # Insert block number
-        snapshots['before_insert_block'] = take_snapshot()
+        snapshots["before_insert_block"] = take_snapshot()
         insert_block_number(
             epoch=epoch,
             block_number=block_info["block_number"],
@@ -96,7 +99,7 @@ def scenario_create():
         )
 
         # Set block data
-        snapshots['before_set_block_data'] = take_snapshot()
+        snapshots["before_set_block_data"] = take_snapshot()
         set_block_data(
             rlp_block_header=block_info["rlp_block_header"],
             controller_proof=gauge_proofs["gauge_controller_proof"],
@@ -104,7 +107,7 @@ def scenario_create():
         )
 
         # Set point data
-        snapshots['before_set_point_data'] = take_snapshot()
+        snapshots["before_set_point_data"] = take_snapshot()
         set_point_data(
             gauge=GAUGE_ADDRESS,
             epoch=epoch,
@@ -121,7 +124,7 @@ def scenario_create():
         )
 
         # Set user data
-        snapshots['before_set_user_data'] = take_snapshot()
+        snapshots["before_set_user_data"] = take_snapshot()
         set_account_data(
             account=USER_ADDRESS,
             gauge=GAUGE_ADDRESS,
@@ -131,13 +134,23 @@ def scenario_create():
         )
 
         # Check reward token balance before claim
-        reward_contract = W3.eth.contract(address=REWARD_TOKEN, abi=load_json("abi/erc20.json"))
+        reward_contract = W3.eth.contract(
+            address=REWARD_TOKEN, abi=load_json("abi/erc20.json")
+        )
         print(
             f"Reward token balance before claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
         )
 
         # Claim
-        snapshots['before_claim'] = take_snapshot()
+        snapshots["before_claim"] = take_snapshot()
+
+        # Check reward token balance before claim
+        votemarket = W3.eth.contract(
+            address=VOTEMARKET, abi=load_json("abi/vm_platform.json")
+        )
+
+        print(votemarket.functions.totalClaimedByAccount(0, epoch, USER_ADDRESS).call())
+
         claim(
             campaign_id=0,
             account=USER_ADDRESS,
@@ -151,15 +164,18 @@ def scenario_create():
             f"Reward token balance after claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
         )
 
+        print(votemarket.functions.totalClaimedByAccount(0, epoch, USER_ADDRESS).call())
+
         print("Scenario completed.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
+        """
         # Save snapshots to a file
         with open('temp/snapshots.json', 'w') as f:
             json.dump({k: v['result'] for k, v in snapshots.items()}, f)
-
+        """
     print("Scenario completed. Snapshots saved.")
 
 
