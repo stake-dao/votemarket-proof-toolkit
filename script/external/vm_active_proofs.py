@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from shared.constants import GlobalConstants
 from shared.web3_service import Web3Service
-from votes.main import VMVotes
+from votes.main import VoteMarketVotes
 from votes.query_campaigns import query_active_campaigns
 from shared.types import AllProtocolsData
 
@@ -26,7 +26,7 @@ generating and storing proofs to be used in the API.
 """
 
 vm_proofs = VoteMarketProofs(1)
-vm_votes = VMVotes(1)
+vm_votes = VoteMarketVotes(1)
 
 
 async def process_protocol(
@@ -89,16 +89,7 @@ async def process_protocol(
             {
                 "id": 0,
                 "chain_id": chain_id,
-                "gauge": "0xf1bb643f953836725c6e48bdd6f1816f871d3e07",
-                "listed_users": [
-                    "0xdead000000000000000000000000000000000000",
-                    "0x0100000000000000000000000000000000000000",
-                ],
-            },
-            {
-                "id": 1,
-                "chain_id": chain_id,
-                "gauge": "0x059e0db6bf882f5fe680dc5409c7adeb99753736",
+                "gauge": "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",
                 "listed_users": [
                     "0xdead000000000000000000000000000000000000",
                     "0x0100000000000000000000000000000000000000",

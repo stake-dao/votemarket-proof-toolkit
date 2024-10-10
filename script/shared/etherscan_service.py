@@ -195,7 +195,7 @@ def get_token_transfers(
     """
     explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
     url = f"{explorer['url']}?module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={explorer['key']}"
-
+    
     if contract_address:
         url += f"&contractaddress={contract_address}"
 
