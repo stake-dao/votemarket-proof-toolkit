@@ -35,7 +35,7 @@ def main():
     gauge_proof: GaugeProof = vm_proofs.get_gauge_proof(
         protocol=PROTOCOL,
         gauge_address=GAUGE_ADDRESS,
-        CURRENT_EPOCH=CURRENT_EPOCH,
+        current_epoch=CURRENT_EPOCH,
         block_number=BLOCK_NUMBER,
     )
 
