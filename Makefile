@@ -14,9 +14,8 @@ all: install
 
 # Create virtual environment and install dependencies
 install: $(VENV)/bin/activate
-
 $(VENV)/bin/activate: requirements.txt
-	$(PYTHON) -m venv $(VENV)
+	PYTHONPATH=script $(PYTHON) -m venv $(VENV)
 	$(VENV_ACTIVATE) && pip install -r requirements.txt
 
 # Remove virtual environment and cached Python files
@@ -101,4 +100,4 @@ help:
 	@echo "  make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
 
 integration:
-	@make -f script/tests/integration/Makefile $(TARGET)
+	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)

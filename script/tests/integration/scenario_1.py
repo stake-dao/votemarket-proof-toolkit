@@ -20,6 +20,7 @@ from tests.integration.helpers.vm import (
 from shared.utils import get_closest_block_timestamp, get_rounded_epoch, load_json
 from tests.integration.helpers.web3 import W3, get_latest_block
 import json
+import os
 
 DAI = to_checksum_address("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1")
 DAI_WHALE = to_checksum_address("0x2d070ed1321871841245D8EE5B84bD2712644322")
@@ -164,8 +165,6 @@ def scenario_create():
             f"Reward token balance after claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
         )
 
-        print(votemarket.functions.totalClaimedByAccount(0, epoch, USER_ADDRESS).call())
-
         print("Scenario completed.")
 
     except Exception as e:
@@ -173,7 +172,9 @@ def scenario_create():
     finally:
         """
         # Save snapshots to a file
-        with open('temp/snapshots.json', 'w') as f:
+        file_dir = os.path.realpath(__file__)
+        file_path = os.path.abspath(os.path.realpath(os.path.join(file_dir, '../temp/snapshots.json')))
+        with open(file_path, 'w') as f:
             json.dump({k: v['result'] for k, v in snapshots.items()}, f)
         """
     print("Scenario completed. Snapshots saved.")
