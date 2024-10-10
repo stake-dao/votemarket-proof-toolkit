@@ -177,6 +177,41 @@ async def process_protocol(
     return output_data
 
 
+def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[str, Any]):
+    """
+    Write processed protocol data to files in the specified structure.
+
+    Args:
+        protocol (str): The protocol name.
+        current_epoch (int): The current voting epoch.
+        processed_data (Dict[str, Any]): The processed data for the protocol.
+    """
+    protocol_dir = os.path.join(TEMP_DIR, protocol)
+    os.makedirs(protocol_dir, exist_ok=True)
+
+    # Write header.json
+    header_data = {
+        "epoch": current_epoch,
+        "block_data": processed_data["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proof"]
+    }
+    with open(os.path.join(protocol_dir, "header.json"), "w") as f:
+        json.dump(header_data, f, indent=2)
+
+    # Process platforms
+    for platform_address, platform_data in processed_data["platforms"].items():
+        platform_dir = os.path.join(protocol_dir, platform_address)
+        os.makedirs(platform_dir, exist_ok=True)
+
+        # Write gauge files
+        for gauge_address, gauge_data in platform_data["gauges"].items():
+            gauge_file = os.path.join(platform_dir, f"{gauge_address}.json")
+            with open(gauge_file, "w") as f:
+                json.dump(gauge_data, f, indent=2)
+
+    logging.info(f"Saved data for {protocol} in {protocol_dir}")
+
+
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     """
     Main function to process all protocols and generate active proofs.
@@ -190,16 +225,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     for protocol, protocol_data in all_protocols_data["protocols"].items():
         logging.info(f"Processing protocol: {protocol}")
         processed_data = await process_protocol(protocol_data, current_epoch)
-
-        json_data = {"epoch": current_epoch, **processed_data}
-
-        # Store in a json file
-        os.makedirs(TEMP_DIR, exist_ok=True)
-        output_file = f"{TEMP_DIR}/{protocol}.json"
-        with open(output_file, "w") as f:
-            json.dump(json_data, f, indent=2)
-
-        logging.info(f"Saved data for {protocol} to {output_file}")
+        write_protocol_data(protocol, current_epoch, processed_data)
 
     logging.info("Finished generating active proofs for all protocols")
 
