@@ -112,7 +112,7 @@ def scenario_create():
             storage_proof=gauge_proofs["point_data_proof"],
             from_address=GOV,
         )
-        """
+
         # Get proofs (user)
         user_proofs = vm_proofs.get_user_proof(
             protocol=PROTOCOL,
@@ -151,7 +151,6 @@ def scenario_create():
         print(
             f"Reward token balance after claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
         )
-        """
         print("Scenario completed.")
 
     except Exception as e:
