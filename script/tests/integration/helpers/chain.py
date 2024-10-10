@@ -19,5 +19,5 @@ def take_snapshot():
     return snapshot
 
 def restore_snapshot(snapshot):
-    check_error(W3.provider.make_request("evm_revert", [snapshot['result']['result']]))
+    check_error(W3.provider.make_request("evm_revert", [snapshot['result']]))
     force_mine_block()

@@ -1,10 +1,13 @@
 # restore_snapshot.py
 import json
+import os
 from tests.integration.helpers.chain import restore_snapshot
 
 
 def restore_saved_snapshot(snapshot_name):
-    with open("temp/snapshots.json", "r") as f:
+    file_dir = os.path.realpath(__file__)
+    file_path = os.path.abspath(os.path.realpath(os.path.join(file_dir, '../../temp/snapshots.json')))
+    with open(file_path, "r") as f:
         snapshots = json.load(f)
 
     if snapshot_name not in snapshots:

@@ -33,13 +33,13 @@ stop-anvil:
 # Run Scenario
 run-scenario: start-anvil
 	@echo "Running Scenario $(SCENARIO)..."
-	@python script/tests/integration/scenario_$(SCENARIO).py
+	@python3 script/tests/integration/scenario_$(SCENARIO).py
 	@echo "Scenario $(SCENARIO) completed. Use 'make restore-snapshot SNAPSHOT=<snapshot_name>' to navigate to a specific point."
 
 # Restore to a specific snapshot
 restore-snapshot:
 	@echo "Restoring to snapshot: $(SNAPSHOT)"
-	@python script/tests/integration/shared/snapshots.py $(SNAPSHOT)
+	@python3 script/tests/integration/shared/snapshots.py $(SNAPSHOT)
 
 # Clean up temporary files
 clean:
