@@ -2,6 +2,7 @@
 
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
+from tests.integration.shared.multicall import multicall
 from tests.integration.helpers.chain import fast_forward, take_snapshot, restore_snapshot
 from tests.integration.helpers.vm import (
     setup,
@@ -27,11 +28,14 @@ VOTEMARKET = to_checksum_address("0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e")
 PROTOCOL = "curve"
 GAUGE_ADDRESS = "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A"
 USER_ADDRESS = "0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6"
+ROUTER_ADDRESS = "0xcE1f6A342A82391da9B15608758703dd9D837ec8"
+VERIFIER = to_checksum_address("0x348d1bd2a18c9a93eb9ab8e5f55852da3036e225")
 CAMPAIGN_MANAGER = DAI_WHALE
 REWARD_TOKEN = DAI
 NUMBER_OF_PERIODS = 4
 MAX_REWARD_PER_VOTE = 100 * 10**18
 TOTAL_REWARD_AMOUNT = 1000 * 10**18
+WEEK = 7 * 24 * 60 * 60
 
 
 def scenario_create():
@@ -119,8 +123,6 @@ def scenario_create():
             user=USER_ADDRESS,
             block_number=block_info["block_number"],
         )
-        print('--------------------- USER PROOF 1 ---------------------')
-        print(user_proofs["storage_proof"].hex())
         """
         # Set user data
         snapshots['before_set_user_data'] = take_snapshot()
@@ -132,18 +134,18 @@ def scenario_create():
             from_address=GOV,
         ) 
         """
-        epoch += 7 * 86400
+        epoch_2 = epoch + WEEK
         fast_forward(days=7)
         # Get nearest block for our current timestamp on Ethereum
-        nearest_block = get_closest_block_timestamp("ethereum", epoch)
+        nearest_block_2 = get_closest_block_timestamp("ethereum", epoch_2)
 
         # Get block data
-        block_info = vm_proofs.get_block_info(nearest_block)
+        block_info_2 = vm_proofs.get_block_info(nearest_block_2)
         insert_block_number(
-            epoch=epoch,
-            block_number=block_info["block_number"],
-            block_hash=block_info["block_hash"],
-            block_timestamp=block_info["block_timestamp"],
+            epoch=epoch_2,
+            block_number=block_info_2["block_number"],
+            block_hash=block_info_2["block_hash"],
+            block_timestamp=block_info_2["block_timestamp"],
             from_address=GOV,
         )
 
@@ -152,14 +154,14 @@ def scenario_create():
         gauge_proofs = vm_proofs.get_gauge_proof(
             protocol=PROTOCOL,
             gauge_address=GAUGE_ADDRESS,
-            current_epoch=epoch,
-            block_number=block_info["block_number"],
+            current_epoch=epoch_2,
+            block_number=block_info_2["block_number"],
         )
 
         # Set block data
         snapshots['before_set_block_data'] = take_snapshot()
         set_block_data(
-            rlp_block_header=block_info["rlp_block_header"],
+            rlp_block_header=block_info_2["rlp_block_header"],
             controller_proof=gauge_proofs["gauge_controller_proof"],
             from_address=GOV,
         )
@@ -168,31 +170,84 @@ def scenario_create():
         snapshots['before_set_point_data'] = take_snapshot()
         set_point_data(
             gauge=GAUGE_ADDRESS,
-            epoch=epoch,
+            epoch=epoch_2,
             storage_proof=gauge_proofs["point_data_proof"],
             from_address=GOV,
         )
         # Get proofs (user)
-        user_proofs = vm_proofs.get_user_proof(
+        user_proofs_2 = vm_proofs.get_user_proof(
             protocol=PROTOCOL,
             gauge_address=GAUGE_ADDRESS,
             user=USER_ADDRESS,
-            block_number=block_info["block_number"],
+            block_number=block_info_2["block_number"],
         )
-
-        print('--------------------- USER PROOF 2 ---------------------')
-        print(user_proofs["storage_proof"].hex())
-
+        """
         # Set user data
         snapshots['before_set_user_data'] = take_snapshot()
         set_account_data(
             account=USER_ADDRESS,
             gauge=GAUGE_ADDRESS,
-            epoch=epoch,
-            storage_proof=user_proofs["storage_proof"],
+            epoch=epoch_2,
+            storage_proof=user_proofs_2["storage_proof"],
             from_address=GOV,
         )
+        """
+        reward_contract = W3.eth.contract(address=REWARD_TOKEN, abi=load_json("abi/erc20.json"))
 
+        print(
+            f"Reward token balance before claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
+        )
+        
+        multicall(USER_ADDRESS, ROUTER_ADDRESS, [
+            [
+                'setAccountData(address,address,address,uint256,bytes)',
+                ['address', 'address','address','uint256','bytes'],
+                [
+                    VERIFIER,
+                    USER_ADDRESS,
+                    GAUGE_ADDRESS,
+                    epoch,
+                    user_proofs["storage_proof"]
+                ]
+            ],
+            [
+                'claim(address,uint256,address,uint256,bytes)', 
+                ['address', 'uint256', 'address', 'uint256','bytes'],
+                [
+                    VOTEMARKET,
+                    0,
+                    USER_ADDRESS,
+                    epoch,
+                    b''
+                ]
+            ],
+            [
+                'setAccountData(address,address,address,uint256,bytes)',
+                ['address', 'address','address','uint256','bytes'],
+                [
+                    VERIFIER,
+                    USER_ADDRESS,
+                    GAUGE_ADDRESS,
+                    epoch_2,
+                    user_proofs_2["storage_proof"]
+                ]
+            ],
+            [
+                'claim(address,uint256,address,uint256,bytes)', 
+                ['address', 'uint256', 'address', 'uint256','bytes'],
+                [
+                    VOTEMARKET,
+                    0,
+                    USER_ADDRESS,
+                    epoch_2,
+                    b''
+                ]
+            ]
+        ])
+
+        print(
+            f"Reward token balance after claim: {reward_contract.functions.balanceOf(USER_ADDRESS).call()}"
+        )
         print("Scenario completed.")
 
     except Exception as e:

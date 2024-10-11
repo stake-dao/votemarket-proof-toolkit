@@ -39,7 +39,9 @@ def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
 
         print(f"Transaction successful. Hash: {tx_receipt.transactionHash.hex()}")
         print(f"Gas used: {tx_receipt.gasUsed}")
-        return tx_receipt
+        return tx_receipt     
+    except:
+        print("Transaction failed") 
     finally:
         W3.provider.make_request("anvil_stopImpersonatingAccount", [from_address])
 
