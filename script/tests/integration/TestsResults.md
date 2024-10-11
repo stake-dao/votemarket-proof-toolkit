@@ -164,7 +164,7 @@ To do :
 
 Result : ✔️ Successful
 
-### Scenario 2
+### Scenario 3
 
 State epoch 1 :
 
@@ -194,7 +194,7 @@ To do :
 Result : ✔️ Successful
 
 
-### Scenario 2
+### Scenario 4
 
 State epoch 1 :
 
