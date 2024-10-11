@@ -9,6 +9,7 @@ W3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
 W3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
 REWARD_TOKEN = to_checksum_address("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1")
+REWARD_TOKEN_2 = to_checksum_address("0x912CE59144191C1204E64559FE8253a0e49E6548")
 
 def set_balance(address, balance):
     W3.provider.make_request("anvil_setBalance", [address, hex(balance)])
@@ -56,12 +57,20 @@ if __name__ == "__main__":
     value = int(sys.argv[4]) if len(sys.argv) == 5 else 0
 
     reward_contract = W3.eth.contract(address=REWARD_TOKEN, abi=load_json("abi/erc20.json"))
+    reward_contract_2 = W3.eth.contract(address=REWARD_TOKEN_2, abi=load_json("abi/erc20.json"))
     print(
         f"Reward token balance before claim: {reward_contract.functions.balanceOf(from_address).call()}"
+    )
+
+    print(
+        f"Reward token 2 balance before claim: {reward_contract_2.functions.balanceOf(from_address).call()}"
     )
 
     impersonate_and_send_tx(from_address, to_address, calldata, value)
 
     print(
         f"Reward token balance after claim: {reward_contract.functions.balanceOf(from_address).call()}"
+    )
+    print(
+        f"Reward token 2 balance after claim: {reward_contract_2.functions.balanceOf(from_address).call()}"
     )
