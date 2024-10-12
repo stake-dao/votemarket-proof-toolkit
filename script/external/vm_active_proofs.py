@@ -198,9 +198,21 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
     with open(os.path.join(protocol_dir, "header.json"), "w") as f:
         json.dump(header_data, f, indent=2)
 
+    # Write main.json (contains all data for the protocol)
+    main_data = {
+        "epoch": current_epoch,
+        "block_data": processed_data["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proof"],
+        "platforms": processed_data["platforms"]
+    }
+    with open(os.path.join(protocol_dir, "main.json"), "w") as f:
+        json.dump(main_data, f, indent=2)
+
     # Process platforms
     for platform_address, platform_data in processed_data["platforms"].items():
-        platform_dir = os.path.join(protocol_dir, platform_address)
+        chain_id = platform_data["chain_id"]
+        platform_folder_name = f"{chain_id}-{platform_address}"
+        platform_dir = os.path.join(protocol_dir, platform_folder_name)
         os.makedirs(platform_dir, exist_ok=True)
 
         # Write gauge files
