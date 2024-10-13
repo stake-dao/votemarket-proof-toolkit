@@ -136,7 +136,8 @@ def scenario_create():
             current_epoch=epoch,
             block_number=block_info["block_number"],
         )
-        
+        """
+
         # Set block data
         snapshots["before_set_block_data"] = take_snapshot()
         set_block_data(
@@ -144,7 +145,6 @@ def scenario_create():
             controller_proof=gauge_proofs["gauge_controller_proof"],
             from_address=GOV,
         )
-        
         # Set point data
         snapshots["before_set_point_data"] = take_snapshot()
         set_point_data(
@@ -161,7 +161,7 @@ def scenario_create():
             from_address=GOV,
         )
 
-        """
+
         # Get proofs (user)
         user_proofs = vm_proofs.get_user_proof(
             protocol=PROTOCOL,
@@ -169,7 +169,7 @@ def scenario_create():
             user=USER_ADDRESS,
             block_number=block_info["block_number"],
         )
-        """
+        
         
         user_proofs_2 = vm_proofs.get_user_proof(
             protocol=PROTOCOL,
@@ -177,7 +177,7 @@ def scenario_create():
             user=USER_ADDRESS,
             block_number=block_info["block_number"],
         )
-        """
+        
         # Set user data
         snapshots["before_set_user_data"] = take_snapshot()
         set_account_data(
@@ -187,7 +187,7 @@ def scenario_create():
             storage_proof=user_proofs["storage_proof"],
             from_address=GOV,
         )
-        """
+        
 
         set_account_data(
             account=USER_ADDRESS,
@@ -196,7 +196,7 @@ def scenario_create():
             storage_proof=user_proofs_2["storage_proof"],
             from_address=GOV,
         )
-        """
+        
         # Check reward token balance before claim
         reward_contract = W3.eth.contract(
             address=REWARD_TOKEN, abi=load_json("abi/erc20.json")

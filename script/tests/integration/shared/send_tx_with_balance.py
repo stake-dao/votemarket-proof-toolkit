@@ -31,7 +31,6 @@ def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
             "to": to_address,
             "data": calldata,
             "value": value,
-            "gas": 2000000,
             "gasPrice": W3.eth.generate_gas_price(),
         }
 
