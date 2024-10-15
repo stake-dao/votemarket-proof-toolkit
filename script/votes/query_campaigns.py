@@ -12,17 +12,19 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def get_all_platforms(protocol: str) -> List[Platform]:
-    # Query on ARBITRUM registry all the platforms for the protocol
+    # TODO: Use a registry / address book for  all the platforms for the protocol
 
-    # TODO once registry is ready
+    if protocol == "curve":
 
-    return [
+        return [
         {
             "protocol": "curve",
             "chain_id": 42161,
             "address": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
-        }
-    ]
+            }
+        ]
+    else:
+        return []
 
 
 def query_active_campaigns(

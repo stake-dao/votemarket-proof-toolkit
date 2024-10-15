@@ -42,6 +42,7 @@ async def process_protocol(
     Returns:
         Dict[str, Any]: A dictionary containing the processed protocol data with active proofs.
     """
+
     protocol = protocol_data["protocol"]
     platforms = protocol_data["platforms"]
 
@@ -222,6 +223,9 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     logging.info(f"Starting active proofs generation for epoch: {current_epoch}")
 
     for protocol, protocol_data in all_protocols_data["protocols"].items():
+        if len(protocol_data["platforms"]) == 0:
+            logging.info(f"Skipping protocol: {protocol} as no platforms found")
+            continue
         logging.info(f"Processing protocol: {protocol}")
         processed_data = await process_protocol(protocol_data, current_epoch)
         write_protocol_data(protocol, current_epoch, processed_data)
