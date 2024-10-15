@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from shared.constants import GlobalConstants
 from shared.web3_service import Web3Service
-from votes.main import VMVotes
+from votes.main import VoteMarketVotes
 from votes.query_campaigns import query_active_campaigns
 from shared.types import AllProtocolsData
 
@@ -26,7 +26,7 @@ generating and storing proofs to be used in the API.
 """
 
 vm_proofs = VoteMarketProofs(1)
-vm_votes = VMVotes(1)
+vm_votes = VoteMarketVotes(1)
 
 
 async def process_protocol(
@@ -89,16 +89,7 @@ async def process_protocol(
             {
                 "id": 0,
                 "chain_id": chain_id,
-                "gauge": "0xf1bb643f953836725c6e48bdd6f1816f871d3e07",
-                "listed_users": [
-                    "0xdead000000000000000000000000000000000000",
-                    "0x0100000000000000000000000000000000000000",
-                ],
-            },
-            {
-                "id": 1,
-                "chain_id": chain_id,
-                "gauge": "0x059e0db6bf882f5fe680dc5409c7adeb99753736",
+                "gauge": "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",
                 "listed_users": [
                     "0xdead000000000000000000000000000000000000",
                     "0x0100000000000000000000000000000000000000",
@@ -186,6 +177,53 @@ async def process_protocol(
     return output_data
 
 
+def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[str, Any]):
+    """
+    Write processed protocol data to files in the specified structure.
+
+    Args:
+        protocol (str): The protocol name.
+        current_epoch (int): The current voting epoch.
+        processed_data (Dict[str, Any]): The processed data for the protocol.
+    """
+    protocol_dir = os.path.join(TEMP_DIR, protocol)
+    os.makedirs(protocol_dir, exist_ok=True)
+
+    # Write header.json
+    header_data = {
+        "epoch": current_epoch,
+        "block_data": processed_data["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proof"]
+    }
+    with open(os.path.join(protocol_dir, "header.json"), "w") as f:
+        json.dump(header_data, f, indent=2)
+
+    # Write main.json (contains all data for the protocol)
+    main_data = {
+        "epoch": current_epoch,
+        "block_data": processed_data["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proof"],
+        "platforms": processed_data["platforms"]
+    }
+    with open(os.path.join(protocol_dir, "main.json"), "w") as f:
+        json.dump(main_data, f, indent=2)
+
+    # Process platforms
+    for platform_address, platform_data in processed_data["platforms"].items():
+        chain_id = platform_data["chain_id"]
+        platform_folder_name = f"{chain_id}-{platform_address}"
+        platform_dir = os.path.join(protocol_dir, platform_folder_name)
+        os.makedirs(platform_dir, exist_ok=True)
+
+        # Write gauge files
+        for gauge_address, gauge_data in platform_data["gauges"].items():
+            gauge_file = os.path.join(platform_dir, f"{gauge_address}.json")
+            with open(gauge_file, "w") as f:
+                json.dump(gauge_data, f, indent=2)
+
+    logging.info(f"Saved data for {protocol} in {protocol_dir}")
+
+
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     """
     Main function to process all protocols and generate active proofs.
@@ -199,16 +237,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     for protocol, protocol_data in all_protocols_data["protocols"].items():
         logging.info(f"Processing protocol: {protocol}")
         processed_data = await process_protocol(protocol_data, current_epoch)
-
-        json_data = {"epoch": current_epoch, **processed_data}
-
-        # Store in a json file
-        os.makedirs(TEMP_DIR, exist_ok=True)
-        output_file = f"{TEMP_DIR}/{protocol}.json"
-        with open(output_file, "w") as f:
-            json.dump(json_data, f, indent=2)
-
-        logging.info(f"Saved data for {protocol} to {output_file}")
+        write_protocol_data(protocol, current_epoch, processed_data)
 
     logging.info("Finished generating active proofs for all protocols")
 

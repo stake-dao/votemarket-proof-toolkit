@@ -7,16 +7,15 @@ VENV_ACTIVATE := . $(VENV)/bin/activate
 SRC_DIR := script
 
 # Phony targets declaration
-.PHONY: all install clean user-proof gauge-proof block-info test help
+.PHONY: all install clean user-proof gauge-proof block-info test help integration
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
 
 # Create virtual environment and install dependencies
 install: $(VENV)/bin/activate
-
 $(VENV)/bin/activate: requirements.txt
-	$(PYTHON) -m venv $(VENV)
+	PYTHONPATH=script $(PYTHON) -m venv $(VENV)
 	$(VENV_ACTIVATE) && pip install -r requirements.txt
 
 # Remove virtual environment and cached Python files
@@ -40,7 +39,6 @@ user-proof: install
 
 # Generate gauge proof for VoteMarketV2
 # Required variables:
-# - RPC_URL: Ethereum node RPC URL
 # - PROTOCOL: Protocol name (e.g., 'curve')
 # - GAUGE_ADDRESS: Ethereum address of the gauge
 # - CURRENT_EPOCH: Current voting epoch
@@ -55,17 +53,16 @@ gauge-proof: install
 
 # Get block information for VoteMarketV2
 # Required variables:
-# - RPC_URL: Ethereum node RPC URL
 # - BLOCK_NUMBER: Ethereum block number to retrieve information for
 block-info: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
 		vm = VoteMarketProofs(1); \
 		info = vm.get_block_info($(BLOCK_NUMBER)); \
 		print('Block Info:'); \
-		print(f'  Block Number: {info[\"BlockNumber\"]}'); \
-		print(f'  Block Hash: {info[\"BlockHash\"]}'); \
-		print(f'  Block Timestamp: {info[\"BlockTimestamp\"]}'); \
-		print(f'  RLP Block Header (used for setBlockData): {info[\"RlpBlockHeader\"]}')"
+		print(f'  Block Number: {info[\"block_number\"]}'); \
+		print(f'  Block Hash: {info[\"block_hash\"]}'); \
+		print(f'  Block Timestamp: {info[\"block_timestamp\"]}'); \
+		print(f'  RLP Block Header (used for setBlockData): {info[\"rlp_block_header\"]}')"
 
 
 # Get active campaigns for a given chain + platform
@@ -101,3 +98,6 @@ help:
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
+
+integration:
+	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)

@@ -82,7 +82,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()
         """
 
-        latest_setted_block = 20914375
+        latest_setted_block = 20931630
 
         platform["latest_setted_block"] = latest_setted_block
         logging.info(

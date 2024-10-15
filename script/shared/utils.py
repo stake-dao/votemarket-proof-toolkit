@@ -41,3 +41,7 @@ def get_closest_block_timestamp(chain, timestamp):
 
     result = response.json()
     return result["height"]
+
+
+def get_rounded_epoch(timestamp: int) -> int:
+    return timestamp // 86400 * 86400

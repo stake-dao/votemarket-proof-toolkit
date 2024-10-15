@@ -14,7 +14,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ETHERSCAN_KEY = os.getenv("ETHERSCAN_TOKEN", "")
+EXPLORER_APIS = {
+    "1": {
+        "url": "https://api.etherscan.io/api",
+        "key": os.getenv("ETHERSCAN_TOKEN", "")
+    },
+    "42161": {
+        "url": "https://api.arbiscan.io/api",
+        "key": os.getenv("ARBISCAN_TOKEN", "")
+    }
+}
 
 
 class RateLimiter:
@@ -71,21 +80,24 @@ def get_logs_by_address_and_topics(
     from_block: int,
     to_block: int,
     topics: Dict[str, str],
+    chain_id: str = "1",
 ) -> List[Dict[str, Any]]:
     """
-    Get logs for a given address and topics from the Etherscan API.
+    Get logs for a given address and topics from the specified explorer API.
 
     Args:
         address (str): Contract address to query logs for.
         from_block (int): Starting block number.
         to_block (int): Ending block number.
         topics (Dict[str, str]): Topics to filter logs.
+        chain_id (str): Chain ID for the explorer (default: "1" for Ethereum mainnet).
 
     Returns:
         List[Dict[str, Any]]: List of logs.
     """
+    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
     topic0 = topics.get("0", "")
-    url = f"https://api.etherscan.io/api?module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={ETHERSCAN_KEY}"
+    url = f"{explorer['url']}?module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={explorer['key']}"
 
     try:
         response = _make_request_with_retry(url, "logs")
@@ -162,9 +174,10 @@ def get_token_transfers(
     from_block: int = 0,
     to_block: int = 99999999,
     sort: str = "asc",
+    chain_id: str = "1",
 ) -> List[Dict[str, Any]]:
     """
-    Get token transfers for a given address from the Etherscan API.
+    Get token transfers for a given address from the specified explorer API.
 
     Args:
         address (str): Ethereum address to query transfers for.
@@ -172,6 +185,7 @@ def get_token_transfers(
         from_block (int, optional): Starting block number. Defaults to 0.
         to_block (int, optional): Ending block number. Defaults to 99999999.
         sort (str, optional): Sort order ('asc' or 'desc'). Defaults to 'asc'.
+        chain_id (str): Chain ID for the explorer (default: "1" for Ethereum mainnet).
 
     Returns:
         List[Dict[str, Any]]: List of token transfers.
@@ -179,9 +193,38 @@ def get_token_transfers(
     Raises:
         Exception: If max retries are reached or an unexpected error occurs.
     """
-    url = f"https://api.etherscan.io/api?module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={ETHERSCAN_KEY}"
-
+    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
+    url = f"{explorer['url']}?module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={explorer['key']}"
+    
     if contract_address:
         url += f"&contractaddress={contract_address}"
 
     return _make_request_with_retry(url, "transfers")
+
+
+def get_token_holders(contract_address: str, chain_id: str = "1") -> int:
+    """
+    Get the number of token holders for a given ERC20 token contract address.
+
+    Args:
+        contract_address (str): The contract address of the ERC20 token.
+        chain_id (str): Chain ID for the explorer (default: "1" for Ethereum mainnet).
+
+    Returns:
+        int: The number of token holders.
+
+    Raises:
+        Exception: If max retries are reached or an unexpected error occurs.
+    """
+    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
+    url = f"{explorer['url']}?module=stats&action=tokensupply&contractaddress={contract_address}&apikey={explorer['key']}"
+
+    try:
+        response = _make_request_with_retry(url, "token holders")
+        return int(response)
+    except ValueError:
+        logging.error(f"Invalid response format for token holders: {response}")
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching token holders: {str(e)}")
+        raise

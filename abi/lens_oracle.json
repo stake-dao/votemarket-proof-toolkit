@@ -1,0 +1,49 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      { "name": "_oracle", "type": "address", "internalType": "address" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getAccountVotes",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTotalVotes",
+    "inputs": [
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isVoteValid",
+    "inputs": [
+      { "name": "account", "type": "address", "internalType": "address" },
+      { "name": "gauge", "type": "address", "internalType": "address" },
+      { "name": "epoch", "type": "uint256", "internalType": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "oracle",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+    "stateMutability": "view"
+  },
+  { "type": "error", "name": "STATE_NOT_UPDATED", "inputs": [] }
+]
