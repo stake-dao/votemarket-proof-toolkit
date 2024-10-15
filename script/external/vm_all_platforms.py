@@ -26,6 +26,7 @@ vm_active_proofs.py as part of the automated process of generating proofs.
 
 
 def get_block_data(block_number: int) -> Dict:
+    print(f"Getting block data for block number: {block_number}")
     vm_proofs = VoteMarketProofs(1)
     block_info = vm_proofs.get_block_info(block_number)
     return {
@@ -57,7 +58,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
     for platform in platforms:
         chain_id = platform["chain_id"]
-        platform_address = platform["platform"]
+        platform_address = platform["address"]
         logging.info(f"Processing platform: {platform_address} on chain {chain_id}")
 
         if chain_id not in web3_service.w3:
@@ -65,13 +66,15 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
             web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
         # Fetch the oracle address from platform
-
-        """
         logging.info(f"Fetching oracle address for platform: {platform_address}")
         platform_contract = web3_service.get_contract(platform_address, "vm_platform", chain_id)
-        oracle_address = platform_contract.functions.ORACLE().call()
+        lens = platform_contract.functions.ORACLE().call()
+        lens_address = to_checksum_address(lens.lower())
+
+        # Fetch real oracle address from lens
+        lens_contract = web3_service.get_contract(lens_address, "oracle_lens", chain_id)
+        oracle_address = lens_contract.functions.oracle().call()
         oracle_address = to_checksum_address(oracle_address.lower())
-        logging.info(f"Oracle address: {oracle_address}")
 
         if oracle_address == "0x0000000000000000000000000000000000000000":
             logging.warning(f"Skipping platform {platform_address} as it doesn't have an oracle")
@@ -79,10 +82,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
         logging.info(f"Fetching latest setted block from oracle for epoch: {epoch}")
         oracle = web3_service.get_contract(oracle_address, "oracle", chain_id)
-        latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()
-        """
-
-        latest_setted_block = 20931630
+        latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()[2]
 
         platform["latest_setted_block"] = latest_setted_block
         logging.info(

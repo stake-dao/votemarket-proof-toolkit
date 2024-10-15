@@ -72,7 +72,7 @@ class VoteMarketVotes:
                 last_vote = results[i]
                 slope, power, end = results[i + 1]
 
-                if current_epoch < end and current_epoch > last_vote:
+                if current_epoch < end and current_epoch > last_vote and slope > 0:
                     eligible_users.append(
                         EligibleUser(
                             user=user,

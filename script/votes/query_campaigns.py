@@ -84,18 +84,3 @@ def query_active_campaigns(
             formatted_campaigns.append(formatted_campaign)
 
     return formatted_campaigns
-
-
-def get_all_platforms(protocol: str) -> List[Platform]:
-    """
-    Get all platforms via Registry.
-    """
-    # TODO : Implement with real registry
-
-    # Registry on Arbitrum
-    w3_arbitrum = Web3Service(42161, GlobalConstants.CHAIN_ID_TO_RPC[42161])
-    registry = w3_arbitrum.get_contract(GlobalConstants.REGISTRY, "registry")
-
-    return [
-        {"chain_id": 42161, "platform": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e"}
-    ]

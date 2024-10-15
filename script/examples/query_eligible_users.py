@@ -5,11 +5,11 @@ import os
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
 from shared.constants import GlobalConstants
-from votes.main import VMVotes
+from votes.main import VoteMarketVotes
 
 load_dotenv()
 
-vm_votes = VMVotes(1)
+vm_votes = VoteMarketVotes(1)
 
 # Example parameters
 PROTOCOL = "curve"
@@ -20,7 +20,7 @@ BLOCK_NUMBER = 20864159  # Max block number to check
 
 
 async def main():
-    """Query gauge votes and eligible users."""
+    """Query eligible users for a gauge."""
     # Query gauge votes
     gauge_votes = await vm_votes.get_gauge_votes(PROTOCOL, GAUGE_ADDRESS, BLOCK_NUMBER)
 

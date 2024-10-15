@@ -31,18 +31,9 @@ def main():
         print("\nCampaign Details:")
         print(f"ID: {campaign['id']}")
         print(f"Chain ID: {campaign['chain_id']}")
-        print(f"Platform Address: {campaign['platform_address']}")
+        print(f"Platform Address: {PLATFORM_ADDRESS}")
         print(f"Gauge: {campaign['gauge']}")
-        print(f"Manager: {campaign['manager']}")
-        print(f"Reward Token: {campaign['reward_token']}")
-        print(f"Number of Periods: {campaign['number_of_periods']}")
-        print(f"Max Reward Per Vote: {campaign['max_reward_per_vote']}")
-        print(f"Total Reward Amount: {campaign['total_reward_amount']}")
-        print(f"Total Distributed: {campaign['total_distributed']}")
-        print(f"Start Timestamp: {campaign['start_timestamp']}")
-        print(f"End Timestamp: {campaign['end_timestamp']}")
-        print(f"Hook: {campaign['hook']}")
-
+        print(f"Listed Users: {campaign['listed_users']}")
 
 if __name__ == "__main__":
     main()

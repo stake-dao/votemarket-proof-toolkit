@@ -84,19 +84,6 @@ async def process_protocol(
             web3_service, chain_id, platform_address
         )
 
-        # TODO: remove this dummy data once the real function is implemented
-        active_campaigns = [
-            {
-                "id": 0,
-                "chain_id": chain_id,
-                "gauge": "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A",
-                "listed_users": [
-                    "0xdead000000000000000000000000000000000000",
-                    "0x0100000000000000000000000000000000000000",
-                ],
-            },
-        ]
-
         platform_data = {
             "chain_id": chain_id,
             "platform_address": platform_address,
