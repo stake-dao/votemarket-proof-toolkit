@@ -43,8 +43,8 @@ async def process_protocol(
         Dict[str, Any]: A dictionary containing the processed protocol data with active proofs.
     """
 
-    protocol = protocol_data["protocol"]
-    platforms = protocol_data["platforms"]
+    protocol = protocol_data["protocol"].lower()
+    platforms = {k.lower(): v for k, v in protocol_data["platforms"].items()}
 
     # Initialize the output dictionary with block_data at the beginning
     output_data = {
@@ -87,13 +87,13 @@ async def process_protocol(
 
         platform_data = {
             "chain_id": chain_id,
-            "platform_address": platform_address,
+            "platform_address": platform_address.lower(),
             "gauges": {},
         }
 
         logging.info(f"Processing {len(active_campaigns)} campaigns")
         for campaign in active_campaigns:
-            gauge_address = campaign["gauge"]
+            gauge_address = campaign["gauge"].lower()
             logging.info(f"Processing gauge: {gauge_address}")
 
             gauge_data = {
@@ -124,7 +124,7 @@ async def process_protocol(
             )
 
             for user in eligible_users:
-                user_address = user["user"]
+                user_address = user["user"].lower()
                 logging.info(f"Generating proof for user: {user_address}")
                 # Get user proof
                 user_proofs = vm_proofs.get_user_proof(
@@ -153,13 +153,13 @@ async def process_protocol(
                     user=listed_user,
                     block_number=block_number,
                 )
-                gauge_data["listed_users"][listed_user] = {
+                gauge_data["listed_users"][listed_user.lower()] = {
                     "storage_proof": "0x" + user_proofs["storage_proof"].hex(),
                 }
 
             platform_data["gauges"][gauge_address] = gauge_data
 
-        output_data["platforms"][platform_address] = platform_data
+        output_data["platforms"][platform_address.lower()] = platform_data
 
     logging.info(f"Finished processing protocol: {protocol}")
     return output_data
@@ -174,7 +174,7 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
         current_epoch (int): The current voting epoch.
         processed_data (Dict[str, Any]): The processed data for the protocol.
     """
-    protocol_dir = os.path.join(TEMP_DIR, protocol)
+    protocol_dir = os.path.join(TEMP_DIR, protocol.lower())
     os.makedirs(protocol_dir, exist_ok=True)
 
     # Write header.json
@@ -199,13 +199,13 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
     # Process platforms
     for platform_address, platform_data in processed_data["platforms"].items():
         chain_id = platform_data["chain_id"]
-        platform_folder_name = f"{chain_id}-{platform_address}"
+        platform_folder_name = f"{chain_id}-{platform_address.lower()}"
         platform_dir = os.path.join(protocol_dir, platform_folder_name)
         os.makedirs(platform_dir, exist_ok=True)
 
         # Write gauge files
         for gauge_address, gauge_data in platform_data["gauges"].items():
-            gauge_file = os.path.join(platform_dir, f"{gauge_address}.json")
+            gauge_file = os.path.join(platform_dir, f"{gauge_address.lower()}.json")
             with open(gauge_file, "w") as f:
                 json.dump(gauge_data, f, indent=2)
 
@@ -228,7 +228,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
             continue
         logging.info(f"Processing protocol: {protocol}")
         processed_data = await process_protocol(protocol_data, current_epoch)
-        write_protocol_data(protocol, current_epoch, processed_data)
+        write_protocol_data(protocol.lower(), current_epoch, processed_data)
 
     logging.info("Finished generating active proofs for all protocols")
 
