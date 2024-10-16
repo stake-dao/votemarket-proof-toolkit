@@ -193,7 +193,7 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
         "gauge_controller_proof": processed_data["gauge_controller_proof"],
         "platforms": processed_data["platforms"]
     }
-    with open(os.path.join(protocol_dir, "main.json"), "w") as f:
+    with open(os.path.join(protocol_dir, "index.json"), "w") as f:
         json.dump(main_data, f, indent=2)
 
     # Process platforms
