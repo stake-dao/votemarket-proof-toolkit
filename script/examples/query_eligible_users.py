@@ -1,15 +1,17 @@
 """Example of how to query voters for a gauge."""
 
 import asyncio
-import os
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
-from shared.constants import GlobalConstants
 from votes.main import VoteMarketVotes
+from rich import print as rprint
+from rich.panel import Panel
+from rich.console import Console
 
 load_dotenv()
 
 vm_votes = VoteMarketVotes(1)
+console = Console()
 
 # Example parameters
 PROTOCOL = "curve"
@@ -17,28 +19,41 @@ GAUGE_ADDRESS = to_checksum_address(
     "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A".lower()
 )  # sdCRV gauge
 BLOCK_NUMBER = 20864159  # Max block number to check
-
+CURRENT_EPOCH = 1723680000
 
 async def main():
     """Query eligible users for a gauge."""
-    # Query gauge votes
-    gauge_votes = await vm_votes.get_gauge_votes(PROTOCOL, GAUGE_ADDRESS, BLOCK_NUMBER)
+    rprint(Panel("Querying Eligible Users for Gauge", style="bold green"))
 
-    print("Gauge Votes:")
-    print(len(gauge_votes))
+    # Query gauge votes
+    rprint("[cyan]Fetching gauge votes...[/cyan]")
+    gauge_votes = await vm_votes.get_gauge_votes(PROTOCOL, GAUGE_ADDRESS, BLOCK_NUMBER)
+    rprint(f"[green]Found {len(gauge_votes)} gauge votes[/green]")
 
     # Get eligible users
-    CURRENT_EPOCH = 1723680000
+    rprint("[cyan]Fetching eligible users...[/cyan]")
     eligible_users = await vm_votes.get_eligible_users(
         PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER
     )
 
-    print(f"\n{len(eligible_users)} users eligible for gauge {GAUGE_ADDRESS}:")
-    for user in eligible_users:
-        print(
-            f"User: {user['user']}, Last Vote: {user['last_vote']}, Slope: {user['slope']}, Power: {user['power']}, End: {user['end']}"
-        )
+    rprint(f"[green]Found {len(eligible_users)} eligible users for gauge {GAUGE_ADDRESS}[/green]")
 
+    console.print("\n[bold magenta]Eligible Users:[/bold magenta]")
+    for user in eligible_users[:5]:  # Display first 5 users as a sample
+        console.print(Panel.fit(
+            f"[yellow]User:[/yellow] {user['user']}\n"
+            f"[yellow]Last Vote:[/yellow] {user['last_vote']}\n"
+            f"[yellow]Slope:[/yellow] {user['slope']}\n"
+            f"[yellow]Power:[/yellow] {user['power']}\n"
+            f"[yellow]End:[/yellow] {user['end']}",
+            title=f"User {eligible_users.index(user) + 1}",
+            border_style="cyan"
+        ))
+
+    if len(eligible_users) > 5:
+        rprint(f"[italic]...and {len(eligible_users) - 5} more users[/italic]")
+
+    rprint(Panel("Query Completed", style="bold green"))
 
 if __name__ == "__main__":
     asyncio.run(main())

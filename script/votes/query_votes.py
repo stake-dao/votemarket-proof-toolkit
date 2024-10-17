@@ -1,18 +1,17 @@
-import logging
 from typing import List, Dict, Any
 from web3 import Web3
 from shared.constants import GaugeControllerConstants
 from shared.etherscan_service import get_logs_by_address_and_topics
 from shared.parquet_cache_service import ParquetCache
-import logging
 import asyncio
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+from rich import print as rprint
+from rich.console import Console
 
 CACHE_DIR = "cache"
 VOTES_CACHE_FILE = "{protocol}_votes_cache.parquet"
 
 cache = ParquetCache(CACHE_DIR)
+console = Console()
 
 
 async def query_gauge_votes(
@@ -41,9 +40,9 @@ async def query_gauge_votes(
     )
 
     end_block = block_number
-    logging.info(f"Getting votes for {gauge_address} from {start_block} to {end_block}")
 
     if start_block < end_block:
+        rprint(f"[cyan]Fetching new votes from block {start_block} to {end_block}[/cyan]")
         new_votes = await fetch_new_votes(w3, protocol, start_block, end_block)
 
         cached_data = cache.get_columns(
@@ -59,10 +58,10 @@ async def query_gauge_votes(
             )
         ]
         all_votes = cached_votes + new_votes
-        print(f"All votes length: {len(all_votes)}")
+        rprint(f"[green]Total votes: {len(all_votes)}[/green]")
         cache.save_votes(cache_file, end_block, all_votes)
     else:
-        logging.info("Using cached data as start block is not less than end block")
+        rprint("[yellow]No new votes to fetch. Using cached data.[/yellow]")
         cached_data = cache.get_columns(
             cache_file, ["time", "user", "gauge_addr", "weight"]
         )
@@ -83,11 +82,12 @@ async def query_gauge_votes(
         if vote["gauge_addr"].lower() == gauge_address.lower()
     ]
 
+    rprint(f"[green]Filtered votes for gauge {gauge_address}: {len(filtered_votes)}[/green]")
     return filtered_votes
 
 
 async def fetch_new_votes(
-    w3: Web3, protocol: str, start_block: int, end_block: int
+    protocol: str, start_block: int, end_block: int
 ) -> List[Dict[str, Any]]:
     """
     Fetch new votes from gauge controller contract.
@@ -107,7 +107,7 @@ async def fetch_new_votes(
     for block in range(start_block, end_block + 1, INCREMENT):
         current_end_block = min(block + INCREMENT - 1, end_block)
         task = asyncio.create_task(
-            fetch_votes_chunk(w3, protocol, block, current_end_block)
+            fetch_votes_chunk(protocol, block, current_end_block)
         )
         tasks.append(task)
 
@@ -116,7 +116,7 @@ async def fetch_new_votes(
 
 
 async def fetch_votes_chunk(
-    w3: Web3, protocol: str, start_block: int, end_block: int
+    protocol: str, start_block: int, end_block: int
 ) -> List[Dict[str, Any]]:
     """
     Fetch a chunk of votes from gauge controller contract.
@@ -130,7 +130,6 @@ async def fetch_votes_chunk(
     Returns:
         List[Dict[str, Any]]: List of votes in the chunk.
     """
-    logging.info(f"Getting logs from {start_block} to {end_block}")
     try:
         votes_logs = get_logs_by_address_and_topics(
             GaugeControllerConstants.GAUGE_CONTROLLER[protocol],
@@ -138,11 +137,10 @@ async def fetch_votes_chunk(
             end_block,
             {"0": GaugeControllerConstants.VOTE_EVENT_HASH},
         )
-        logging.info(f"{len(votes_logs)} votes logs found")
+        rprint(f"{len(votes_logs)} votes logs found")
         return [_decode_vote_log(log) for log in votes_logs]
     except Exception as e:
         if "No records found" in str(e):
-            logging.info(f"No votes found from {start_block} to {end_block}")
             return []
         else:
             raise  # Re-raise the exception if it's not a "No records found" error

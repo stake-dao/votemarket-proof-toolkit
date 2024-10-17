@@ -145,7 +145,7 @@ class Web3Service:
     def get_contract_data(
         self,
         contract_address: str,
-        function_calls: List[Tuple[str, str]],
+        function_calls: List[Tuple[str, List[Any], str]],
         chain_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
@@ -153,26 +153,35 @@ class Web3Service:
 
         Args:
             contract_address (str): The address of the contract.
-            function_calls (List[Tuple[str, str]]): A list of tuples containing function names and return types.
+            function_calls (List[Tuple[str, List[Any], str]]): A list of tuples containing function names, arguments, and return types.
             chain_id (Optional[int]): The chain ID to use. If None, uses the default chain ID.
 
         Returns:
             Dict[str, Any]: A dictionary of function call results, keyed by function name.
         """
-        key = (contract_address, tuple(function_calls))
+        key = (contract_address.lower(), tuple((name, tuple(args), return_type) for name, args, return_type in function_calls))
+
+        print(function_calls)
+
         if key not in self._contract_data_cache:
             multicall = W3Multicall(self.get_w3(chain_id))
-            for func_name, return_type in function_calls:
+            for func_name, args, return_type in function_calls:
+                # Construct the function signature
+                arg_types = ','.join(['address' for _ in args])
+                signature = f"{func_name}({arg_types}){return_type}"
                 multicall.add(
-                    W3Multicall.Call(contract_address, f"{func_name}{return_type}", [])
+                    W3Multicall.Call(contract_address, signature, args)
                 )
 
             call_results = multicall.call()
 
-            self._contract_data_cache[key] = {
-                func_name: call_results[i]
-                for i, (func_name, _) in enumerate(function_calls)
-            }
+            self._contract_data_cache[key] = {}
+            for i, (func_name, _, _) in enumerate(function_calls):
+                try:
+                    self._contract_data_cache[key][func_name] = call_results[i]
+                except Exception as e:
+                    print(f"Warning: Call to {func_name} failed. Error: {str(e)}")
+                    self._contract_data_cache[key][func_name] = None
 
         return self._contract_data_cache[key]
 
@@ -217,6 +226,7 @@ class Web3Service:
             )
         return self._block_cache[block_identifier]
 
+    # TODO : Store in disk
     def get_contract(self, address: str, abi_name: str, chain_id: Optional[int] = None):
         """
         Get a contract instance for a given address and ABI name.

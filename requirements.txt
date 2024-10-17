@@ -39,6 +39,7 @@ eth_abi==5.1.0
 ethpm-types==0.6.17
 evm-trace==0.2.3
 evmchains==0.0.12
+exceptiongroup==1.2.2
 executing==2.1.0
 fastparquet==2024.5.0
 frozenlist==1.4.1
@@ -108,6 +109,8 @@ six==1.16.0
 sortedcontainers==2.4.0
 SQLAlchemy==2.0.35
 stack-data==0.6.3
+toml==0.10.2
+tomli==2.0.2
 tomlkit==0.13.2
 toolz==0.12.1
 tqdm==4.66.5

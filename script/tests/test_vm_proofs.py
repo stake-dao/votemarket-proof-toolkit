@@ -29,7 +29,7 @@ async def test_block_header(vm_proofs, setup_environment, oracle, whale):
         block_info["block_timestamp"] == BLOCK_TIMESTAMP
     ), "Block timestamp should match"
     assert (
-        block_info["BlockHash"]
+        block_info["block_hash"]
         == "0xc8eada67a2c66e11ff9596628240fb4bccbd6aa039bc07256dc12a40d8430bcf"
     ), "Block hash should match"
     assert (

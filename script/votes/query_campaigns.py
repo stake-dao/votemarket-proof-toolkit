@@ -2,13 +2,11 @@ import os
 from web3 import Web3
 from eth_utils import to_checksum_address
 from typing import List
-import logging
 from contracts.contract_reader import ContractReader
 from shared.constants import GlobalConstants
 from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
 
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def get_all_platforms(protocol: str) -> List[Platform]:
@@ -35,10 +33,8 @@ def query_active_campaigns(
     """
 
     if chain_id not in web3_service.w3:
-        logging.info(f"Adding new chain to Web3 service: {chain_id}")
         web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
-    print(platform)
     platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
