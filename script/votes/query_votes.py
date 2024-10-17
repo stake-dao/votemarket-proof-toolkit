@@ -42,7 +42,9 @@ async def query_gauge_votes(
     end_block = block_number
 
     if start_block < end_block:
-        rprint(f"[cyan]Fetching new votes from block {start_block} to {end_block}[/cyan]")
+        rprint(
+            f"[cyan]Fetching new votes from block {start_block} to {end_block}[/cyan]"
+        )
         new_votes = await fetch_new_votes(w3, protocol, start_block, end_block)
 
         cached_data = cache.get_columns(
@@ -82,7 +84,9 @@ async def query_gauge_votes(
         if vote["gauge_addr"].lower() == gauge_address.lower()
     ]
 
-    rprint(f"[green]Filtered votes for gauge {gauge_address}: {len(filtered_votes)}[/green]")
+    rprint(
+        f"[green]Filtered votes for gauge {gauge_address}: {len(filtered_votes)}[/green]"
+    )
     return filtered_votes
 
 

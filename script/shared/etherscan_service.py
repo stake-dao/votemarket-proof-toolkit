@@ -17,12 +17,12 @@ load_dotenv()
 EXPLORER_APIS = {
     "1": {
         "url": "https://api.etherscan.io/api",
-        "key": os.getenv("ETHERSCAN_TOKEN", "")
+        "key": os.getenv("ETHERSCAN_TOKEN", ""),
     },
     "42161": {
         "url": "https://api.arbiscan.io/api",
-        "key": os.getenv("ARBISCAN_TOKEN", "")
-    }
+        "key": os.getenv("ARBISCAN_TOKEN", ""),
+    },
 }
 
 
@@ -195,7 +195,7 @@ def get_token_transfers(
     """
     explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
     url = f"{explorer['url']}?module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={explorer['key']}"
-    
+
     if contract_address:
         url += f"&contractaddress={contract_address}"
 

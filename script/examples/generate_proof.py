@@ -24,6 +24,7 @@ USER = to_checksum_address("0xa219712cc2aaa5aa98ccf2a7ba055231f1752323".lower())
 CURRENT_EPOCH = 1723680000
 BLOCK_NUMBER = 20530737
 
+
 def main():
     """Generate proofs for gauge (account + storage) and user (storage only needed)"""
     rprint(Panel("Starting VoteMarket Proof Generation", style="bold green"))
@@ -70,6 +71,7 @@ def main():
     console.print(f"0x{user_proof['storage_proof'].hex()[:64]}...")
 
     rprint(Panel("VoteMarket Proof Generation Completed", style="bold green"))
+
 
 if __name__ == "__main__":
     main()

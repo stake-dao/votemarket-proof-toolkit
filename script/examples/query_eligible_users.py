@@ -21,6 +21,7 @@ GAUGE_ADDRESS = to_checksum_address(
 BLOCK_NUMBER = 20864159  # Max block number to check
 CURRENT_EPOCH = 1723680000
 
+
 async def main():
     """Query eligible users for a gauge."""
     rprint(Panel("Querying Eligible Users for Gauge", style="bold green"))
@@ -36,24 +37,29 @@ async def main():
         PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER
     )
 
-    rprint(f"[green]Found {len(eligible_users)} eligible users for gauge {GAUGE_ADDRESS}[/green]")
+    rprint(
+        f"[green]Found {len(eligible_users)} eligible users for gauge {GAUGE_ADDRESS}[/green]"
+    )
 
     console.print("\n[bold magenta]Eligible Users:[/bold magenta]")
     for user in eligible_users[:5]:  # Display first 5 users as a sample
-        console.print(Panel.fit(
-            f"[yellow]User:[/yellow] {user['user']}\n"
-            f"[yellow]Last Vote:[/yellow] {user['last_vote']}\n"
-            f"[yellow]Slope:[/yellow] {user['slope']}\n"
-            f"[yellow]Power:[/yellow] {user['power']}\n"
-            f"[yellow]End:[/yellow] {user['end']}",
-            title=f"User {eligible_users.index(user) + 1}",
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                f"[yellow]User:[/yellow] {user['user']}\n"
+                f"[yellow]Last Vote:[/yellow] {user['last_vote']}\n"
+                f"[yellow]Slope:[/yellow] {user['slope']}\n"
+                f"[yellow]Power:[/yellow] {user['power']}\n"
+                f"[yellow]End:[/yellow] {user['end']}",
+                title=f"User {eligible_users.index(user) + 1}",
+                border_style="cyan",
+            )
+        )
 
     if len(eligible_users) > 5:
         rprint(f"[italic]...and {len(eligible_users) - 5} more users[/italic]")
 
     rprint(Panel("Query Completed", style="bold green"))
+
 
 if __name__ == "__main__":
     asyncio.run(main())

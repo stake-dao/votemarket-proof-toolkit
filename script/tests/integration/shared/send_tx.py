@@ -7,8 +7,10 @@ from web3.gas_strategies.rpc import rpc_gas_price_strategy
 W3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
 W3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
+
 def set_balance(address, balance):
     W3.provider.make_request("anvil_setBalance", [address, hex(balance)])
+
 
 def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
     from_address = to_checksum_address(from_address)
@@ -16,8 +18,8 @@ def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
 
     # Ensure the sender has enough balance
     current_balance = W3.eth.get_balance(from_address)
-    if current_balance < W3.to_wei(1, 'ether'):
-        set_balance(from_address, W3.to_wei(10, 'ether'))
+    if current_balance < W3.to_wei(1, "ether"):
+        set_balance(from_address, W3.to_wei(10, "ether"))
 
     try:
         W3.provider.make_request("anvil_impersonateAccount", [from_address])
@@ -39,6 +41,7 @@ def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
         return tx_receipt
     finally:
         W3.provider.make_request("anvil_stopImpersonatingAccount", [from_address])
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 4 and len(sys.argv) != 5:

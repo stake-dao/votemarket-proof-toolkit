@@ -30,6 +30,7 @@ load_dotenv()
 
 TEMP_DIR = "temp"
 
+
 def get_block_data(block_number: int) -> Dict[str, Any]:
     """
     Retrieve block data for a given block number.
@@ -49,6 +50,7 @@ def get_block_data(block_number: int) -> Dict[str, Any]:
         "rlp_block_header": block_info["rlp_block_header"],
     }
 
+
 def process_protocol(protocol: str, epoch: int) -> ProtocolData:
     """
     Process a single protocol to gather platform information.
@@ -62,7 +64,9 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
     """
     rprint(f"Processing protocol: [blue]{protocol}[/blue]")
     platforms = get_all_platforms(protocol)
-    rprint(f"Found [green]{len(platforms)}[/green] platforms for [blue]{protocol}[/blue]")
+    rprint(
+        f"Found [green]{len(platforms)}[/green] platforms for [blue]{protocol}[/blue]"
+    )
 
     web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
@@ -76,7 +80,9 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         if chain_id not in web3_service.w3:
             web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
 
-        platform_contract = web3_service.get_contract(platform_address, "vm_platform", chain_id)
+        platform_contract = web3_service.get_contract(
+            platform_address, "vm_platform", chain_id
+        )
         lens = platform_contract.functions.ORACLE().call()
         lens_address = to_checksum_address(lens.lower())
 
@@ -98,8 +104,12 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
         block_data = get_block_data(latest_setted_block)
         timestamp = block_data["block_timestamp"]
-        block_period_timestamp = (timestamp // GlobalConstants.WEEK) * GlobalConstants.WEEK
-        current_period_timestamp = (epoch // GlobalConstants.WEEK) * GlobalConstants.WEEK
+        block_period_timestamp = (
+            timestamp // GlobalConstants.WEEK
+        ) * GlobalConstants.WEEK
+        current_period_timestamp = (
+            epoch // GlobalConstants.WEEK
+        ) * GlobalConstants.WEEK
 
         if block_period_timestamp < current_period_timestamp:
             rprint(
@@ -111,6 +121,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         protocol_data["platforms"][platform_address] = platform
 
     return protocol_data
+
 
 def main(protocols: List[str], epoch: int) -> AllProtocolsData:
     """
@@ -136,6 +147,7 @@ def main(protocols: List[str], epoch: int) -> AllProtocolsData:
 
     rprint(f"Saved data for all protocols to {output_file}")
     return all_protocols_data
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

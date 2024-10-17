@@ -159,7 +159,13 @@ class Web3Service:
         Returns:
             Dict[str, Any]: A dictionary of function call results, keyed by function name.
         """
-        key = (contract_address.lower(), tuple((name, tuple(args), return_type) for name, args, return_type in function_calls))
+        key = (
+            contract_address.lower(),
+            tuple(
+                (name, tuple(args), return_type)
+                for name, args, return_type in function_calls
+            ),
+        )
 
         print(function_calls)
 
@@ -167,11 +173,9 @@ class Web3Service:
             multicall = W3Multicall(self.get_w3(chain_id))
             for func_name, args, return_type in function_calls:
                 # Construct the function signature
-                arg_types = ','.join(['address' for _ in args])
+                arg_types = ",".join(["address" for _ in args])
                 signature = f"{func_name}({arg_types}){return_type}"
-                multicall.add(
-                    W3Multicall.Call(contract_address, signature, args)
-                )
+                multicall.add(W3Multicall.Call(contract_address, signature, args))
 
             call_results = multicall.call()
 

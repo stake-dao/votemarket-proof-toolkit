@@ -34,6 +34,7 @@ vm_proofs = VoteMarketProofs(1)
 vm_votes = VoteMarketVotes(1)
 console = Console()
 
+
 async def process_protocol(
     protocol_data: Dict[str, Any], current_epoch: int
 ) -> Dict[str, Any]:
@@ -65,11 +66,19 @@ async def process_protocol(
         chain_id = platform_data["chain_id"]
         block_number = platform_data["latest_setted_block"]
 
-        console.print(Panel(f"Processing platform: [green]{platform_address} on chain [cyan]{chain_id}[/cyan]"))
+        console.print(
+            Panel(
+                f"Processing platform: [green]{platform_address} on chain [cyan]{chain_id}[/cyan]"
+            )
+        )
 
         if chain_id not in web3_service.w3:
-            with console.status(f"[yellow]Adding chain {chain_id} to Web3 service...[/yellow]"):
-                web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
+            with console.status(
+                f"[yellow]Adding chain {chain_id} to Web3 service...[/yellow]"
+            ):
+                web3_service.add_chain(
+                    chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+                )
 
         with console.status("[magenta]Querying active campaigns...[/magenta]"):
             active_campaigns = query_active_campaigns(
@@ -91,9 +100,13 @@ async def process_protocol(
 
         # Process unique gauges
         for gauge_address in unique_gauges:
-            console.print(Panel(f"Processing gauge: [magenta]{gauge_address}[/magenta]"))
+            console.print(
+                Panel(f"Processing gauge: [magenta]{gauge_address}[/magenta]")
+            )
             with console.status("[green]Processing gauge data...[/green]"):
-                gauge_data = await process_gauge(protocol, gauge_address, current_epoch, block_number)
+                gauge_data = await process_gauge(
+                    protocol, gauge_address, current_epoch, block_number
+                )
             platform_data["gauges"][gauge_address] = gauge_data
 
         # Process listed users for each campaign
@@ -101,18 +114,27 @@ async def process_protocol(
             gauge_address = campaign["gauge"].lower()
             if gauge_address in unique_gauges:
                 with console.status("[cyan]Processing listed users...[/cyan]"):
-                    listed_users_data = process_listed_users(protocol, gauge_address, block_number, campaign["listed_users"])
-                platform_data["gauges"][gauge_address]["listed_users"] = listed_users_data
+                    listed_users_data = process_listed_users(
+                        protocol, gauge_address, block_number, campaign["listed_users"]
+                    )
+                platform_data["gauges"][gauge_address][
+                    "listed_users"
+                ] = listed_users_data
 
         output_data["platforms"][platform_address.lower()] = platform_data
 
     console.print(f"Finished processing protocol: [blue]{protocol}[/blue]")
     return output_data
 
-async def process_gauge(protocol: str, gauge_address: str, current_epoch: int, block_number: int) -> Dict[str, Any]:
+
+async def process_gauge(
+    protocol: str, gauge_address: str, current_epoch: int, block_number: int
+) -> Dict[str, Any]:
     console.print("Querying votes")
     gauge_votes = await vm_votes.get_gauge_votes(protocol, gauge_address, block_number)
-    console.print(f"Found [yellow]{len(gauge_votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]")
+    console.print(
+        f"Found [yellow]{len(gauge_votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]"
+    )
 
     console.print("Generating point data proof")
     gauge_proofs = vm_proofs.get_gauge_proof(
@@ -127,11 +149,15 @@ async def process_gauge(protocol: str, gauge_address: str, current_epoch: int, b
         "users": {},
     }
 
-    console.print(f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]")
+    console.print(
+        f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
     eligible_users = await vm_votes.get_eligible_users(
         protocol, gauge_address, current_epoch, block_number
     )
-    console.print(f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]")
+    console.print(
+        f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
 
     for user in eligible_users:
         user_address = user["user"].lower()
@@ -152,7 +178,10 @@ async def process_gauge(protocol: str, gauge_address: str, current_epoch: int, b
 
     return gauge_data
 
-def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[str, Any]):
+
+def write_protocol_data(
+    protocol: str, current_epoch: int, processed_data: Dict[str, Any]
+):
     """
     Write processed protocol data to files in the specified structure.
 
@@ -168,7 +197,7 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
     header_data = {
         "epoch": current_epoch,
         "block_data": processed_data["block_data"],
-        "gauge_controller_proof": processed_data["gauge_controller_proof"]
+        "gauge_controller_proof": processed_data["gauge_controller_proof"],
     }
     with open(os.path.join(protocol_dir, "header.json"), "w") as f:
         json.dump(header_data, f, indent=2)
@@ -178,7 +207,7 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
         "epoch": current_epoch,
         "block_data": processed_data["block_data"],
         "gauge_controller_proof": processed_data["gauge_controller_proof"],
-        "platforms": processed_data["platforms"]
+        "platforms": processed_data["platforms"],
     }
     with open(os.path.join(protocol_dir, "index.json"), "w") as f:
         json.dump(main_data, f, indent=2)
@@ -200,7 +229,10 @@ def write_protocol_data(protocol: str, current_epoch: int, processed_data: Dict[
 
     console.print(f"Saved data for [blue]{protocol}[/blue] in {protocol_dir}")
 
-def process_listed_users(protocol: str, gauge_address: str, block_number: int, listed_users: List[str]) -> Dict[str, Any]:
+
+def process_listed_users(
+    protocol: str, gauge_address: str, block_number: int, listed_users: List[str]
+) -> Dict[str, Any]:
     listed_users_data = {}
     for listed_user in listed_users:
         console.print(f"Generating proof for listed user: [cyan]{listed_user}[/cyan]")
@@ -215,6 +247,7 @@ def process_listed_users(protocol: str, gauge_address: str, block_number: int, l
         }
     return listed_users_data
 
+
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     """
     Main function to process all protocols and generate active proofs.
@@ -223,17 +256,24 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
         all_protocols_data (AllProtocolsData): Data containing all protocols and platforms.
         current_epoch (int): The current voting epoch.
     """
-    console.print(f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]")
+    console.print(
+        f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
+    )
 
     for protocol, protocol_data in all_protocols_data["protocols"].items():
         if len(protocol_data["platforms"]) == 0:
-            console.print(f"Skipping protocol: [blue]{protocol}[/blue] as no platforms found")
+            console.print(
+                f"Skipping protocol: [blue]{protocol}[/blue] as no platforms found"
+            )
             continue
         console.print(f"Processing protocol: [blue]{protocol}[/blue]")
         processed_data = await process_protocol(protocol_data, current_epoch)
         write_protocol_data(protocol.lower(), current_epoch, processed_data)
 
-    console.print("[bold green]Finished generating active proofs for all protocols[/bold green]")
+    console.print(
+        "[bold green]Finished generating active proofs for all protocols[/bold green]"
+    )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate active proofs for protocols")

@@ -8,17 +8,16 @@ from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
 
 
-
 def get_all_platforms(protocol: str) -> List[Platform]:
     # TODO: Use a registry / address book for  all the platforms for the protocol
 
     if protocol == "curve":
 
         return [
-        {
-            "protocol": "curve",
-            "chain_id": 42161,
-            "address": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
+            {
+                "protocol": "curve",
+                "chain_id": 42161,
+                "address": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
             }
         ]
     else:
