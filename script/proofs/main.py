@@ -5,11 +5,11 @@ This class provides methods to generate user proofs, gauge proofs, and retrieve 
 It initializes with a Web3 service for the specified chain ID.
 """
 
-import os
 from proofs.proof_generator.user_proof import generate_user_proof
 from proofs.proof_generator.gauge_proof import generate_gauge_proof
 from proofs.block_header.encoder import get_block_info
-from shared.constants import GaugeVotesConstants
+from shared.constants import GaugeVotesConstants, GlobalConstants
+from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
 from shared.exceptions import VoteMarketProofsException
 from shared.types import UserProof, GaugeProof, BlockInfo
@@ -20,7 +20,7 @@ class VoteMarketProofs:
     """A global class for generating and managing proofs"""
 
     def __init__(self, chain_id: int):
-        rpc_url = os.getenv("ETHEREUM_MAINNET_RPC_URL")  # TODO : Depends on chain_id
+        rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
 
         self.chain_id = chain_id
         if not rpc_url:
@@ -91,6 +91,10 @@ class VoteMarketProofs:
         self, protocol: str, gauge_address: str, current_epoch: int, block_number: int
     ) -> GaugeProof:
         """Generate a gauge proof for a given protocol, gauge, current epoch, and block number"""
+
+        # We always treat the epoch rounded to the day
+        current_epoch = get_rounded_epoch(current_epoch)
+
         try:
             gauge_controller_proof, point_data_proof = generate_gauge_proof(
                 self.web3_service.get_w3(),

@@ -9,7 +9,7 @@ import asyncio
 from typing import List, Dict, Any
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
-from votes.main import VoteMarketVotes
+from data.main import VoteMarketData
 from shared.constants import GlobalConstants
 from shared.web3_service import get_web3_service
 from rich import print as rprint
@@ -17,7 +17,7 @@ from rich.panel import Panel
 
 # Initialize services
 vm_proofs = VoteMarketProofs(1)
-vm_votes = VoteMarketVotes(1)
+vm_votes = VoteMarketData(1)
 web3_service = get_web3_service()
 web3_service.add_chain(42161, GlobalConstants.CHAIN_ID_TO_RPC[42161])
 

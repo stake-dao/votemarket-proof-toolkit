@@ -45,7 +45,7 @@ async def query_gauge_votes(
         rprint(
             f"[cyan]Fetching new votes from block {start_block} to {end_block}[/cyan]"
         )
-        new_votes = await fetch_new_votes(w3, protocol, start_block, end_block)
+        new_votes = await fetch_new_votes(protocol, start_block, end_block)
 
         cached_data = cache.get_columns(
             cache_file, ["time", "user", "gauge_addr", "weight"]

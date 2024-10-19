@@ -19,9 +19,10 @@ from typing import Dict, Any, List
 from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from shared.constants import GlobalConstants
+from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
-from votes.main import VoteMarketVotes
-from votes.query_campaigns import query_active_campaigns
+from data.main import VoteMarketData
+from data.query_campaigns import query_active_campaigns
 from shared.types import AllProtocolsData
 from rich.console import Console
 from rich.panel import Panel
@@ -31,7 +32,7 @@ load_dotenv()
 TEMP_DIR = "temp"
 
 vm_proofs = VoteMarketProofs(1)
-vm_votes = VoteMarketVotes(1)
+vm_votes = VoteMarketData(1)
 console = Console()
 
 
@@ -40,6 +41,9 @@ async def process_protocol(
 ) -> Dict[str, Any]:
     protocol = protocol_data["protocol"].lower()
     platforms = {k.lower(): v for k, v in protocol_data["platforms"].items()}
+
+    # Always treat epoch as rounded
+    current_epoch = get_rounded_epoch(current_epoch)
 
     output_data = {
         "block_data": platforms[list(platforms.keys())[0]]["block_data"],

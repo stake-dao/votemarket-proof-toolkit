@@ -21,6 +21,7 @@
   - [Usage](#usage)
     - [Using the Makefile](#using-the-makefile)
     - [Using Python Scripts](#using-python-scripts)
+  - [Understanding Block Numbers and Proofs](#understanding-block-numbers-and-proofs)
   - [Documentation](#documentation)
 
 ## Introduction
@@ -87,6 +88,27 @@ The toolkit provides multiple ways to generate proofs for interacting with Votem
 
 You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.
 
+## Understanding Block Numbers and Proofs
+
+The `BLOCK_NUMBER` parameter is crucial when generating proofs. This number should be the block set in the Votemarket oracle for the specific period you're interested in claiming (period is rounded down by week, as on mainnet gauge controller).
+
+To get the correct block number for a specific epoch or set of epochs, you can use the following Makefile command:
+
+```bash
+make get-epoch-blocks CHAIN_ID=1 PLATFORM=0x... EPOCHS=1234,1235,1236
+```
+
+This command will return the block numbers set in the oracle for the specified epochs. For example:
+
+```
+Epoch Blocks:
+  Epoch 1234: Block 15000000
+  Epoch 1235: Block 15007000
+  Epoch 1236: Block 15014000
+```
+
+Use these block numbers when generating proofs to ensure they match the oracle's state for the relevant epoch.
+
 ## Documentation
 
 For detailed information on each component and function, please refer to the inline documentation in the source code. Key areas to explore include:
@@ -94,3 +116,4 @@ For detailed information on each component and function, please refer to the inl
 - `proofs/main.py`: Main interface for generating proofs
 - `votes/main.py`: Functions for querying votes and campaigns
 - `shared/`: Utility functions and shared constants
+- `Makefile`: Various commands for interacting with the toolkit, including proof generation and data retrieval

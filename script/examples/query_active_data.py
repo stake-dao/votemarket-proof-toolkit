@@ -1,14 +1,16 @@
 """Example of how to query active campaigns for a platform."""
 
-import os
+import time
 from typing import List
 from dotenv import load_dotenv
 from shared.types import Campaign
-from votes.main import VoteMarketVotes
+from data.main import VoteMarketData
 from eth_utils import to_checksum_address
 from rich import print as rprint
 from rich.panel import Panel
 from rich.console import Console
+
+from shared.utils import get_rounded_epoch
 
 load_dotenv()
 
@@ -17,15 +19,26 @@ PLATFORM_ADDRESS = to_checksum_address(
     "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e".lower()
 )
 
-vm_votes = VoteMarketVotes(CHAIN_ID)
+vm_data = VoteMarketData(CHAIN_ID)
 console = Console()
 
 
 def main():
     """Query and display active campaigns for a platform."""
-    rprint(Panel("Querying Active Campaigns", style="bold green"))
+    rprint(Panel("Querying Active Votemarket Data", style="bold green"))
 
-    active_campaigns: List[Campaign] = vm_votes.get_active_campaigns(
+
+    # Active epoch
+    current_timestamp = int(time.time())
+    active_epoch = get_rounded_epoch(current_timestamp)
+
+    # Latest blocks
+    latest_block = vm_data.get_epochs_block(CHAIN_ID, PLATFORM_ADDRESS, [active_epoch])[active_epoch]
+
+    rprint(f"[cyan]Active epoch:[/cyan] [yellow]{active_epoch}[/yellow]")
+    rprint(f"[cyan]Latest block:[/cyan] [yellow]{latest_block}[/yellow]")
+
+    active_campaigns: List[Campaign] = vm_data.get_active_campaigns(
         CHAIN_ID, PLATFORM_ADDRESS
     )
 

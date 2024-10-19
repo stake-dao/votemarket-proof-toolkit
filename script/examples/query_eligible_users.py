@@ -3,14 +3,14 @@
 import asyncio
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
-from votes.main import VoteMarketVotes
+from data.main import VoteMarketData
 from rich import print as rprint
 from rich.panel import Panel
 from rich.console import Console
 
 load_dotenv()
 
-vm_votes = VoteMarketVotes(1)
+vm_votes = VoteMarketData(1)
 console = Console()
 
 # Example parameters

@@ -18,8 +18,9 @@ from typing import List, Dict, Any
 from eth_utils import to_checksum_address
 from dotenv import load_dotenv
 from shared.constants import GlobalConstants
+from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
-from votes.query_campaigns import get_all_platforms
+from data.query_campaigns import get_all_platforms
 from proofs.main import VoteMarketProofs
 from shared.types import ProtocolData, AllProtocolsData
 import time
@@ -62,6 +63,10 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
     Returns:
         ProtocolData: A dictionary containing the protocol name and a list of platform data.
     """
+
+    # Always treat epoch as rounded
+    epoch = get_rounded_epoch(epoch)
+
     rprint(f"Processing protocol: [blue]{protocol}[/blue]")
     platforms = get_all_platforms(protocol)
     rprint(
@@ -107,11 +112,8 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         block_period_timestamp = (
             timestamp // GlobalConstants.WEEK
         ) * GlobalConstants.WEEK
-        current_period_timestamp = (
-            epoch // GlobalConstants.WEEK
-        ) * GlobalConstants.WEEK
 
-        if block_period_timestamp < current_period_timestamp:
+        if block_period_timestamp < epoch:
             rprint(
                 f"[italic red]Latest setted block timestamp[/italic red] ({block_period_timestamp}) [italic red]is less than current period timestamp[/italic red] ({current_period_timestamp}) [italic red]for platform[/italic red] {platform_address}. [italic red]Skipping.[/italic red]"
             )

@@ -7,7 +7,8 @@ VENV_ACTIVATE := . $(VENV)/bin/activate
 SRC_DIR := script
 
 # Phony targets declaration
-.PHONY: all install clean user-proof gauge-proof block-info test help integration
+.PHONY: all install clean test help integration
+.PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
@@ -24,12 +25,11 @@ clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
 
-# Generate user proof for VoteMarketV2
-# Required variables:
-# - PROTOCOL: Protocol name (e.g., 'curve')
-# - GAUGE_ADDRESS: Ethereum address of the gauge
-# - USER: Ethereum address of the user
-# - BLOCK_NUMBER: Ethereum block number for the proof
+# Run integration tests
+integration:
+	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)
+
+# Proof generation commands
 user-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
 		vm = VoteMarketProofs(1); \
@@ -37,12 +37,6 @@ user-proof: install
 		print('User Proof:'); \
 		print(f'0x{user_proof[\"storage_proof\"].hex()}')"
 
-# Generate gauge proof for VoteMarketV2
-# Required variables:
-# - PROTOCOL: Protocol name (e.g., 'curve')
-# - GAUGE_ADDRESS: Ethereum address of the gauge
-# - CURRENT_EPOCH: Current voting epoch
-# - BLOCK_NUMBER: Ethereum block number for the proof
 gauge-proof: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
 		vm = VoteMarketProofs(1); \
@@ -51,9 +45,7 @@ gauge-proof: install
 		print(f'  Proof for block (Gauge controller) : 0x{gauge_proof[\"gauge_controller_proof\"].hex()}'); \
 		print(f'  Proof for point (Gauge data): 0x{gauge_proof[\"point_data_proof\"].hex()}')"
 
-# Get block information for VoteMarketV2
-# Required variables:
-# - BLOCK_NUMBER: Ethereum block number to retrieve information for
+# Information retrieval commands
 block-info: install
 	$(VENV_ACTIVATE) && $(PYTHON) -c "from proofs.main import VoteMarketProofs; \
 		vm = VoteMarketProofs(1); \
@@ -64,40 +56,41 @@ block-info: install
 		print(f'  Block Timestamp: {info[\"block_timestamp\"]}'); \
 		print(f'  RLP Block Header (used for setBlockData): {info[\"rlp_block_header\"]}')"
 
-
-# Get active campaigns for a given chain + platform
-# Required variables:
-# - CHAIN_ID: Chain ID (e.g., 1 for Ethereum Mainnet)
-# - PLATFORM: Platform address (e.g., '0x...')
 get-active-campaigns: install
-	$(VENV_ACTIVATE) && $(PYTHON) -c "from votes.main import VoteMarketVotes; \
-		vm = VoteMarketVotes($(CHAIN_ID)); \
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from data.main import VoteMarketData; \
+		vm = VoteMarketData($(CHAIN_ID)); \
 		campaigns = vm.get_active_campaigns($(CHAIN_ID), '$(PLATFORM)'); \
 		print('Active Campaigns:'); \
 		[print(f'  Campaign ID: {campaign[\"id\"]}, Gauge: {campaign[\"gauge\"]}, Listed Users: {campaign[\"listed_users\"]}') for campaign in campaigns]"
 
-# Run tests
-test: install
-	$(VENV_ACTIVATE) && ape test --network arbitrum:mainnet-fork
+get-epoch-blocks: install
+	$(VENV_ACTIVATE) && $(PYTHON) -c "from data.main import VoteMarketData; \
+		vm = VoteMarketData($(CHAIN_ID)); \
+		epochs = [int(e) for e in '$(EPOCHS)'.split(',')]; \
+		blocks = vm.get_epochs_block($(CHAIN_ID), '$(PLATFORM)', epochs); \
+		print('Epoch Blocks:'); \
+		[print(f'  Epoch {epoch}: Block {block}') for epoch, block in blocks.items()]"
 
 # Display help information
 help:
 	@echo "VoteMarket Proofs Generator Makefile"
 	@echo ""
 	@echo "This Makefile facilitates the generation of RLP-encoded proofs for VoteMarketV2."
-	@echo "It includes targets for generating user proofs, gauge proofs, and block information."
+	@echo "It includes targets for generating user proofs, gauge proofs, and retrieving various information."
 	@echo ""
 	@echo "Available targets:"
-	@echo "  all         : Set up the virtual environment and install dependencies"
-	@echo "  install     : Same as 'all'"
-	@echo "  clean       : Remove virtual environment and cached Python files"
-	@echo "  user-proof  : Generate a user proof (requires PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
-	@echo "  gauge-proof : Generate a gauge proof (requires PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER)"
-	@echo "  block-info  : Get block information (requires BLOCK_NUMBER)"
-	@echo "  help        : Display this help message"
+	@echo "  all                : Set up the virtual environment and install dependencies"
+	@echo "  install            : Same as 'all'"
+	@echo "  clean              : Remove virtual environment and cached Python files"
+	@echo "  test               : Run tests"
+	@echo "  integration        : Run integration tests"
+	@echo "  user-proof         : Generate a user proof (requires PROTOCOL, GAUGE_ADDRESS, USER, BLOCK_NUMBER)"
+	@echo "  gauge-proof        : Generate a gauge proof (requires PROTOCOL, GAUGE_ADDRESS, CURRENT_EPOCH, BLOCK_NUMBER)"
+	@echo "  block-info         : Get block information (requires BLOCK_NUMBER)"
+	@echo "  get-active-campaigns: Get active campaigns for a given chain and platform (requires CHAIN_ID, PLATFORM)"
+	@echo "  get-epoch-blocks   : Get set blocks for a list of epochs (requires CHAIN_ID, PLATFORM, EPOCHS)"
+	@echo "  help               : Display this help message"
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678"
-
-integration:
-	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)
+	@echo "  make get-epoch-blocks CHAIN_ID=1 PLATFORM=0x... EPOCHS=1234,1235,1236"

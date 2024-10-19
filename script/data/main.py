@@ -1,15 +1,16 @@
 from typing import List, Dict, Any
 from shared.constants import GaugeControllerConstants, GlobalConstants
 from shared.types import Campaign, EligibleUser
-from votes.query_votes import query_gauge_votes
-from votes.query_campaigns import query_active_campaigns
+from data.query_votes import query_gauge_votes
+from data.query_campaigns import query_active_campaigns
+from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
-from shared.exceptions import VoteMarketVotesException
+from shared.exceptions import VoteMarketDataException
 from w3multicall.multicall import W3Multicall
 from eth_utils import to_checksum_address
 
 
-class VoteMarketVotes:
+class VoteMarketData:
     def __init__(self, chain_id: int):
         rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
         if not rpc_url:
@@ -24,13 +25,22 @@ class VoteMarketVotes:
                 self.web3_service.w3, protocol, gauge_address, block_number
             )
         except Exception as e:
-            raise VoteMarketVotesException(f"Error querying gauge votes: {str(e)}")
+            raise VoteMarketDataException(f"Error querying gauge votes: {str(e)}")
 
     async def get_eligible_users(
-        self, protocol: str, gauge_address: str, current_epoch: int, block_number: int
+        self, protocol: str, gauge_address: str, current_epoch: int, block_number: int, chain_id: int = None, platform: str = None
     ) -> List[EligibleUser]:
+        # We always treat the epoch rounded to the day
+        current_epoch = get_rounded_epoch(current_epoch)
+
         try:
             w3 = self.web3_service.get_w3()
+
+            if chain_id is not None and platform is not None:
+                epoch_blocks = self.get_epochs_block(chain_id, platform, [current_epoch])
+                block_number = epoch_blocks[current_epoch]
+                if block_number == 0:
+                    raise VoteMarketDataException(f"No block set for epoch {current_epoch}")
 
             multicall = W3Multicall(w3)
 
@@ -85,10 +95,48 @@ class VoteMarketVotes:
 
             return eligible_users
         except Exception as e:
-            raise VoteMarketVotesException(f"Error getting eligible users: {str(e)}")
+            raise VoteMarketDataException(f"Error getting eligible users: {str(e)}")
+
+    def get_epochs_block(self, chain_id: int, platform: str, epochs: List[int]) -> Dict[int, int]:
+
+        # We always treat the epoch rounded to the day
+        epochs = [get_rounded_epoch(epoch) for epoch in epochs]
+
+
+        if chain_id not in self.web3_service.w3:
+            self.web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
+
+        w3 = self.web3_service.get_w3(chain_id)
+        multicall = W3Multicall(w3)
+
+        platform_contract = self.web3_service.get_contract(
+            platform, "vm_platform", chain_id
+        )
+        lens = platform_contract.functions.ORACLE().call()
+        lens_address = to_checksum_address(lens.lower())
+
+        lens_contract = self.web3_service.get_contract(lens_address, "oracle_lens", chain_id)
+        oracle_address = lens_contract.functions.oracle().call()
+        oracle_address = to_checksum_address(oracle_address.lower())
+
+        if oracle_address == "0x0000000000000000000000000000000000000000":
+            return {epoch: 0 for epoch in epochs}
+
+        for epoch in epochs:
+            multicall.add(
+                W3Multicall.Call(
+                    oracle_address,
+                    "epochBlockNumber(uint256)(bytes32,bytes32,uint256,uint256)",
+                    [epoch],
+                )
+            )
+
+        results = multicall.call()
+
+        return {epochs[i]: results[i][2] if results[i][2] != 0 else 0 for i in range(len(epochs))}
 
     def get_active_campaigns(self, chain_id: int, platform: str) -> List[Campaign]:
         try:
             return query_active_campaigns(self.web3_service, chain_id, platform)
         except Exception as e:
-            raise VoteMarketVotesException(f"Error querying active campaigns: {str(e)}")
+            raise VoteMarketDataException(f"Error querying active campaigns: {str(e)}")

@@ -3,6 +3,8 @@ import rlp
 from typing import Any, Dict
 from hexbytes import HexBytes
 
+from shared.constants import GlobalConstants
+
 
 def load_json(file_path: str) -> Dict[str, Any]:
     with open(file_path, "r") as file:
@@ -44,4 +46,7 @@ def get_closest_block_timestamp(chain, timestamp):
 
 
 def get_rounded_epoch(timestamp: int) -> int:
-    return timestamp // 86400 * 86400
+    """
+    Get the rounded epoch for a given timestamp.
+    """
+    return timestamp // GlobalConstants.WEEK * GlobalConstants.WEEK
