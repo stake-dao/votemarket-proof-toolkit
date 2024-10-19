@@ -115,7 +115,7 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
 
         if block_period_timestamp < epoch:
             rprint(
-                f"[italic red]Latest setted block timestamp[/italic red] ({block_period_timestamp}) [italic red]is less than current period timestamp[/italic red] ({current_period_timestamp}) [italic red]for platform[/italic red] {platform_address}. [italic red]Skipping.[/italic red]"
+                f"[italic red]Latest setted block timestamp[/italic red] ({block_period_timestamp}) [italic red]is less than current period timestamp[/italic red] ({epoch}) [italic red]for platform[/italic red] {platform_address}. [italic red]Skipping.[/italic red]"
             )
             continue
 
