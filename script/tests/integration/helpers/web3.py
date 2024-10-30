@@ -51,11 +51,15 @@ def get_latest_block():
 
 
 def set_eth_balance(account, balance):
-    check_error(W3.provider.make_request("anvil_setBalance", [account, balance]))
+    check_error(
+        W3.provider.make_request("anvil_setBalance", [account, balance])
+    )
 
 
 def send_value(sender, recipient, value):
-    tx_hash = W3.eth.send_transaction({"from": sender, "to": recipient, "value": value})
+    tx_hash = W3.eth.send_transaction(
+        {"from": sender, "to": recipient, "value": value}
+    )
     return W3.eth.wait_for_transaction_receipt(tx_hash)
 
 
@@ -64,11 +68,15 @@ def force_mine_block():
 
 
 def impersonate_account(address):
-    check_error(W3.provider.make_request("anvil_impersonateAccount", [address]))
+    check_error(
+        W3.provider.make_request("anvil_impersonateAccount", [address])
+    )
 
 
 def stop_impersonate_account(address):
-    check_error(W3.provider.make_request("anvil_stopImpersonatingAccount", [address]))
+    check_error(
+        W3.provider.make_request("anvil_stopImpersonatingAccount", [address])
+    )
 
 
 def send_transaction(contract_function, sender_address):

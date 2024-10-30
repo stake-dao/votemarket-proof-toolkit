@@ -8,7 +8,9 @@ from web3.gas_strategies.rpc import rpc_gas_price_strategy
 W3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
 W3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
 
-REWARD_TOKEN = to_checksum_address("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1")
+REWARD_TOKEN = to_checksum_address(
+    "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"
+)
 
 
 def set_balance(address, balance):
@@ -39,16 +41,22 @@ def impersonate_and_send_tx(from_address, to_address, calldata, value=0):
         tx_hash = W3.eth.send_transaction(tx)
         tx_receipt = W3.eth.wait_for_transaction_receipt(tx_hash)
 
-        print(f"Transaction successful. Hash: {tx_receipt.transactionHash.hex()}")
+        print(
+            f"Transaction successful. Hash: {tx_receipt.transactionHash.hex()}"
+        )
         print(f"Gas used: {tx_receipt.gasUsed}")
         return tx_receipt
     finally:
-        W3.provider.make_request("anvil_stopImpersonatingAccount", [from_address])
+        W3.provider.make_request(
+            "anvil_stopImpersonatingAccount", [from_address]
+        )
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 4 and len(sys.argv) != 5:
-        print("Usage: python send_tx.py <FROM_ADDRESS> <TO_ADDRESS> <CALLDATA> [VALUE]")
+        print(
+            "Usage: python send_tx.py <FROM_ADDRESS> <TO_ADDRESS> <CALLDATA> [VALUE]"
+        )
         sys.exit(1)
 
     from_address = sys.argv[1]

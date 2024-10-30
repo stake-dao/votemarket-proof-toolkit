@@ -25,10 +25,15 @@ def setup():
     set_eth_balance(GOV, hex(100 * 10**18))
 
     impersonate_account(GOV)
-    oracle_contract = W3.eth.contract(address=ORACLE, abi=load_json("abi/oracle.json"))
-    send_transaction(oracle_contract.functions.setAuthorizedDataProvider(VERIFIER), GOV)
+    oracle_contract = W3.eth.contract(
+        address=ORACLE, abi=load_json("abi/oracle.json")
+    )
     send_transaction(
-        oracle_contract.functions.setAuthorizedBlockNumberProvider(VERIFIER), GOV
+        oracle_contract.functions.setAuthorizedDataProvider(VERIFIER), GOV
+    )
+    send_transaction(
+        oracle_contract.functions.setAuthorizedBlockNumberProvider(VERIFIER),
+        GOV,
     )
     send_transaction(
         oracle_contract.functions.setAuthorizedBlockNumberProvider(GOV), GOV
@@ -81,8 +86,12 @@ def create_campaign(
     return tx_receipt
 
 
-def insert_block_number(epoch, block_number, block_hash, block_timestamp, from_address):
-    oracle_contract = W3.eth.contract(address=ORACLE, abi=load_json("abi/oracle.json"))
+def insert_block_number(
+    epoch, block_number, block_hash, block_timestamp, from_address
+):
+    oracle_contract = W3.eth.contract(
+        address=ORACLE, abi=load_json("abi/oracle.json")
+    )
     insert_block_function = oracle_contract.functions.insertBlockNumber(
         epoch, (block_hash, "0x" + "0" * 64, block_number, block_timestamp)
     )

@@ -131,9 +131,12 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
             if data["status"] == "1":
                 return data["result"]
             elif (
-                data["status"] == "0" and data["message"] == f"No {request_type} found"
+                data["status"] == "0"
+                and data["message"] == f"No {request_type} found"
             ):
-                logging.info(f"No {request_type} found for the given parameters")
+                logging.info(
+                    f"No {request_type} found for the given parameters"
+                )
                 return {} if request_type == "logs" else []
             elif _is_rate_limit_error(data):
                 logging.info("Rate limit reached, retrying after delay...")

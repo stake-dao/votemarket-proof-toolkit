@@ -17,7 +17,11 @@ from tests.integration.helpers.vm import (
     set_account_data,
     claim,
 )
-from shared.utils import get_closest_block_timestamp, get_rounded_epoch, load_json
+from shared.utils import (
+    get_closest_block_timestamp,
+    get_rounded_epoch,
+    load_json,
+)
 from tests.integration.helpers.web3 import W3, get_latest_block
 import json
 import os
@@ -50,7 +54,9 @@ def scenario_create():
     try:
         # Approve reward token
         snapshots["before_approve"] = take_snapshot()
-        approve_erc20(REWARD_TOKEN, VOTEMARKET, TOTAL_REWARD_AMOUNT, CAMPAIGN_MANAGER)
+        approve_erc20(
+            REWARD_TOKEN, VOTEMARKET, TOTAL_REWARD_AMOUNT, CAMPAIGN_MANAGER
+        )
 
         # Create campaign
         snapshots["before_create_campaign"] = take_snapshot()
@@ -150,7 +156,11 @@ def scenario_create():
             address=VOTEMARKET, abi=load_json("abi/vm_platform.json")
         )
 
-        print(votemarket.functions.totalClaimedByAccount(0, epoch, USER_ADDRESS).call())
+        print(
+            votemarket.functions.totalClaimedByAccount(
+                0, epoch, USER_ADDRESS
+            ).call()
+        )
 
         claim(
             campaign_id=0,

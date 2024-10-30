@@ -24,7 +24,9 @@ class VoteMarketProofs:
 
         self.chain_id = chain_id
         if not rpc_url:
-            raise ValueError("ETHEREUM_MAINNET_RPC_URL environment variable is not set")
+            raise ValueError(
+                "ETHEREUM_MAINNET_RPC_URL environment variable is not set"
+            )
         self.web3_service = Web3Service(chain_id, rpc_url)
 
     def is_valid_gauge(self, protocol: str, gauge: str) -> bool:
@@ -40,7 +42,9 @@ class VoteMarketProofs:
         """
 
         # Get gauge controller address
-        gauge_controller_address = GaugeVotesConstants.GAUGE_CONTROLLER[protocol]
+        gauge_controller_address = GaugeVotesConstants.GAUGE_CONTROLLER[
+            protocol
+        ]
         gauge_controller_contract = self.web3_service.get_contract(
             gauge_controller_address, "gauge_controller", self.chain_id
         )
@@ -83,12 +87,18 @@ class VoteMarketProofs:
                 user,
                 block_number,
             )
-            return UserProof(account_proof=account_proof, storage_proof=storage_proof)
+            return UserProof(
+                account_proof=account_proof, storage_proof=storage_proof
+            )
         except Exception:
             raise VoteMarketProofsException("Error generating user proof")
 
     def get_gauge_proof(
-        self, protocol: str, gauge_address: str, current_epoch: int, block_number: int
+        self,
+        protocol: str,
+        gauge_address: str,
+        current_epoch: int,
+        block_number: int,
     ) -> GaugeProof:
         """Generate a gauge proof for a given protocol, gauge, current epoch, and block number"""
 
@@ -113,7 +123,9 @@ class VoteMarketProofs:
     def get_block_info(self, block_number: int) -> BlockInfo:
         """Get block info for a given block number"""
         try:
-            block_info = get_block_info(self.web3_service.get_w3(), block_number)
+            block_info = get_block_info(
+                self.web3_service.get_w3(), block_number
+            )
             return BlockInfo(
                 block_number=block_info["block_number"],
                 block_hash=block_info["block_hash"],

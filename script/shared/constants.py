@@ -69,6 +69,12 @@ class GlobalConstants:
 
     REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
 
+    PLATFORMS = {
+        "curve": {
+            42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Arbitrum
+        }
+    }
+
     CHAIN_ID_TO_RPC = {
         1: os.getenv("ETHEREUM_MAINNET_RPC_URL"),
         56: os.getenv("BSC_MAINNET_RPC_URL"),

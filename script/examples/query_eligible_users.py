@@ -28,7 +28,9 @@ async def main():
 
     # Query gauge votes
     rprint("[cyan]Fetching gauge votes...[/cyan]")
-    gauge_votes = await vm_votes.get_gauge_votes(PROTOCOL, GAUGE_ADDRESS, BLOCK_NUMBER)
+    gauge_votes = await vm_votes.get_gauge_votes(
+        PROTOCOL, GAUGE_ADDRESS, BLOCK_NUMBER
+    )
     rprint(f"[green]Found {len(gauge_votes)} gauge votes[/green]")
 
     # Get eligible users

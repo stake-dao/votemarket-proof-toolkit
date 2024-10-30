@@ -38,7 +38,9 @@ class ParquetCache:
                 df = pd.read_parquet(cache_file, columns=column_names)
                 return df.to_dict(orient="list")
             except Exception as e:
-                print(f"Error reading columns {column_names} from Parquet file: {e}")
+                print(
+                    f"Error reading columns {column_names} from Parquet file: {e}"
+                )
                 return {col: [] for col in column_names}
         return {col: [] for col in column_names}
 
@@ -49,7 +51,9 @@ class ParquetCache:
             return False
         return True
 
-    def save_votes(self, filename: str, latest_block: int, votes: List[Dict[str, Any]]):
+    def save_votes(
+        self, filename: str, latest_block: int, votes: List[Dict[str, Any]]
+    ):
         cache_file = self._get_cache_file_path(filename)
         df_votes = pd.DataFrame(votes)
         df_votes["latest_block"] = latest_block

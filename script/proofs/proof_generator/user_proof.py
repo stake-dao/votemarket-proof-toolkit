@@ -88,9 +88,9 @@ def generate_user_proof(
     last_user_vote_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
         "last_user_vote"
     ]
-    vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
-        "vote_user_slope"
-    ]
+    vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[
+        protocol
+    ]["vote_user_slope"]
 
     # Calculate last user vote storage slot
     last_user_vote_slot = get_user_gauge_storage_slot(

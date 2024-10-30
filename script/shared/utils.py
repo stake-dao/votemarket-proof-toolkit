@@ -22,7 +22,9 @@ def pad_address(address):
 
 
 def encode_rlp_proofs(proofs):
-    account_proof = list(map(rlp.decode, map(HexBytes, proofs["accountProof"])))
+    account_proof = list(
+        map(rlp.decode, map(HexBytes, proofs["accountProof"]))
+    )
     storage_proofs = [
         list(map(rlp.decode, map(HexBytes, proof["proof"])))
         for proof in proofs["storageProof"]

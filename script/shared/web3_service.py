@@ -48,7 +48,9 @@ class Web3Service:
         """
         self.default_chain_id = default_chain_id
         self.add_chain(default_chain_id, default_rpc_url)
-        self._latest_block_cache: Dict[Tuple[Optional[int], str], Dict[str, Any]] = {}
+        self._latest_block_cache: Dict[
+            Tuple[Optional[int], str], Dict[str, Any]
+        ] = {}
         self._token_info_cache: Dict[str, Dict[str, Any]] = {}
         self._contract_data_cache: Dict[
             Tuple[str, Tuple[Tuple[str, str], ...]], Dict[str, Any]
@@ -90,7 +92,9 @@ class Web3Service:
             raise ValueError(f"Chain ID {chain_id} not initialized")
         return self.w3[chain_id]
 
-    def get_latest_block(self, chain_id: Optional[int] = None) -> Dict[str, Any]:
+    def get_latest_block(
+        self, chain_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Get the latest block information for a specific chain.
 
@@ -103,9 +107,9 @@ class Web3Service:
         """
         key = (chain_id, "latest")
         if key not in self._latest_block_cache:
-            self._latest_block_cache[key] = self.get_w3(chain_id).eth.get_block(
-                "latest"
-            )
+            self._latest_block_cache[key] = self.get_w3(
+                chain_id
+            ).eth.get_block("latest")
         return self._latest_block_cache[key]
 
     def get_token_info(
@@ -122,14 +126,20 @@ class Web3Service:
             Dict[str, Dict[str, Any]]: A dictionary of token information, keyed by token address.
         """
         uncached_addresses = [
-            addr for addr in token_addresses if addr not in self._token_info_cache
+            addr
+            for addr in token_addresses
+            if addr not in self._token_info_cache
         ]
         if uncached_addresses:
             multicall = W3Multicall(self.get_w3(chain_id))
             for address in uncached_addresses:
                 multicall.add(W3Multicall.Call(address, "name()(string)", []))
-                multicall.add(W3Multicall.Call(address, "symbol()(string)", []))
-                multicall.add(W3Multicall.Call(address, "decimals()(uint8)", []))
+                multicall.add(
+                    W3Multicall.Call(address, "symbol()(string)", [])
+                )
+                multicall.add(
+                    W3Multicall.Call(address, "decimals()(uint8)", [])
+                )
 
             call_results = multicall.call()
 
@@ -175,7 +185,9 @@ class Web3Service:
                 # Construct the function signature
                 arg_types = ",".join(["address" for _ in args])
                 signature = f"{func_name}({arg_types}){return_type}"
-                multicall.add(W3Multicall.Call(contract_address, signature, args))
+                multicall.add(
+                    W3Multicall.Call(contract_address, signature, args)
+                )
 
             call_results = multicall.call()
 
@@ -184,13 +196,18 @@ class Web3Service:
                 try:
                     self._contract_data_cache[key][func_name] = call_results[i]
                 except Exception as e:
-                    print(f"Warning: Call to {func_name} failed. Error: {str(e)}")
+                    print(
+                        f"Warning: Call to {func_name} failed. Error: {str(e)}"
+                    )
                     self._contract_data_cache[key][func_name] = None
 
         return self._contract_data_cache[key]
 
     def get_erc20_balance(
-        self, address: str, contract_address: str, chain_id: Optional[int] = None
+        self,
+        address: str,
+        contract_address: str,
+        chain_id: Optional[int] = None,
     ) -> int:
         """
         Get the ERC20 token balance for a specific address.
@@ -225,13 +242,15 @@ class Web3Service:
             Dict[str, Any]: The block information.
         """
         if block_identifier not in self._block_cache:
-            self._block_cache[block_identifier] = self.get_w3(chain_id).eth.get_block(
-                block_identifier
-            )
+            self._block_cache[block_identifier] = self.get_w3(
+                chain_id
+            ).eth.get_block(block_identifier)
         return self._block_cache[block_identifier]
 
     # TODO : Store in disk
-    def get_contract(self, address: str, abi_name: str, chain_id: Optional[int] = None):
+    def get_contract(
+        self, address: str, abi_name: str, chain_id: Optional[int] = None
+    ):
         """
         Get a contract instance for a given address and ABI name.
 
@@ -291,7 +310,9 @@ class Web3Service:
         """
         w3 = self.get_w3(chain_id)
         contract = w3.eth.contract(abi=abi, bytecode=bytecode)
-        construct_txn = contract.constructor(*constructor_args).build_transaction(
+        construct_txn = contract.constructor(
+            *constructor_args
+        ).build_transaction(
             {
                 "from": "0x0000000000000000000000000000000000000000",  # This address doesn't matter for a call
                 "nonce": 0,  # This nonce doesn't matter for a call

@@ -9,19 +9,18 @@ from shared.web3_service import Web3Service
 
 
 def get_all_platforms(protocol: str) -> List[Platform]:
-    # TODO: Use a registry / address book for  all the platforms for the protocol
-
-    if protocol == "curve":
-
+    if protocol in GlobalConstants.PLATFORMS:
         return [
             {
-                "protocol": "curve",
-                "chain_id": 42161,
-                "address": "0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e",
+                "protocol": protocol,
+                "chain_id": chain_id,
+                "address": address,
             }
+            for chain_id, address in GlobalConstants.PLATFORMS[
+                protocol
+            ].items()
         ]
-    else:
-        return []
+    return []
 
 
 def query_active_campaigns(
@@ -32,12 +31,16 @@ def query_active_campaigns(
     """
 
     if chain_id not in web3_service.w3:
-        web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
+        web3_service.add_chain(
+            chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+        )
 
     platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
-    platform_contract = web3_service.get_contract(platform, "vm_platform", chain_id)
+    platform_contract = web3_service.get_contract(
+        platform, "vm_platform", chain_id
+    )
     campaigns_count = platform_contract.functions.campaignCount().call()
 
     # Read the Solidity contract source

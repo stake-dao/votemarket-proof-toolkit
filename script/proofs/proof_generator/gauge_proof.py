@@ -89,7 +89,9 @@ def generate_gauge_proof(
         "default": get_gauge_time_storage_slot,
     }
 
-    get_position = position_functions.get(protocol, position_functions["default"])
+    get_position = position_functions.get(
+        protocol, position_functions["default"]
+    )
     point_weights_position = get_position(
         web_3.to_checksum_address(gauge_address.lower()),
         current_epoch,

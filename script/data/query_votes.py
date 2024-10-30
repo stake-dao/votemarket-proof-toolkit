@@ -160,7 +160,9 @@ def _decode_vote_log(log: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Decoded vote data.
     """
-    data = bytes.fromhex(log["data"][2:])  # Remove '0x' prefix and convert to bytes
+    data = bytes.fromhex(
+        log["data"][2:]
+    )  # Remove '0x' prefix and convert to bytes
     try:
         return {
             "time": int.from_bytes(data[0:32], byteorder="big"),
@@ -169,4 +171,6 @@ def _decode_vote_log(log: Dict[str, Any]) -> Dict[str, Any]:
             "weight": int.from_bytes(data[96:128], byteorder="big"),
         }
     except ValueError as e:
-        raise ValueError(f"Error decoding vote log: {str(e)}. Raw data: {log['data']}")
+        raise ValueError(
+            f"Error decoding vote log: {str(e)}. Raw data: {log['data']}"
+        )

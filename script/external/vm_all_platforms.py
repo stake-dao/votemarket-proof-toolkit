@@ -83,7 +83,9 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         rprint(f"Processing platform: {platform_address} on chain {chain_id}")
 
         if chain_id not in web3_service.w3:
-            web3_service.add_chain(chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id])
+            web3_service.add_chain(
+                chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+            )
 
         platform_contract = web3_service.get_contract(
             platform_address, "vm_platform", chain_id
@@ -91,16 +93,22 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
         lens = platform_contract.functions.ORACLE().call()
         lens_address = to_checksum_address(lens.lower())
 
-        lens_contract = web3_service.get_contract(lens_address, "oracle_lens", chain_id)
+        lens_contract = web3_service.get_contract(
+            lens_address, "oracle_lens", chain_id
+        )
         oracle_address = lens_contract.functions.oracle().call()
         oracle_address = to_checksum_address(oracle_address.lower())
 
         if oracle_address == "0x0000000000000000000000000000000000000000":
-            rprint(f"Skipping platform {platform_address} as it doesn't have an oracle")
+            rprint(
+                f"Skipping platform {platform_address} as it doesn't have an oracle"
+            )
             continue
 
         oracle = web3_service.get_contract(oracle_address, "oracle", chain_id)
-        latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()[2]
+        latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()[
+            2
+        ]
 
         platform["latest_setted_block"] = latest_setted_block
         rprint(

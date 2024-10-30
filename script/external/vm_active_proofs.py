@@ -58,7 +58,9 @@ async def process_protocol(
             protocol=protocol,
             gauge_address="0x0000000000000000000000000000000000000000",
             current_epoch=current_epoch,
-            block_number=platforms[list(platforms.keys())[0]]["latest_setted_block"],
+            block_number=platforms[list(platforms.keys())[0]][
+                "latest_setted_block"
+            ],
         )
         output_data["gauge_controller_proof"] = (
             "0x" + gauge_proofs["gauge_controller_proof"].hex()
@@ -119,7 +121,10 @@ async def process_protocol(
             if gauge_address in unique_gauges:
                 with console.status("[cyan]Processing listed users...[/cyan]"):
                     listed_users_data = process_listed_users(
-                        protocol, gauge_address, block_number, campaign["listed_users"]
+                        protocol,
+                        gauge_address,
+                        block_number,
+                        campaign["listed_users"],
                     )
                 platform_data["gauges"][gauge_address][
                     "listed_users"
@@ -135,7 +140,9 @@ async def process_gauge(
     protocol: str, gauge_address: str, current_epoch: int, block_number: int
 ) -> Dict[str, Any]:
     console.print("Querying votes")
-    gauge_votes = await vm_votes.get_gauge_votes(protocol, gauge_address, block_number)
+    gauge_votes = await vm_votes.get_gauge_votes(
+        protocol, gauge_address, block_number
+    )
     console.print(
         f"Found [yellow]{len(gauge_votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]"
     )
@@ -165,7 +172,9 @@ async def process_gauge(
 
     for user in eligible_users:
         user_address = user["user"].lower()
-        console.print(f"Generating proof for user: [cyan]{user_address}[/cyan]")
+        console.print(
+            f"Generating proof for user: [cyan]{user_address}[/cyan]"
+        )
         user_proofs = vm_proofs.get_user_proof(
             protocol=protocol,
             gauge_address=gauge_address,
@@ -227,7 +236,9 @@ def write_protocol_data(
 
         # Write gauge files
         for gauge_address, gauge_data in platform_data["gauges"].items():
-            gauge_file = os.path.join(platform_dir, f"{gauge_address.lower()}.json")
+            gauge_file = os.path.join(
+                platform_dir, f"{gauge_address.lower()}.json"
+            )
             with open(gauge_file, "w") as f:
                 json.dump(gauge_data, f, indent=2)
 
@@ -235,11 +246,16 @@ def write_protocol_data(
 
 
 def process_listed_users(
-    protocol: str, gauge_address: str, block_number: int, listed_users: List[str]
+    protocol: str,
+    gauge_address: str,
+    block_number: int,
+    listed_users: List[str],
 ) -> Dict[str, Any]:
     listed_users_data = {}
     for listed_user in listed_users:
-        console.print(f"Generating proof for listed user: [cyan]{listed_user}[/cyan]")
+        console.print(
+            f"Generating proof for listed user: [cyan]{listed_user}[/cyan]"
+        )
         user_proofs = vm_proofs.get_user_proof(
             protocol=protocol,
             gauge_address=gauge_address,
@@ -280,13 +296,17 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate active proofs for protocols")
+    parser = argparse.ArgumentParser(
+        description="Generate active proofs for protocols"
+    )
     parser.add_argument(
         "all_platforms_file",
         type=str,
         help="Path to the JSON file containing all platforms data",
     )
-    parser.add_argument("current_epoch", type=int, help="Current epoch timestamp")
+    parser.add_argument(
+        "current_epoch", type=int, help="Current epoch timestamp"
+    )
 
     args = parser.parse_args()
 
@@ -294,4 +314,6 @@ if __name__ == "__main__":
         all_protocols_data = json.load(f)
 
     asyncio.run(main(all_protocols_data, args.current_epoch))
-    console.print("[bold green]Active proofs generation script completed[/bold green]")
+    console.print(
+        "[bold green]Active proofs generation script completed[/bold green]"
+    )

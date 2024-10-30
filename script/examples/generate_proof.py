@@ -20,7 +20,9 @@ PROTOCOL = "curve"
 GAUGE_ADDRESS = to_checksum_address(
     "0x059e0db6bf882f5fe680dc5409c7adeb99753736".lower()
 )
-USER = to_checksum_address("0xa219712cc2aaa5aa98ccf2a7ba055231f1752323".lower())
+USER = to_checksum_address(
+    "0xa219712cc2aaa5aa98ccf2a7ba055231f1752323".lower()
+)
 CURRENT_EPOCH = 1723680000
 BLOCK_NUMBER = 20530737
 
@@ -59,7 +61,9 @@ def main():
     console.print(f"Block Number: {block_info['block_number']}")
     console.print(f"Block Hash: {block_info['block_hash']}")
     console.print(f"Block Timestamp: {block_info['block_timestamp']}")
-    console.print(f"RLP Block Header: {block_info['rlp_block_header'][:64]}...")
+    console.print(
+        f"RLP Block Header: {block_info['rlp_block_header'][:64]}..."
+    )
 
     console.print("\n[cyan]Proof for Block (Gauge Controller):[/cyan]")
     console.print(f"0x{gauge_proof['gauge_controller_proof'].hex()[:64]}...")
