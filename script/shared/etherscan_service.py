@@ -14,16 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-EXPLORER_APIS = {
-    "1": {
-        "url": "https://api.etherscan.io/api",
-        "key": os.getenv("ETHERSCAN_TOKEN", ""),
-    },
-    "42161": {
-        "url": "https://api.arbiscan.io/api",
-        "key": os.getenv("ARBISCAN_TOKEN", ""),
-    },
-}
+EXPLORER_KEY = os.getenv("EXPLORER_KEY")
 
 
 class RateLimiter:
@@ -95,9 +86,8 @@ def get_logs_by_address_and_topics(
     Returns:
         List[Dict[str, Any]]: List of logs.
     """
-    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
     topic0 = topics.get("0", "")
-    url = f"{explorer['url']}?module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={explorer['key']}"
+    url = f"https://api.etherscan.io/v2/api?chainid={chain_id}&module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={EXPLORER_KEY}"
 
     try:
         response = _make_request_with_retry(url, "logs")
@@ -196,8 +186,7 @@ def get_token_transfers(
     Raises:
         Exception: If max retries are reached or an unexpected error occurs.
     """
-    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
-    url = f"{explorer['url']}?module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={explorer['key']}"
+    url = f"https://api.etherscan.io/v2/api?chainid={chain_id}&module=account&action=tokentx&address={address}&startblock={from_block}&endblock={to_block}&sort={sort}&apikey={EXPLORER_KEY}"
 
     if contract_address:
         url += f"&contractaddress={contract_address}"
@@ -219,8 +208,7 @@ def get_token_holders(contract_address: str, chain_id: str = "1") -> int:
     Raises:
         Exception: If max retries are reached or an unexpected error occurs.
     """
-    explorer = EXPLORER_APIS.get(chain_id, EXPLORER_APIS["1"])
-    url = f"{explorer['url']}?module=stats&action=tokensupply&contractaddress={contract_address}&apikey={explorer['key']}"
+    url = f"https://api.etherscan.io/v2/api?chainid={chain_id}&module=stats&action=tokensupply&contractaddress={contract_address}&apikey={EXPLORER_KEY}"
 
     try:
         response = _make_request_with_retry(url, "token holders")
