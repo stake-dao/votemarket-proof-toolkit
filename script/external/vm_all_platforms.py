@@ -52,13 +52,16 @@ def get_block_data(block_number: int) -> Dict[str, Any]:
     }
 
 
-def process_protocol(protocol: str, epoch: int) -> ProtocolData:
+def process_protocol(
+    protocol: str, epoch: int, block: int = None
+) -> ProtocolData:
     """
     Process a single protocol to gather platform information.
 
     Args:
         protocol (str): The name of the protocol to process.
         epoch (int): The epoch to use for fetching data.
+        block (int, optional): Specific block number to use. If None, uses latest setted block from oracle.
 
     Returns:
         ProtocolData: A dictionary containing the protocol name and a list of platform data.
@@ -106,9 +109,11 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
             continue
 
         oracle = web3_service.get_contract(oracle_address, "oracle", chain_id)
-        latest_setted_block = oracle.functions.epochBlockNumber(epoch).call()[
-            2
-        ]
+        latest_setted_block = (
+            block
+            if block is not None
+            else oracle.functions.epochBlockNumber(epoch).call()[2]
+        )
 
         platform["latest_setted_block"] = latest_setted_block
         rprint(
@@ -133,13 +138,16 @@ def process_protocol(protocol: str, epoch: int) -> ProtocolData:
     return protocol_data
 
 
-def main(protocols: List[str], epoch: int) -> AllProtocolsData:
+def main(
+    protocols: List[str], epoch: int, block: int = None
+) -> AllProtocolsData:
     """
     Process all specified protocols and generate the JSON output.
 
     Args:
         protocols (List[str]): List of protocol names to process.
         epoch (int): The epoch to use for fetching data.
+        block (int, optional): Specific block number to use. If None, uses latest setted block from oracle.
 
     Returns:
         AllProtocolsData: A dictionary containing data for all processed protocols.
@@ -147,7 +155,7 @@ def main(protocols: List[str], epoch: int) -> AllProtocolsData:
     all_protocols_data: AllProtocolsData = {"protocols": {}}
 
     for protocol in protocols:
-        protocol_data = process_protocol(protocol, epoch)
+        protocol_data = process_protocol(protocol, epoch, block)
         all_protocols_data["protocols"][protocol] = protocol_data
 
     os.makedirs(TEMP_DIR, exist_ok=True)
@@ -175,6 +183,12 @@ if __name__ == "__main__":
         required=True,
         help="epoch to use for fetching latest block on the ORACLE",
     )
+    parser.add_argument(
+        "--block",
+        type=int,
+        required=False,
+        help="Specific block number to use (optional). If not provided, uses latest setted block from oracle.",
+    )
 
     args = parser.parse_args()
-    main(args.protocols, args.epoch)
+    main(args.protocols, args.epoch, args.block)
