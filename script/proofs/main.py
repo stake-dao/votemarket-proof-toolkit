@@ -20,7 +20,7 @@ class VoteMarketProofs:
     """A global class for generating and managing proofs"""
 
     def __init__(self, chain_id: int):
-        rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+        rpc_url = GlobalConstants.get_rpc_url(chain_id)
 
         self.chain_id = chain_id
         if not rpc_url:

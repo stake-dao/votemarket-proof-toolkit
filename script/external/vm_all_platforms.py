@@ -74,7 +74,7 @@ def process_protocol(
         f"Found [green]{len(platforms)}[/green] platforms for [blue]{protocol}[/blue]"
     )
 
-    web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
+    web3_service = Web3Service(1, GlobalConstants.get_rpc_url(1))
 
     protocol_data: ProtocolData = {"platforms": {}}
 
@@ -87,7 +87,7 @@ def process_protocol(
         # Initialize web3 service for chain if not exists
         if chain_id not in web3_service.w3:
             web3_service.add_chain(
-                chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+                chain_id, GlobalConstants.get_rpc_url(chain_id)
             )
 
         platform_contract = web3_service.get_contract(

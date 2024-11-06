@@ -12,9 +12,7 @@ from eth_utils import to_checksum_address
 
 class VoteMarketData:
     def __init__(self, chain_id: int):
-        rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
-        if not rpc_url:
-            raise ValueError("RPC URL is not set")
+        rpc_url = GlobalConstants.get_rpc_url(chain_id)
         self.web3_service = Web3Service(chain_id, rpc_url)
 
     async def get_gauge_votes(
@@ -126,7 +124,7 @@ class VoteMarketData:
 
         if chain_id not in self.web3_service.w3:
             self.web3_service.add_chain(
-                chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+                chain_id, GlobalConstants.get_rpc_url(chain_id)
             )
 
         w3 = self.web3_service.get_w3(chain_id)

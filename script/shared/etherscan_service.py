@@ -16,6 +16,9 @@ load_dotenv()
 
 EXPLORER_KEY = os.getenv("EXPLORER_KEY")
 
+if not EXPLORER_KEY:
+    raise ValueError("EXPLORER_KEY is not set")
+
 
 class RateLimiter:
     """

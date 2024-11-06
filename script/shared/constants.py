@@ -68,13 +68,26 @@ class GlobalConstants:
     WEEK = 604800
 
     CHAIN_ID_TO_RPC = {
-        1: os.getenv("ETHEREUM_MAINNET_RPC_URL"),
-        10: os.getenv("OPTIMISM_MAINNET_RPC_URL"),
-        42161: os.getenv("ARBITRUM_MAINNET_RPC_URL"),
-        8453: os.getenv("BASE_MAINNET_RPC_URL"),
-        137: os.getenv("POLYGON_MAINNET_RPC_URL"),
-        56: os.getenv("BSC_MAINNET_RPC_URL"),
+        1: os.getenv("ETHEREUM_MAINNET_RPC_URL") or None,
+        10: os.getenv("OPTIMISM_MAINNET_RPC_URL") or None,
+        42161: os.getenv("ARBITRUM_MAINNET_RPC_URL") or None,
+        8453: os.getenv("BASE_MAINNET_RPC_URL") or None,
+        137: os.getenv("POLYGON_MAINNET_RPC_URL") or None,
+        56: os.getenv("BSC_MAINNET_RPC_URL") or None,
     }
+
+    @staticmethod
+    def get_rpc_url(chain_id: int) -> str:
+        """Get RPC URL for specified chain"""
+        chain_id = int(chain_id)
+        if chain_id not in GlobalConstants.CHAIN_ID_TO_RPC:
+            raise ValueError(f"Chain ID {chain_id} not supported")
+            
+        rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+        if not rpc_url:
+            raise ValueError(f"RPC URL not set for chain {chain_id}")
+            
+        return rpc_url
 
 
 class ContractRegistry:

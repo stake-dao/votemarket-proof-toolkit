@@ -37,7 +37,7 @@ def query_active_campaigns(
 
     if chain_id not in web3_service.w3:
         web3_service.add_chain(
-            chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
+            chain_id, GlobalConstants.get_rpc_url(chain_id)
         )
 
     platform = to_checksum_address(platform.lower())
