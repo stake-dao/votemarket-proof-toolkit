@@ -1,11 +1,11 @@
 import os
-from eth_utils import to_checksum_address
 from typing import List
+
 from contracts.contract_reader import ContractReader
-from shared.constants import GlobalConstants
+from eth_utils import to_checksum_address
+from shared.constants import ContractRegistry, GlobalConstants
 from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
-from shared.constants import ContractRegistry
 
 
 def get_all_platforms(protocol: str) -> List[Platform]:
@@ -20,7 +20,9 @@ def get_all_platforms(protocol: str) -> List[Platform]:
             {
                 "protocol": protocol,
                 "chain_id": chain_id,
-                "address": ContractRegistry.get_address(protocol.upper(), chain_id),
+                "address": ContractRegistry.get_address(
+                    protocol.upper(), chain_id
+                ),
             }
             for chain_id in chains
         ]
@@ -36,9 +38,7 @@ def query_active_campaigns(
     """
 
     if chain_id not in web3_service.w3:
-        web3_service.add_chain(
-            chain_id, GlobalConstants.get_rpc_url(chain_id)
-        )
+        web3_service.add_chain(chain_id, GlobalConstants.get_rpc_url(chain_id))
 
     platform = to_checksum_address(platform.lower())
 

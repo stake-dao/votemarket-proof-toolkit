@@ -1,8 +1,9 @@
-import json, requests
-import rlp
+import json
 from typing import Any, Dict
-from hexbytes import HexBytes
 
+import requests
+import rlp
+from hexbytes import HexBytes
 from shared.constants import GlobalConstants
 
 

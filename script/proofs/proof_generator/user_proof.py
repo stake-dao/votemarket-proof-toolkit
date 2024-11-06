@@ -1,11 +1,12 @@
 """ User proof generator """
 
 from typing import Tuple
+
 from eth_abi import encode
 from eth_utils import keccak
-from web3 import Web3
-from shared.utils import encode_rlp_proofs
 from shared.constants import GaugeControllerConstants
+from shared.utils import encode_rlp_proofs
+from web3 import Web3
 
 
 def _encode_user_gauge_data(user: str, gauge: str, base_slot: int) -> bytes:

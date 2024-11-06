@@ -1,16 +1,9 @@
-from shared.utils import load_json
 from eth_utils import to_checksum_address
-from .web3 import (
-    W3,
-    get_eth_balance,
-    impersonate_account,
-    send_transaction,
-    send_value,
-    set_eth_balance,
-    stop_impersonate_account,
-    fresh_account,
-)
+from shared.utils import load_json
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
+
+from .web3 import (W3, impersonate_account, send_transaction, set_eth_balance,
+                   stop_impersonate_account)
 
 # Constants
 VOTEMARKET = to_checksum_address("0x6c8fc8482fae6fe8cbe66281a4640aa19c4d9c8e")

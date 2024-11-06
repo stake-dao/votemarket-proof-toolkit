@@ -1,7 +1,6 @@
-from rich import print as rprint
-from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
 
 help_text = """# VoteMarket Proofs Generator
 

@@ -6,10 +6,11 @@ blockchain networks, caches data, and offers various utility functions for
 interacting with smart contracts and retrieving blockchain data.
 """
 
+from typing import Any, Dict, List, Optional, Tuple
+
+from shared.utils import load_json
 from w3multicall.multicall import W3Multicall
 from web3 import Web3
-from shared.utils import load_json
-from typing import Dict, Any, List, Tuple, Optional
 
 
 class Web3Service:
@@ -70,11 +71,12 @@ class Web3Service:
             rpc_url (str): The RPC URL for the network.
         """
         w3 = Web3(Web3.HTTPProvider(rpc_url))
-        
+
         # Add POA middleware for compatibility with POA chains
         from web3.middleware import geth_poa_middleware
+
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-        
+
         self.w3[chain_id] = w3
 
     def get_w3(self, chain_id: Optional[int] = None) -> Web3:

@@ -1,6 +1,7 @@
 # restore_snapshot.py
 import json
 import os
+
 from tests.integration.helpers.chain import restore_snapshot
 
 

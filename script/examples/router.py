@@ -6,14 +6,15 @@ and combine them into a multicall for claiming rewards in VotemarketV2.
 """
 
 import asyncio
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
+from data.main import VoteMarketData
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
-from data.main import VoteMarketData
-from shared.constants import GlobalConstants
-from shared.web3_service import get_web3_service
 from rich import print as rprint
 from rich.panel import Panel
+from shared.constants import GlobalConstants
+from shared.web3_service import get_web3_service
 
 # Initialize services
 vm_proofs = VoteMarketProofs(1)

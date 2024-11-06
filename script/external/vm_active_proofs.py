@@ -10,22 +10,22 @@ It processes all platforms and gauges associated with the protocols and returns
 a dictionary containing the processed data with active proofs.
 """
 
+import argparse
 import asyncio
 import json
 import os
-import argparse
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-from dotenv import load_dotenv
-from proofs.main import VoteMarketProofs
-from shared.constants import GlobalConstants
-from shared.utils import get_rounded_epoch
-from shared.web3_service import Web3Service
 from data.main import VoteMarketData
 from data.query_campaigns import query_active_campaigns
-from shared.types import AllProtocolsData, ProtocolData
+from dotenv import load_dotenv
+from proofs.main import VoteMarketProofs
 from rich.console import Console
 from rich.panel import Panel
+from shared.constants import GlobalConstants
+from shared.types import AllProtocolsData, ProtocolData
+from shared.utils import get_rounded_epoch
+from shared.web3_service import Web3Service
 
 load_dotenv()
 
@@ -37,9 +37,7 @@ console = Console()
 
 
 async def process_protocol(
-    protocol: str,
-    protocol_data: ProtocolData,
-    current_epoch: int
+    protocol: str, protocol_data: ProtocolData, current_epoch: int
 ) -> Dict[str, Any]:
     platforms = protocol_data["platforms"]
     current_epoch = get_rounded_epoch(current_epoch)
@@ -50,7 +48,7 @@ async def process_protocol(
 
     web3_service = Web3Service(1, GlobalConstants.get_rpc_url(1))
     gauge_proofs_cache = {}  # Cache for gauge proofs
-    user_proofs_cache = {}   # Cache for user proofs
+    user_proofs_cache = {}  # Cache for user proofs
 
     for chain_id, platform_data in platforms.items():
         platform_address = platform_data["address"]
@@ -65,7 +63,9 @@ async def process_protocol(
 
         # Generate gauge controller proof only if not already generated
         if "gauge_controller_proof" not in output_data:
-            with console.status("[cyan]Generating gauge controller proof...[/cyan]"):
+            with console.status(
+                "[cyan]Generating gauge controller proof...[/cyan]"
+            ):
                 gauge_proofs = vm_proofs.get_gauge_proof(
                     protocol=protocol,
                     gauge_address="0x0000000000000000000000000000000000000000",
@@ -83,24 +83,31 @@ async def process_protocol(
 
         # Process all valid gauges for this chain/platform
         unique_gauges = {
-            campaign["gauge"].lower() 
-            for campaign in active_campaigns 
+            campaign["gauge"].lower()
+            for campaign in active_campaigns
             if vm_proofs.is_valid_gauge(protocol, campaign["gauge"].lower())
         }
 
         for gauge_address in unique_gauges:
             if gauge_address not in gauge_proofs_cache:
                 console.print(
-                    Panel(f"Processing gauge: [magenta]{gauge_address}[/magenta]")
+                    Panel(
+                        f"Processing gauge: [magenta]{gauge_address}[/magenta]"
+                    )
                 )
                 with console.status("[green]Processing gauge data...[/green]"):
                     gauge_data = await process_gauge(
-                        protocol, gauge_address, current_epoch, block_number,
-                        user_proofs_cache
+                        protocol,
+                        gauge_address,
+                        current_epoch,
+                        block_number,
+                        user_proofs_cache,
                     )
                 gauge_proofs_cache[gauge_address] = gauge_data
-            
-            platform_output["gauges"][gauge_address] = gauge_proofs_cache[gauge_address]
+
+            platform_output["gauges"][gauge_address] = gauge_proofs_cache[
+                gauge_address
+            ]
 
         # Process listed users for each campaign
         for campaign in active_campaigns:
@@ -113,7 +120,9 @@ async def process_protocol(
                         block_number,
                         campaign["listed_users"],
                     )
-                platform_output["gauges"][gauge_address]["listed_users"] = listed_users_data
+                platform_output["gauges"][gauge_address][
+                    "listed_users"
+                ] = listed_users_data
 
         output_data["platforms"][chain_id] = platform_output
 
@@ -122,8 +131,11 @@ async def process_protocol(
 
 
 async def process_gauge(
-    protocol: str, gauge_address: str, current_epoch: int, block_number: int,
-    user_proofs_cache: Dict[str, Any]
+    protocol: str,
+    gauge_address: str,
+    current_epoch: int,
+    block_number: int,
+    user_proofs_cache: Dict[str, Any],
 ) -> Dict[str, Any]:
     console.print("Querying votes")
     gauge_votes = await vm_votes.get_gauge_votes(
@@ -159,7 +171,7 @@ async def process_gauge(
     for user in eligible_users:
         user_address = user["user"].lower()
         cache_key = f"{gauge_address}:{user_address}"
-        
+
         if cache_key not in user_proofs_cache:
             console.print(
                 f"Generating proof for user: [cyan]{user_address}[/cyan]"
@@ -177,7 +189,7 @@ async def process_gauge(
                 "power": user["power"],
                 "end": user["end"],
             }
-        
+
         gauge_data["users"][user_address] = user_proofs_cache[cache_key]
 
     return gauge_data
@@ -278,7 +290,9 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
             )
             continue
         console.print(f"Processing protocol: [blue]{protocol}[/blue]")
-        processed_data = await process_protocol(protocol, protocol_data, current_epoch)
+        processed_data = await process_protocol(
+            protocol, protocol_data, current_epoch
+        )
         write_protocol_data(protocol.lower(), current_epoch, processed_data)
 
     console.print(

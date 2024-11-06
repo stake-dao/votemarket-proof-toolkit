@@ -1,6 +1,7 @@
-from typing import List, Any
-from solcx import compile_source
+from typing import Any, List
+
 from shared.web3_service import get_web3_service
+from solcx import compile_source
 
 
 class ContractReader:

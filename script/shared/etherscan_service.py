@@ -5,10 +5,11 @@ This module provides functions to fetch logs and token transfers from the Ethere
 using the Etherscan API. It includes rate limiting and error handling mechanisms.
 """
 
+import logging
 import os
 import time
-import logging
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 import requests
 from dotenv import load_dotenv
 

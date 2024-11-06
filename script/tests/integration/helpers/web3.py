@@ -1,4 +1,4 @@
-from web3 import Web3, HTTPProvider
+from web3 import HTTPProvider, Web3
 from web3.types import RPCResponse
 
 BLOCKCHAIN_ADDRESS = "http://localhost:8545"
