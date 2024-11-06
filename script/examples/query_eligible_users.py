@@ -1,12 +1,13 @@
 """Example of how to query voters for a gauge."""
 
 import asyncio
+
+from data.main import VoteMarketData
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
-from data.main import VoteMarketData
 from rich import print as rprint
-from rich.panel import Panel
 from rich.console import Console
+from rich.panel import Panel
 
 load_dotenv()
 

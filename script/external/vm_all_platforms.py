@@ -11,19 +11,20 @@ The script fetches data for each protocol and platform, including:
 The resulting JSON file serves as input for subsequent proof generation steps.
 """
 
+import argparse
 import json
 import os
-import argparse
-from typing import List, Dict, Any
-from eth_utils import to_checksum_address
+from typing import Any, Dict, List
+
+from data.query_campaigns import get_all_platforms
 from dotenv import load_dotenv
+from eth_utils import to_checksum_address
+from proofs.main import VoteMarketProofs
+from rich import print as rprint
 from shared.constants import GlobalConstants
+from shared.types import AllProtocolsData, ProtocolData
 from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
-from data.query_campaigns import get_all_platforms
-from proofs.main import VoteMarketProofs
-from shared.types import ProtocolData, AllProtocolsData
-from rich import print as rprint
 
 load_dotenv()
 
@@ -81,7 +82,7 @@ def process_protocol(
     for platform in platforms:
         chain_id = platform["chain_id"]
         platform_address = platform["address"]
-        
+
         rprint(f"Processing platform: {platform_address} on chain {chain_id}")
 
         # Initialize web3 service for chain if not exists
@@ -133,7 +134,7 @@ def process_protocol(
             "latest_setted_block": latest_setted_block,
             "block_data": block_data,
             "oracle_address": oracle_address,
-            "lens_address": lens_address
+            "lens_address": lens_address,
         }
 
     return protocol_data

@@ -1,6 +1,6 @@
 """ Types for the project """
 
-from typing import List, TypedDict, Dict, Any
+from typing import Dict, List, TypedDict
 
 
 class Campaign(TypedDict):
@@ -39,6 +39,7 @@ class EligibleUser(TypedDict):
     slope: int
     power: int
     end: int
+
 
 class PlatformData(TypedDict):
     address: str

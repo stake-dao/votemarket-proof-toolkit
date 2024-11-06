@@ -1,8 +1,9 @@
+import sys
+
 from data.main import VoteMarketData
 from rich import print as rprint
 from rich.panel import Panel
 from rich.table import Table
-import sys
 
 
 def get_active_campaigns(chain_id: int, platform: str):

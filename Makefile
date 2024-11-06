@@ -9,6 +9,7 @@ SRC_DIR := script
 # Phony targets declaration
 .PHONY: all install clean test help integration
 .PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
+.PHONY: format lint
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
@@ -24,6 +25,22 @@ clean:
 	rm -rf $(VENV)
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
+
+# Format all Python files
+format:
+	black --line-length 79 .
+	isort -rc .
+	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
+
+# Individual commands if needed
+black:
+	black --line-length 79 .
+
+isort:
+	isort -rc .
+
+autoflake:
+	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
 
 # Run integration tests
 integration:

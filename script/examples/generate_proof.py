@@ -1,14 +1,12 @@
 """Example of how to generate proofs for a user and gauge."""
 
-import os
 from dotenv import load_dotenv
-from proofs.main import VoteMarketProofs
-from shared.constants import GlobalConstants
-from shared.types import UserProof, GaugeProof, BlockInfo
 from eth_utils import to_checksum_address
+from proofs.main import VoteMarketProofs
 from rich import print as rprint
-from rich.panel import Panel
 from rich.console import Console
+from rich.panel import Panel
+from shared.types import BlockInfo, GaugeProof, UserProof
 
 load_dotenv()
 

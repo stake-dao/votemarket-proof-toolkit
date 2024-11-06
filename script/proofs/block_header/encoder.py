@@ -1,11 +1,11 @@
 """ Block header encoder """
 
 from typing import Any, Dict
-from web3 import Web3
-from hexbytes import HexBytes
-import rlp
 
+import rlp
+from hexbytes import HexBytes
 from shared.types import BlockInfo
+from web3 import Web3
 
 BLOCK_HEADER = (
     "parentHash",

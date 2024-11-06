@@ -1,13 +1,14 @@
-from typing import List, Dict, Any
-from shared.constants import GaugeControllerConstants, GlobalConstants
-from shared.types import Campaign, EligibleUser
-from data.query_votes import query_gauge_votes
+from typing import Any, Dict, List
+
 from data.query_campaigns import query_active_campaigns
+from data.query_votes import query_gauge_votes
+from eth_utils import to_checksum_address
+from shared.constants import GaugeControllerConstants, GlobalConstants
+from shared.exceptions import VoteMarketDataException
+from shared.types import Campaign, EligibleUser
 from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
-from shared.exceptions import VoteMarketDataException
 from w3multicall.multicall import W3Multicall
-from eth_utils import to_checksum_address
 
 
 class VoteMarketData:

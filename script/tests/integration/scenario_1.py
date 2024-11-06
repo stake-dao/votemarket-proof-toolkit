@@ -2,29 +2,14 @@
 
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
-from tests.integration.helpers.chain import (
-    fast_forward,
-    take_snapshot,
-    restore_snapshot,
-)
-from tests.integration.helpers.vm import (
-    setup,
-    approve_erc20,
-    create_campaign,
-    insert_block_number,
-    set_block_data,
-    set_point_data,
-    set_account_data,
-    claim,
-)
-from shared.utils import (
-    get_closest_block_timestamp,
-    get_rounded_epoch,
-    load_json,
-)
+from shared.utils import (get_closest_block_timestamp, get_rounded_epoch,
+                          load_json)
+from tests.integration.helpers.chain import (fast_forward, take_snapshot)
+from tests.integration.helpers.vm import (approve_erc20, claim,
+                                          create_campaign, insert_block_number,
+                                          set_account_data, set_block_data,
+                                          set_point_data, setup)
 from tests.integration.helpers.web3 import W3, get_latest_block
-import json
-import os
 
 DAI = to_checksum_address("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1")
 DAI_WHALE = to_checksum_address("0x2d070ed1321871841245D8EE5B84bD2712644322")

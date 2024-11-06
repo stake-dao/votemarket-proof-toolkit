@@ -1,9 +1,10 @@
-from proofs.main import VoteMarketProofs
-from rich import print as rprint
-from rich.panel import Panel
 import json
 import os
 import sys
+
+from proofs.main import VoteMarketProofs
+from rich import print as rprint
+from rich.panel import Panel
 
 
 def get_block_info(block_number: int):

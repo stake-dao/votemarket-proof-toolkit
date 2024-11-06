@@ -1,9 +1,10 @@
-from proofs.main import VoteMarketProofs
-from rich import print as rprint
-from rich.panel import Panel
 import json
 import os
 import sys
+
+from proofs.main import VoteMarketProofs
+from rich import print as rprint
+from rich.panel import Panel
 
 
 def generate_gauge_proof(protocol, gauge_address, current_epoch, block_number):

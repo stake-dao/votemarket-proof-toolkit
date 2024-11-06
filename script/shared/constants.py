@@ -1,6 +1,7 @@
 """ All constants for the project """
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -82,11 +83,11 @@ class GlobalConstants:
         chain_id = int(chain_id)
         if chain_id not in GlobalConstants.CHAIN_ID_TO_RPC:
             raise ValueError(f"Chain ID {chain_id} not supported")
-            
+
         rpc_url = GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
         if not rpc_url:
             raise ValueError(f"RPC URL not set for chain {chain_id}")
-            
+
         return rpc_url
 
 
@@ -113,7 +114,6 @@ class ContractRegistry:
         137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
     }
 
-
     @staticmethod
     def get_address(contract_name: str, chain_id: int) -> str:
         """Get contract address for specified chain"""
@@ -122,7 +122,9 @@ class ContractRegistry:
             raise ValueError(f"Contract {contract_name} not found")
         address = addresses.get(chain_id)
         if not address:
-            raise ValueError(f"Contract {contract_name} not deployed on chain {chain_id}")
+            raise ValueError(
+                f"Contract {contract_name} not deployed on chain {chain_id}"
+            )
         return address
 
     @staticmethod
@@ -133,7 +135,7 @@ class ContractRegistry:
         if not addresses:
             raise ValueError(f"Contract {contract_name} not found")
         return [chain for chain, addr in addresses.items() if addr is not None]
-      
+
     @staticmethod
     def get_contracts_for_chain(chain_id: int, pattern: str = None) -> dict:
         """
@@ -146,16 +148,24 @@ class ContractRegistry:
         contracts = {}
         for attr_name in dir(ContractRegistry):
             # Skip special methods and non-contract attributes
-            if attr_name.startswith('__') or attr_name in ['get_address', 'get_chains', 'get_contracts_for_chain']:
+            if attr_name.startswith("__") or attr_name in [
+                "get_address",
+                "get_chains",
+                "get_contracts_for_chain",
+            ]:
                 continue
-            
+
             # Apply pattern filter if provided
             if pattern and pattern.upper() not in attr_name:
                 continue
-                
+
             # Get the contract mapping
             contract_map = getattr(ContractRegistry, attr_name)
-            if isinstance(contract_map, dict) and chain_id in contract_map and contract_map[chain_id] is not None:
+            if (
+                isinstance(contract_map, dict)
+                and chain_id in contract_map
+                and contract_map[chain_id] is not None
+            ):
                 contracts[attr_name] = contract_map[chain_id]
-                
+
         return contracts

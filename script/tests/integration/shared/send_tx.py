@@ -1,6 +1,7 @@
 import sys
-from web3 import Web3
+
 from eth_utils import to_checksum_address
+from web3 import Web3
 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 
 # Connect to the local Anvil instance

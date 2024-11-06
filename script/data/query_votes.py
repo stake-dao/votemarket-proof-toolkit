@@ -1,11 +1,12 @@
-from typing import List, Dict, Any
-from web3 import Web3
+import asyncio
+from typing import Any, Dict, List
+
+from rich import print as rprint
+from rich.console import Console
 from shared.constants import GaugeControllerConstants
 from shared.etherscan_service import get_logs_by_address_and_topics
 from shared.parquet_cache_service import ParquetCache
-import asyncio
-from rich import print as rprint
-from rich.console import Console
+from web3 import Web3
 
 CACHE_DIR = "cache"
 VOTES_CACHE_FILE = "{protocol}_votes_cache.parquet"
