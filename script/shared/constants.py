@@ -67,16 +67,82 @@ class GlobalConstants:
 
     WEEK = 604800
 
-    REGISTRY = "0x4d26cb6658aedce7aeff79bd14121ef48b911253"
-
-    PLATFORMS = {
-        "curve": {
-            42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Arbitrum
-        }
-    }
-
     CHAIN_ID_TO_RPC = {
         1: os.getenv("ETHEREUM_MAINNET_RPC_URL"),
-        56: os.getenv("BSC_MAINNET_RPC_URL"),
+        10: os.getenv("OPTIMISM_MAINNET_RPC_URL"),
         42161: os.getenv("ARBITRUM_MAINNET_RPC_URL"),
+        8453: os.getenv("BASE_MAINNET_RPC_URL"),
+        137: os.getenv("POLYGON_MAINNET_RPC_URL"),
+        56: os.getenv("BSC_MAINNET_RPC_URL"),
     }
+
+
+class ContractRegistry:
+    """
+    Central registry of contracts across chains.
+    Format: CONTRACT_NAME = {chain_id: address}
+    """
+
+    # VOTEMARKET
+    ORACLE = {
+        1: None,  # Not deployed on mainnet
+        42161: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Arbitrum
+        10: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Optimism
+        8453: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Base
+        137: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Polygon
+    }
+
+    CURVE = {
+        1: None,
+        42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+        10: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+        8453: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+        137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+    }
+
+
+    @staticmethod
+    def get_address(contract_name: str, chain_id: int) -> str:
+        """Get contract address for specified chain"""
+        addresses = getattr(ContractRegistry, contract_name, None)
+        if not addresses:
+            raise ValueError(f"Contract {contract_name} not found")
+        address = addresses.get(chain_id)
+        if not address:
+            raise ValueError(f"Contract {contract_name} not deployed on chain {chain_id}")
+        return address
+
+    @staticmethod
+    def get_chains(contract_name: str) -> list:
+        """Get list of chains where contract is deployed"""
+        addresses = getattr(ContractRegistry, contract_name, None)
+
+        if not addresses:
+            raise ValueError(f"Contract {contract_name} not found")
+        return [chain for chain, addr in addresses.items() if addr is not None]
+      
+    @staticmethod
+    def get_contracts_for_chain(chain_id: int, pattern: str = None) -> dict:
+        """
+        Get all contracts deployed on a specific chain, optionally filtered by a pattern
+        Args:
+            chain_id: Chain ID to query
+            pattern: Optional filter (e.g., "VOTEMARKET" or "CURVE")
+        Returns: dict of {contract_name: address}
+        """
+        contracts = {}
+        for attr_name in dir(ContractRegistry):
+            # Skip special methods and non-contract attributes
+            if attr_name.startswith('__') or attr_name in ['get_address', 'get_chains', 'get_contracts_for_chain']:
+                continue
+            
+            # Apply pattern filter if provided
+            if pattern and pattern.upper() not in attr_name:
+                continue
+                
+            # Get the contract mapping
+            contract_map = getattr(ContractRegistry, attr_name)
+            if isinstance(contract_map, dict) and chain_id in contract_map and contract_map[chain_id] is not None:
+                contracts[attr_name] = contract_map[chain_id]
+                
+        return contracts

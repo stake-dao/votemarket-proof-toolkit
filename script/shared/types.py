@@ -40,10 +40,16 @@ class EligibleUser(TypedDict):
     power: int
     end: int
 
+class PlatformData(TypedDict):
+    address: str
+    latest_setted_block: int
+    block_data: BlockInfo
+    oracle_address: str
+    lens_address: str
+
 
 class ProtocolData(TypedDict):
-    protocol: str
-    platforms: Dict[str, Dict[str, Any]]
+    platforms: Dict[int, PlatformData]  # Chain id -> Platform data
 
 
 class AllProtocolsData(TypedDict):

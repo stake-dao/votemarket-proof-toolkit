@@ -39,37 +39,42 @@ console = Console()
 async def process_protocol(
     protocol_data: Dict[str, Any], current_epoch: int
 ) -> Dict[str, Any]:
+
+    print(protocol_data)
     protocol = protocol_data["protocol"].lower()
-    platforms = {k.lower(): v for k, v in protocol_data["platforms"].items()}
+    platforms = protocol_data["platforms"]  # Now keyed by chain_id
 
     # Always treat epoch as rounded
     current_epoch = get_rounded_epoch(current_epoch)
 
+    # Get first platform for initial block data
+    first_platform = platforms[list(platforms.keys())[0]]
+    
     output_data = {
-        "block_data": platforms[list(platforms.keys())[0]]["block_data"],
+        "block_data": first_platform["block_data"],
         "gauge_controller_proof": "",
         "platforms": {},
     }
 
     console.print(f"[bold blue]Processing protocol: {protocol}[/bold blue]")
 
+    # Generate gauge controller proof using first platform's block
     with console.status("[cyan]Generating gauge controller proof...[/cyan]"):
         gauge_proofs = vm_proofs.get_gauge_proof(
             protocol=protocol,
             gauge_address="0x0000000000000000000000000000000000000000",
             current_epoch=current_epoch,
-            block_number=platforms[list(platforms.keys())[0]][
-                "latest_setted_block"
-            ],
+            block_number=first_platform["latest_setted_block"],
         )
         output_data["gauge_controller_proof"] = (
             "0x" + gauge_proofs["gauge_controller_proof"].hex()
         )
 
     web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
+    processed_gauges = set()  # Track processed gauge addresses
 
-    for platform_address, platform_data in platforms.items():
-        chain_id = platform_data["chain_id"]
+    for chain_id, platform_data in platforms.items():
+        platform_address = platform_data["address"]
         block_number = platform_data["latest_setted_block"]
 
         console.print(
@@ -91,17 +96,20 @@ async def process_protocol(
                 web3_service, chain_id, platform_address
             )
 
-        platform_data = {
+        platform_output = {
             "chain_id": chain_id,
-            "platform_address": platform_address.lower(),
+            "platform_address": platform_address,
             "gauges": {},
         }
 
-        # Collect unique gauges
+        # Collect and filter unique gauges
         unique_gauges = set()
         for campaign in active_campaigns:
             gauge_address = campaign["gauge"].lower()
-            if vm_proofs.is_valid_gauge(protocol, gauge_address):
+            if (
+                gauge_address not in processed_gauges 
+                and vm_proofs.is_valid_gauge(protocol, gauge_address)
+            ):
                 unique_gauges.add(gauge_address)
 
         # Process unique gauges
@@ -113,12 +121,13 @@ async def process_protocol(
                 gauge_data = await process_gauge(
                     protocol, gauge_address, current_epoch, block_number
                 )
-            platform_data["gauges"][gauge_address] = gauge_data
+            platform_output["gauges"][gauge_address] = gauge_data
+            processed_gauges.add(gauge_address)  # Mark gauge as processed
 
         # Process listed users for each campaign
         for campaign in active_campaigns:
             gauge_address = campaign["gauge"].lower()
-            if gauge_address in unique_gauges:
+            if gauge_address in platform_output["gauges"]:
                 with console.status("[cyan]Processing listed users...[/cyan]"):
                     listed_users_data = process_listed_users(
                         protocol,
@@ -126,11 +135,9 @@ async def process_protocol(
                         block_number,
                         campaign["listed_users"],
                     )
-                platform_data["gauges"][gauge_address][
-                    "listed_users"
-                ] = listed_users_data
+                platform_output["gauges"][gauge_address]["listed_users"] = listed_users_data
 
-        output_data["platforms"][platform_address.lower()] = platform_data
+        output_data["platforms"][chain_id] = platform_output
 
     console.print(f"Finished processing protocol: [blue]{protocol}[/blue]")
     return output_data

@@ -1,26 +1,31 @@
 import os
-from web3 import Web3
 from eth_utils import to_checksum_address
 from typing import List
 from contracts.contract_reader import ContractReader
 from shared.constants import GlobalConstants
 from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
+from shared.constants import ContractRegistry
 
 
 def get_all_platforms(protocol: str) -> List[Platform]:
-    if protocol in GlobalConstants.PLATFORMS:
+    """
+    Get all platform addresses for a given protocol across chains where it's deployed
+    """
+    try:
+        # Get all chains where the protocol is deployed
+        chains = ContractRegistry.get_chains(protocol.upper())
+
         return [
             {
                 "protocol": protocol,
                 "chain_id": chain_id,
-                "address": address,
+                "address": ContractRegistry.get_address(protocol.upper(), chain_id),
             }
-            for chain_id, address in GlobalConstants.PLATFORMS[
-                protocol
-            ].items()
+            for chain_id in chains
         ]
-    return []
+    except ValueError:
+        return []
 
 
 def query_active_campaigns(

@@ -23,9 +23,7 @@ from shared.web3_service import Web3Service
 from data.query_campaigns import get_all_platforms
 from proofs.main import VoteMarketProofs
 from shared.types import ProtocolData, AllProtocolsData
-import time
 from rich import print as rprint
-from rich.progress import Progress, track
 
 load_dotenv()
 
@@ -78,13 +76,15 @@ def process_protocol(
 
     web3_service = Web3Service(1, GlobalConstants.CHAIN_ID_TO_RPC[1])
 
-    protocol_data: ProtocolData = {"protocol": protocol, "platforms": {}}
+    protocol_data: ProtocolData = {"platforms": {}}
 
     for platform in platforms:
         chain_id = platform["chain_id"]
         platform_address = platform["address"]
+        
         rprint(f"Processing platform: {platform_address} on chain {chain_id}")
 
+        # Initialize web3 service for chain if not exists
         if chain_id not in web3_service.w3:
             web3_service.add_chain(
                 chain_id, GlobalConstants.CHAIN_ID_TO_RPC[chain_id]
@@ -104,7 +104,7 @@ def process_protocol(
 
         if oracle_address == "0x0000000000000000000000000000000000000000":
             rprint(
-                f"Skipping platform {platform_address} as it doesn't have an oracle"
+                f"Skipping platform {platform_address} on chain {chain_id} as it doesn't have an oracle"
             )
             continue
 
@@ -115,11 +115,6 @@ def process_protocol(
             else oracle.functions.epochBlockNumber(epoch).call()[2]
         )
 
-        platform["latest_setted_block"] = latest_setted_block
-        rprint(
-            f"Latest setted block on epoch {epoch}: {platform['latest_setted_block']}"
-        )
-
         block_data = get_block_data(latest_setted_block)
         timestamp = block_data["block_timestamp"]
         block_period_timestamp = (
@@ -128,12 +123,18 @@ def process_protocol(
 
         if block_period_timestamp < epoch:
             rprint(
-                f"[italic red]Latest setted block timestamp[/italic red] ({block_period_timestamp}) [italic red]is less than current period timestamp[/italic red] ({epoch}) [italic red]for platform[/italic red] {platform_address}. [italic red]Skipping.[/italic red]"
+                f"[italic red]Latest setted block timestamp[/italic red] ({block_period_timestamp}) [italic red]is less than current period timestamp[/italic red] ({epoch}) [italic red]for platform[/italic red] {platform_address} [italic red]on chain[/italic red] {chain_id}. [italic red]Skipping.[/italic red]"
             )
             continue
 
-        platform["block_data"] = block_data
-        protocol_data["platforms"][platform_address] = platform
+        # Store platform data according to type structure
+        protocol_data["platforms"][chain_id] = {
+            "address": platform_address,
+            "latest_setted_block": latest_setted_block,
+            "block_data": block_data,
+            "oracle_address": oracle_address,
+            "lens_address": lens_address
+        }
 
     return protocol_data
 
