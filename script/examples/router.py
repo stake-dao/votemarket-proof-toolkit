@@ -19,7 +19,7 @@ from rich.panel import Panel
 vm_proofs = VoteMarketProofs(1)
 vm_votes = VoteMarketData(1)
 web3_service = get_web3_service()
-web3_service.add_chain(42161, GlobalConstants.CHAIN_ID_TO_RPC[42161])
+web3_service.add_chain(42161, GlobalConstants.get_rpc_url(42161))
 
 # Example parameters (Arbitrum test contracts)
 PROTOCOL = "curve"

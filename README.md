@@ -45,7 +45,21 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
    cd votemarket-proof-toolkit
    ```
 
-2. **Set up a virtual environment and install dependencies:**
+2. **Install Solidity Compiler:**
+   ```bash
+   # For macOS users (using Homebrew)
+   brew install solidity
+
+   # For Ubuntu/Debian users
+   sudo add-apt-repository ppa:ethereum/ethereum
+   sudo apt-get update
+   sudo apt-get install solc
+
+   # For other systems, please refer to the official Solidity documentation:
+   # https://docs.soliditylang.org/en/v0.8.19/installing-solidity.html
+   ```
+
+3. **Set up a virtual environment and install dependencies:**
    ```bash
    make install
    ```
