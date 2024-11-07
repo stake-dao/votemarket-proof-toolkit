@@ -230,11 +230,8 @@ def write_protocol_data(
 
     # Process platforms
     for platform_address, platform_data in processed_data["platforms"].items():
-        chain_id = platform_data["chain_id"]
         platform_folder_name = f"{platform_address.lower()}"
-        chain_dir = os.path.join(protocol_dir, f"{chain_id}")
-        os.makedirs(chain_dir, exist_ok=True)
-        platform_dir = os.path.join(chain_dir, platform_folder_name)
+        platform_dir = os.path.join(protocol_dir, platform_folder_name)
         os.makedirs(platform_dir, exist_ok=True)
 
         # Write gauge files

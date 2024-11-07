@@ -32,15 +32,24 @@ format:
 	isort -rc .
 	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
 
-# Individual commands if needed
+# Format Python files. Usage: make format [FILE=path/to/file]
+format:
+	$(eval TARGET := $(if $(FILE),$(FILE),script/))
+	black --line-length 79 $(TARGET)
+	isort $(TARGET)
+	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
+
 black:
-	black --line-length 79 .
+	$(eval TARGET := $(if $(FILE),$(FILE),script/))
+	black --line-length 79 $(TARGET)
 
 isort:
-	isort -rc .
+	$(eval TARGET := $(if $(FILE),$(FILE),script/))
+	isort $(TARGET)
 
 autoflake:
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
+	$(eval TARGET := $(if $(FILE),$(FILE),script/))
+	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
 
 # Run integration tests
 integration:

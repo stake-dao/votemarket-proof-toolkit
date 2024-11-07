@@ -4,7 +4,7 @@ from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
 from shared.utils import (get_closest_block_timestamp, get_rounded_epoch,
                           load_json)
-from tests.integration.helpers.chain import (fast_forward, take_snapshot)
+from tests.integration.helpers.chain import fast_forward, take_snapshot
 from tests.integration.helpers.vm import (approve_erc20, claim,
                                           create_campaign, insert_block_number,
                                           set_account_data, set_block_data,
