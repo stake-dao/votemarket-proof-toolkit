@@ -72,10 +72,10 @@ class Web3Service:
         """
         w3 = Web3(Web3.HTTPProvider(rpc_url))
 
-        # Add POA middleware for compatibility with POA chains
-        from web3.middleware import geth_poa_middleware
-
-        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        # Add POA middleware for compatibility with POA chains (only BSC)
+        if chain_id == 56:
+            from web3.middleware import geth_poa_middleware
+            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         self.w3[chain_id] = w3
 
