@@ -76,7 +76,7 @@ block-info: install
 		"$(BLOCK_NUMBER)"
 
 get-active-campaigns: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/get_active_campaigns.py \
+	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/active_campaigns.py \
 		"$(CHAIN_ID)" \
 		"$(PLATFORM)"
 
