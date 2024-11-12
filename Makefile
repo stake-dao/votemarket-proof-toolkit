@@ -5,6 +5,7 @@ PYTHON := python3
 VENV := venv
 VENV_ACTIVATE := . $(VENV)/bin/activate
 SRC_DIR := script
+export PYTHONPATH := ${PYTHONPATH}:script
 
 # Phony targets declaration
 .PHONY: all install clean test help integration

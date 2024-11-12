@@ -4,8 +4,7 @@
 
 #### Overview
 
-> [!IMPORTANT]
-> Before managing a campaign (extending duration, adding rewards, etc.), its state must be synchronized / up to date on each epoch. 
+Before managing a campaign (extending duration, adding rewards, etc.), its state must be synchronized on-chain. This process requires careful attention to epoch updates and storage proofs.
 
 #### Important Notes
 
@@ -15,21 +14,18 @@
    > - Example: If last update was epoch 100 and current is 103, must update 100 → 101 → 102 → 103
 
 2. **Valid Epochs**
-   > [!NOTE]
-   > - Must align with `EPOCH_LENGTH`
-   > - Cannot update future epochs
-   > - Must start from campaign's start timestamp
+   - Must align with `EPOCH_LENGTH`
+   - Cannot update future epochs
+   - Must start from campaign's start timestamp
 
 3. **Storage Proofs**
-   > [!IMPORTANT]
-   > - Each epoch update requires valid gauge vote proofs
-   > - Proofs must be inserted before updating epochs
-   > - See [Storage Proofs](./storage_proofs.md) section for details
+   - Each epoch update requires valid gauge vote proofs
+   - Proofs must be inserted before updating epochs
+   - See [Storage Proofs](./storage_proofs.md) section for details
 
 #### Common Errors
-> [!CAUTION]
-> - `EPOCH_NOT_VALID`: Epoch not correct/missing for that campaign
-> - `STATE_MISSING`: Missing storage proofs
+- `EPOCH_NOT_VALID`: Epoch not correct/missing for that campaign
+- `STATE_MISSING`: Missing storage proofs
 
 > [!TIP]
 > For implementation details, see `update_epoch.py` in the `examples/` directory.
@@ -38,8 +34,7 @@
 
 #### Overview
 
-> [!NOTE]
-> L1 campaign management is primarily used for increasing rewards in existing campaigns. All other management operations should be performed directly on Arbitrum.
+L1 campaign management is primarily used for increasing rewards in existing campaigns. All other management operations should be performed directly on Arbitrum.
 
 This process requires:
 
@@ -54,14 +49,11 @@ This process requires:
 
 #### Overview
 
-> [!IMPORTANT]
-> L2 campaign management offers more flexibility but has important considerations:
-> 
+> [!WARNING]
+> L2 campaign management has important token considerations:
 > - Can add rewards only for non-wrapped tokens (native L2 tokens)
 > - For wrapped tokens (L1 tokens bridged to L2):
->   - Must have wrapped tokens in wallet from:
->     - Previous campaign claims
->     - Closed campaigns without L1 bridge back
+>   - Must have wrapped tokens in wallet from previous claims or closed campaigns
 >   - If no wrapped tokens available, use L1 management instead
 
 > [!TIP]

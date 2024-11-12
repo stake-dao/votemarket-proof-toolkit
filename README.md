@@ -61,6 +61,7 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
 
 3. **Set up a virtual environment and install dependencies:**
    ```bash
+   export PYTHONPATH="${PYTHONPATH}:/script"
    make install
    ```
 
