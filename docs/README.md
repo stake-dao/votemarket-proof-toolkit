@@ -1,10 +1,10 @@
-# VoteMarket V2 Documentation
+# VoteMarket V2 Integration Guide
 
-This guide is designed to help developers integrate and migrate their applications to the new VoteMarket V2 platform. The new version introduces significant changes, due to native cross-chain operations, with Arbitrum being the primary chain for Ethereum campaigns.
+This guide is designed to help developers integrate and migrate their applications to the new VoteMarket V2 architecture. The new version introduces some changes in interaction with the platform, due to native cross-chain operations.
 
 ## Contents
 
-- [VoteMarket V2 Documentation](#votemarket-v2-documentation)
+- [VoteMarket V2 Integration Guide](#votemarket-v2-integration-guide)
   - [Contents](#contents)
   - [Quick Reference](#quick-reference)
     - [Contract Addresses \& Deployments](#contract-addresses--deployments)

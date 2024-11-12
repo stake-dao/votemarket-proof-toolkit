@@ -4,8 +4,8 @@
 
 #### Overview
 
-[!IMPORTANT]
-When creating L1 campaigns, ensure you have enough native tokens (ETH) to cover CCIP fees in addition to your reward tokens.
+> [!IMPORTANT]
+> When creating L1 campaigns, ensure you have enough native tokens (ETH) to cover CCIP fees in addition to your reward tokens.
 
 
 Creating a campaign with L1 tokens involves several steps to ensure the tokens are properly managed across chains. The process includes:
