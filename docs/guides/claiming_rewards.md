@@ -39,6 +39,7 @@ To enable claims for an epoch, follow these steps:
 5. **Execute Claim**
    - Once all proofs are submitted, execute the claim function
    - The claim function signature remains similar to V1:
+
    ```solidity
    function claim(
        uint256 campaignId,
@@ -52,7 +53,7 @@ To enable claims for an epoch, follow these steps:
 
 > [!WARNING]
 > - Ineligible users cannot claim rewards, regardless of proof submission
-> - Ensure all required proofs are submitted before attempting to claim
+> - Ensure all required proofs are submitted for previous epochs before attempting to claim (same as for updating campaigns)
 > - The claim process may require multiple transactions if proofs need to be submitted
 
 > [!TIP]

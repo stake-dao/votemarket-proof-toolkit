@@ -1,0 +1,358 @@
+[
+  {
+    "inputs": [
+      { "internalType": "address", "name": "_votemarket", "type": "address" },
+      { "internalType": "address", "name": "_laPoste", "type": "address" },
+      { "internalType": "address", "name": "_tokenFactory", "type": "address" },
+      { "internalType": "address", "name": "_owner", "type": "address" }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  { "inputs": [], "name": "AlreadyInitialized", "type": "error" },
+  { "inputs": [], "name": "InvalidCampaignManager", "type": "error" },
+  { "inputs": [], "name": "InvalidChainId", "type": "error" },
+  { "inputs": [], "name": "InvalidRewardToken", "type": "error" },
+  { "inputs": [], "name": "InvalidSender", "type": "error" },
+  { "inputs": [], "name": "NewOwnerIsZeroAddress", "type": "error" },
+  { "inputs": [], "name": "NoHandoverRequest", "type": "error" },
+  { "inputs": [], "name": "NotLaPoste", "type": "error" },
+  { "inputs": [], "name": "TooSoon", "type": "error" },
+  { "inputs": [], "name": "Unauthorized", "type": "error" },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "components": [
+          { "internalType": "uint256", "name": "chainId", "type": "uint256" },
+          { "internalType": "address", "name": "gauge", "type": "address" },
+          { "internalType": "address", "name": "manager", "type": "address" },
+          {
+            "internalType": "address",
+            "name": "rewardToken",
+            "type": "address"
+          },
+          {
+            "internalType": "uint8",
+            "name": "numberOfPeriods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxRewardPerVote",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRewardAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address[]",
+            "name": "addresses",
+            "type": "address[]"
+          },
+          { "internalType": "address", "name": "hook", "type": "address" },
+          { "internalType": "bool", "name": "isWhitelist", "type": "bool" }
+        ],
+        "indexed": true,
+        "internalType": "struct CampaignRemoteManager.CampaignCreationParams",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "name": "CampaignCreationPayloadSent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "campaignId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "rewardToken",
+            "type": "address"
+          },
+          {
+            "internalType": "uint8",
+            "name": "numberOfPeriods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRewardAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxRewardPerVote",
+            "type": "uint256"
+          }
+        ],
+        "indexed": true,
+        "internalType": "struct CampaignRemoteManager.CampaignManagementParams",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "name": "CampaignManagementPayloadSent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "pendingOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipHandoverCanceled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "pendingOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipHandoverRequested",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "LA_POSTE",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TOKEN_FACTORY",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "VOTEMARKET",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "cancelOwnershipHandover",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "pendingOwner", "type": "address" }
+    ],
+    "name": "completeOwnershipHandover",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          { "internalType": "uint256", "name": "chainId", "type": "uint256" },
+          { "internalType": "address", "name": "gauge", "type": "address" },
+          { "internalType": "address", "name": "manager", "type": "address" },
+          {
+            "internalType": "address",
+            "name": "rewardToken",
+            "type": "address"
+          },
+          {
+            "internalType": "uint8",
+            "name": "numberOfPeriods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxRewardPerVote",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRewardAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address[]",
+            "name": "addresses",
+            "type": "address[]"
+          },
+          { "internalType": "address", "name": "hook", "type": "address" },
+          { "internalType": "bool", "name": "isWhitelist", "type": "bool" }
+        ],
+        "internalType": "struct CampaignRemoteManager.CampaignCreationParams",
+        "name": "params",
+        "type": "tuple"
+      },
+      {
+        "internalType": "uint256",
+        "name": "destinationChainId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "additionalGasLimit",
+        "type": "uint256"
+      }
+    ],
+    "name": "createCampaign",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "campaignId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "rewardToken",
+            "type": "address"
+          },
+          {
+            "internalType": "uint8",
+            "name": "numberOfPeriods",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalRewardAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxRewardPerVote",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct CampaignRemoteManager.CampaignManagementParams",
+        "name": "params",
+        "type": "tuple"
+      },
+      {
+        "internalType": "uint256",
+        "name": "destinationChainId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "additionalGasLimit",
+        "type": "uint256"
+      }
+    ],
+    "name": "manageCampaign",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      { "internalType": "address", "name": "result", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "pendingOwner", "type": "address" }
+    ],
+    "name": "ownershipHandoverExpiresAt",
+    "outputs": [
+      { "internalType": "uint256", "name": "result", "type": "uint256" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "chainId", "type": "uint256" },
+      { "internalType": "address", "name": "sender", "type": "address" },
+      { "internalType": "bytes", "name": "payload", "type": "bytes" }
+    ],
+    "name": "receiveMessage",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "token", "type": "address" },
+      { "internalType": "uint256", "name": "amount", "type": "uint256" }
+    ],
+    "name": "recoverERC20",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "requestOwnershipHandover",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "newOwner", "type": "address" }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  }
+]

@@ -43,7 +43,6 @@ Campaign closing follows specific rules based on timing and who initiates the cl
 
 - Claim Window: 24 weeks after campaign end
 - Close Window: 4 weeks after campaign end
-- Use helper functions to check current status
 
 > [!TIP]
-> For implementation details and helper functions, see `close_campaign.py` in the `examples/` directory.
+> For implementation details and helper functions (checking timings), see `close_campaign.py` in the `examples/` directory.
