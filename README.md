@@ -126,9 +126,17 @@ Use these block numbers when generating proofs to ensure they match the oracle's
 
 ## Documentation
 
-For detailed information on each component and function, please refer to the inline documentation in the source code. Key areas to explore include:
+For detailed information on each component and function, please refer to:
 
-- `proofs/main.py`: Main interface for generating proofs
-- `votes/main.py`: Functions for querying votes and campaigns
-- `shared/`: Utility functions and shared constants
-- `Makefile`: Various commands for interacting with the toolkit, including proof generation and data retrieval
+- [Developer Documentation](docs/README.md): Comprehensive guide for integrating with VoteMarket V2, including:
+  - Contract addresses and deployments
+  - Campaign creation and management
+  - Claiming rewards
+  - Using the Bundler for batch operations
+- Inline documentation in the source code:
+  - `proofs/main.py`: Main interface for generating proofs
+  - `votes/main.py`: Functions for querying votes and campaigns
+  - `shared/`: Utility functions and shared constants
+  - `Makefile`: Various commands for interacting with the toolkit
+
+The developer documentation provides detailed examples and best practices for integrating with the protocol, while the source code documentation offers technical details about implementation.
