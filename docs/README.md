@@ -15,6 +15,7 @@ This guide is designed to help developers integrate and migrate their applicatio
   - [Using the Bundler for Batch Operations](#using-the-bundler-for-batch-operations)
     - [Proof Submissions](#proof-submissions)
     - [Claims](#claims)
+      - [Update Epochs](#update-epochs)
 
 ## Quick Reference
 
@@ -31,8 +32,8 @@ This guide is designed to help developers integrate and migrate their applicatio
 
 ## Campaign Creation
 
-- [L1 Token Campaigns (Ethereum → Arbitrum)](guides/campaign_creation.md#l1-token-campaigns-ethereum-arbitrum)
-- [L2 Token Campaigns (Native Arbitrum)](guides/campaign_creation.md#l2-token-campaigns-native-arbitrum)
+- [L1 Token Campaigns (Ethereum → L2)](guides/campaign_creation.md#l1-token-campaigns-ethereum)
+- [L2 Token Campaigns (Native L2)](guides/campaign_creation.md#l2-token-campaigns-native-l2)
 
 ## Campaign Management
 
@@ -42,7 +43,7 @@ This guide is designed to help developers integrate and migrate their applicatio
 
 ## Campaign Closing
 
-- [Overview](guides/campaign_management.md#campaign-closing)
+- [Overview](guides/campaign_closing.md#campaign-closing)
 
 ## Claiming Campaign Rewards
 
@@ -61,6 +62,10 @@ Batch multiple proof submissions together:
 ### Claims
 - Submit multiple claims in a single transaction
 - Combine proof submissions with claims
+
+#### Update Epochs
+- Update multiple epochs in a single transaction
+- Combine proof submissions with epoch updates
 
 > [!TIP]
 > An usage of the bundler is present in the `claim_rewards.py` script in the `examples/` directory.

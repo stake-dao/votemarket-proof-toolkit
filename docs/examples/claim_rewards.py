@@ -203,6 +203,13 @@ def process_claim(campaign_id: int, user_address: str, epoch: int) -> dict:
     ).call()
     gauge_address = campaign_infos[1]
 
+    # Listed user proofs also needed for the computation to be done
+    listed_users = votemarket_contract.functions.getAddressesByCampaign(
+        campaign_id
+    ).call()
+
+    print(f"Listed users: {listed_users}")
+
     # Process epochs in order (previous epoch first)
     epochs_to_check = [epoch - GlobalConstants.WEEK, epoch]
 
@@ -242,7 +249,7 @@ def process_claim(campaign_id: int, user_address: str, epoch: int) -> dict:
             gauge_proof = vm_proofs.get_gauge_proof(
                 protocol="curve",
                 gauge_address=gauge_address,
-                epoch=current_epoch,
+                current_epoch=current_epoch,
                 block_number=block_data["blockNumber"],
             )
             proofs_needed.append(
@@ -254,25 +261,60 @@ def process_claim(campaign_id: int, user_address: str, epoch: int) -> dict:
                 }
             )
 
-        # 3. Check and collect user proof if needed
-        user_data = get_user_data(user_address, gauge_address, current_epoch)
-        if user_data[3] == 0:  # lastUpdate
-            print(f"Need to submit user proof for epoch {current_epoch}")
-            user_proof = vm_proofs.get_user_proof(
-                protocol="curve",
-                gauge_address=gauge_address,
-                user=user_address,
-                block_number=block_data["blockNumber"],
+        # 3. Check and collect user proofs for all listed users
+        listed_users = votemarket_contract.functions.getAddressesByCampaign(
+            campaign_id
+        ).call()
+        print(f"Processing proofs for {len(listed_users)} listed users...")
+
+        for listed_user in listed_users:
+            user_data = get_user_data(
+                listed_user, gauge_address, current_epoch
             )
-            proofs_needed.append(
-                {
-                    "type": "user_proof",
-                    "epoch": current_epoch,
-                    "user_address": user_address,
-                    "gauge_address": gauge_address,
-                    "storage_proof": user_proof["storage_proof"],
-                }
+            if user_data[3] == 0:  # lastUpdate
+                print(
+                    f"Need to submit user proof for {listed_user} at epoch {current_epoch}"
+                )
+                user_proof = vm_proofs.get_user_proof(
+                    protocol="curve",
+                    gauge_address=gauge_address,
+                    user=listed_user,
+                    block_number=block_data["blockNumber"],
+                )
+                proofs_needed.append(
+                    {
+                        "type": "user_proof",
+                        "epoch": current_epoch,
+                        "user_address": listed_user,
+                        "gauge_address": gauge_address,
+                        "storage_proof": user_proof["storage_proof"],
+                    }
+                )
+
+        # Original user proof check (if not already in listed users)
+        if user_address not in listed_users:
+            user_data = get_user_data(
+                user_address, gauge_address, current_epoch
             )
+            if user_data[3] == 0:  # lastUpdate
+                print(
+                    f"Need to submit user proof for main user {user_address} at epoch {current_epoch}"
+                )
+                user_proof = vm_proofs.get_user_proof(
+                    protocol="curve",
+                    gauge_address=gauge_address,
+                    user=user_address,
+                    block_number=block_data["blockNumber"],
+                )
+                proofs_needed.append(
+                    {
+                        "type": "user_proof",
+                        "epoch": current_epoch,
+                        "user_address": user_address,
+                        "gauge_address": gauge_address,
+                        "storage_proof": user_proof["storage_proof"],
+                    }
+                )
 
     # Return proof requirements or ready status
     if proofs_needed:
@@ -297,11 +339,11 @@ if __name__ == "__main__":
     ) * GlobalConstants.WEEK
 
     # Process claim for:
-    # - Campaign ID: 1
+    # - Campaign ID: 5
     # - User: 0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6
     # - Current epoch
     result = process_claim(
-        campaign_id=1,
+        campaign_id=5,
         user_address="0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6",
         epoch=current_epoch,
     )
@@ -333,7 +375,7 @@ if __name__ == "__main__":
         # Encode claim through bundler
         claim_data = encode_bundler_claim(
             votemarket_address=VOTEMARKET_ADDRESS,
-            campaign_id=1,
+            campaign_id=5,
             user_address="0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6",
             epoch=current_epoch,
             hook_data=b"",

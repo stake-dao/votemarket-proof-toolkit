@@ -1,13 +1,13 @@
 ## Campaign Creation
 
-### 1. L1 Token Campaigns (Ethereum → Arbitrum)
+### 1. L1 Token Campaigns (Ethereum → L2)
 
 #### Overview
 
 Creating a campaign with L1 tokens involves several steps to ensure the tokens are properly managed across chains:
 1. Locking the original tokens on Ethereum
-2. Bridging a message to Arbitrum
-3. Minting wrapped tokens on Arbitrum to be used for the campaign
+2. Bridging a message to L2
+3. Minting wrapped tokens on L2 to be used for the campaign
 
 The helper contract for creating campaigns is the [CampaignRemoteManager](https://etherscan.io/address/0xd1f0101Df22Cb7447F486Da5784237AB7a55eB4e).
 
@@ -19,7 +19,7 @@ The helper contract for creating campaigns is the [CampaignRemoteManager](https:
 > [!TIP]
 > For detailed steps and code, refer to the `create_campaign_l1.py` script in the `examples/` directory.
 
-### 2. L2 Token Campaigns (Native Arbitrum)
+### 2. L2 Token Campaigns (Native L2)
 
 #### Overview
 

@@ -101,7 +101,7 @@ The toolkit provides multiple ways to generate proofs for interacting with Votem
 
 ### Using Python Scripts
 
-You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.
+You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.****
 
 ## Understanding Block Numbers and Proofs
 

@@ -32,6 +32,7 @@ To enable claims for an epoch, follow these steps:
 
 4. **Submit User Vote Proofs**
    - Required only for eligible voters
+   - Also need to submit listed (blacklist + whitelist) user proofs, in order for the computation to be done
    - Check if the user's vote proof is already registered
    - If not, generate and submit the proof for the user, gauge, and epoch
    - Refer to `submit_user_proof()` in `claim_rewards.py` for implementation
@@ -54,7 +55,7 @@ To enable claims for an epoch, follow these steps:
 > [!WARNING]
 > - Ineligible users cannot claim rewards, regardless of proof submission
 > - Ensure all required proofs are submitted for previous epochs before attempting to claim (same as for updating campaigns)
-> - The claim process may require multiple transactions if proofs need to be submitted
+> - The claim process may require multiple transactions if proofs need to be submitted -> can be done in one go with the bundler
 
 > [!TIP]
 > For complete implementation details and examples, refer to the `claim_rewards.py` script in the `examples/` directory.
