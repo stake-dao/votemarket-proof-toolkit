@@ -61,6 +61,7 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
 
 3. **Set up a virtual environment and install dependencies:**
    ```bash
+   export PYTHONPATH="${PYTHONPATH}:/script"
    make install
    ```
 
@@ -100,7 +101,7 @@ The toolkit provides multiple ways to generate proofs for interacting with Votem
 
 ### Using Python Scripts
 
-You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.
+You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.****
 
 ## Understanding Block Numbers and Proofs
 
@@ -125,9 +126,17 @@ Use these block numbers when generating proofs to ensure they match the oracle's
 
 ## Documentation
 
-For detailed information on each component and function, please refer to the inline documentation in the source code. Key areas to explore include:
+For detailed information on each component and function, please refer to:
 
-- `proofs/main.py`: Main interface for generating proofs
-- `votes/main.py`: Functions for querying votes and campaigns
-- `shared/`: Utility functions and shared constants
-- `Makefile`: Various commands for interacting with the toolkit, including proof generation and data retrieval
+- [Developer Documentation](docs/README.md): Comprehensive guide for integrating with VoteMarket V2, including:
+  - Contract addresses and deployments
+  - Campaign creation and management
+  - Claiming rewards
+  - Using the Bundler for batch operations
+- Inline documentation in the source code:
+  - `proofs/main.py`: Main interface for generating proofs
+  - `votes/main.py`: Functions for querying votes and campaigns
+  - `shared/`: Utility functions and shared constants
+  - `Makefile`: Various commands for interacting with the toolkit
+
+The developer documentation provides detailed examples and best practices for integrating with the protocol, while the source code documentation offers technical details about implementation.
