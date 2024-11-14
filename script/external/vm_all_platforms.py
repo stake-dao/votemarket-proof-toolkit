@@ -12,10 +12,10 @@ The resulting JSON file serves as input for subsequent proof generation steps.
 """
 
 import argparse
+import asyncio
 import json
 import os
 from typing import Any, Dict, List
-import asyncio
 
 from data.query_campaigns import CampaignService
 from dotenv import load_dotenv
@@ -32,6 +32,7 @@ load_dotenv()
 TEMP_DIR = "temp"
 
 campaign_service = CampaignService()
+
 
 def get_block_data(block_number: int) -> Dict[str, Any]:
     """
