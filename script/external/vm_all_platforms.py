@@ -68,7 +68,6 @@ async def process_protocol(
     Returns:
         ProtocolData: A dictionary containing the protocol name and a list of platform data.
     """
-
     # Always treat epoch as rounded
     epoch = get_rounded_epoch(epoch)
 
@@ -78,8 +77,6 @@ async def process_protocol(
         f"Found [green]{len(platforms)}[/green] platforms for [blue]{protocol}[/blue]"
     )
 
-    web3_service = Web3Service(1, GlobalConstants.get_rpc_url(1))
-
     protocol_data: ProtocolData = {"platforms": {}}
 
     for platform in platforms:
@@ -88,20 +85,17 @@ async def process_protocol(
 
         rprint(f"Processing platform: {platform_address} on chain {chain_id}")
 
-        # Initialize web3 service for chain if not exists
-        if chain_id not in web3_service.w3:
-            web3_service.add_chain(
-                chain_id, GlobalConstants.get_rpc_url(chain_id)
-            )
+        # Get Web3Service instance for this chain
+        web3_service = Web3Service.get_instance(chain_id)
 
         platform_contract = web3_service.get_contract(
-            platform_address, "vm_platform", chain_id
+            platform_address, "vm_platform"
         )
         lens = platform_contract.functions.ORACLE().call()
         lens_address = to_checksum_address(lens.lower())
 
         lens_contract = web3_service.get_contract(
-            lens_address, "oracle_lens", chain_id
+            lens_address, "oracle_lens"
         )
         oracle_address = lens_contract.functions.oracle().call()
         oracle_address = to_checksum_address(oracle_address.lower())
@@ -112,7 +106,7 @@ async def process_protocol(
             )
             continue
 
-        oracle = web3_service.get_contract(oracle_address, "oracle", chain_id)
+        oracle = web3_service.get_contract(oracle_address, "oracle")
         latest_setted_block = (
             block
             if block is not None
