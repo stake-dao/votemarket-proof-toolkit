@@ -1,13 +1,12 @@
 from typing import Any, Dict, List
 
-from data.query_campaigns import query_active_campaigns
 from data.query_votes import query_gauge_votes
 from eth_utils import to_checksum_address
+from services.web3_service import Web3Service
 from shared.constants import GaugeControllerConstants, GlobalConstants
 from shared.exceptions import VoteMarketDataException
-from shared.types import Campaign, EligibleUser
+from shared.types import EligibleUser
 from shared.utils import get_rounded_epoch
-from shared.web3_service import Web3Service
 from w3multicall.multicall import W3Multicall
 
 
@@ -165,15 +164,3 @@ class VoteMarketData:
             epochs[i]: results[i][2] if results[i][2] != 0 else 0
             for i in range(len(epochs))
         }
-
-    def get_active_campaigns(
-        self, chain_id: int, platform: str
-    ) -> List[Campaign]:
-        try:
-            return query_active_campaigns(
-                self.web3_service, chain_id, platform
-            )
-        except Exception as e:
-            raise VoteMarketDataException(
-                f"Error querying active campaigns: {str(e)}"
-            )

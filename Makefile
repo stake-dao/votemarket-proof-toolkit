@@ -78,8 +78,9 @@ block-info: install
 
 get-active-campaigns: install
 	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/active_campaigns.py \
-		"$(CHAIN_ID)" \
-		"$(PLATFORM)"
+		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
+		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
+		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)")
 
 get-epoch-blocks: install
 	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/get_epoch_blocks.py \

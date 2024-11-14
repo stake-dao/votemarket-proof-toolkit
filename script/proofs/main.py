@@ -9,11 +9,11 @@ from eth_utils import to_checksum_address
 from proofs.block_header.encoder import get_block_info
 from proofs.proof_generator.gauge_proof import generate_gauge_proof
 from proofs.proof_generator.user_proof import generate_user_proof
+from services.web3_service import Web3Service
 from shared.constants import GaugeVotesConstants, GlobalConstants
 from shared.exceptions import VoteMarketProofsException
 from shared.types import BlockInfo, GaugeProof, UserProof
 from shared.utils import get_rounded_epoch
-from shared.web3_service import Web3Service
 
 
 class VoteMarketProofs:

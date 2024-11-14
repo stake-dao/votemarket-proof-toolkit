@@ -3,9 +3,9 @@ from typing import Any, Dict, List
 
 from rich import print as rprint
 from rich.console import Console
+from services.etherscan_service import get_logs_by_address_and_topics
+from services.parquet_cache_service import ParquetCache
 from shared.constants import GaugeControllerConstants
-from shared.etherscan_service import get_logs_by_address_and_topics
-from shared.parquet_cache_service import ParquetCache
 from web3 import Web3
 
 CACHE_DIR = "cache"

@@ -14,25 +14,37 @@ import argparse
 import asyncio
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List
 
 from data.main import VoteMarketData
-from data.query_campaigns import query_active_campaigns
+from data.query_campaigns import CampaignService
 from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from rich.console import Console
 from rich.panel import Panel
 from shared.types import AllProtocolsData, ProtocolData
 from shared.utils import get_rounded_epoch
-from shared.web3_service import Web3Service
 
 load_dotenv()
 
 TEMP_DIR = "temp"
 
+# Initialize services
+campaign_service = CampaignService()
 vm_proofs = VoteMarketProofs(1)
 vm_votes = VoteMarketData(1)
 console = Console()
+
+
+def is_campaign_active(campaign: dict) -> bool:
+    """Check if a campaign is active and should be processed"""
+    current_timestamp = int(datetime.now().timestamp())
+    return (
+        not campaign["is_closed"]
+        and campaign["details"]["end_timestamp"] > current_timestamp
+        and campaign["period_left"] > 0
+    )
 
 
 async def process_protocol(
@@ -45,17 +57,11 @@ async def process_protocol(
         "platforms": {},
     }
 
-    # Cache for web3 services per chain
-    web3_services: Dict[int, Web3Service] = {}
-    gauge_proofs_cache = {}  # Cache for gauge proofs
-    user_proofs_cache = {}  # Cache for user proofs
+    gauge_proofs_cache: Dict[str, Dict[str, Any]] = {}
+    user_proofs_cache: Dict[str, Dict[str, Any]] = {}
 
     for chain_id, platform_data in platforms.items():
         # Get or create Web3Service for this chain
-        if chain_id not in web3_services:
-            web3_services[chain_id] = Web3Service.get_instance(chain_id)
-
-        web3_service = web3_services[chain_id]
         platform_address = platform_data["address"]
         block_number = platform_data["latest_setted_block"]
 
@@ -81,10 +87,24 @@ async def process_protocol(
                     "0x" + gauge_proofs["gauge_controller_proof"].hex()
                 )
 
+        # Query active campaigns using the new campaign service
         with console.status("[magenta]Querying active campaigns...[/magenta]"):
-            active_campaigns = query_active_campaigns(
-                web3_service, chain_id, platform_address
+            campaign_svc = CampaignService()
+            all_campaigns = await campaign_svc.query_active_campaigns(
+                chain_id, platform_address
             )
+
+            # Filter only truly active campaigns
+            active_campaigns = [
+                campaign
+                for campaign in all_campaigns
+                if is_campaign_active(campaign)
+            ]
+
+            if len(active_campaigns) < len(all_campaigns):
+                console.print(
+                    f"[yellow]Filtered out {len(all_campaigns) - len(active_campaigns)} inactive campaigns[/yellow]"
+                )
 
         # Process all valid gauges for this chain/platform
         unique_gauges = {

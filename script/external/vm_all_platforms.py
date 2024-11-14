@@ -21,10 +21,10 @@ from dotenv import load_dotenv
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
 from rich import print as rprint
+from services.web3_service import Web3Service
 from shared.constants import GlobalConstants
 from shared.types import AllProtocolsData, ProtocolData
 from shared.utils import get_rounded_epoch
-from shared.web3_service import Web3Service
 
 load_dotenv()
 
