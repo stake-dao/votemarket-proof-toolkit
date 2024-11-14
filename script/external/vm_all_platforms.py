@@ -15,8 +15,9 @@ import argparse
 import json
 import os
 from typing import Any, Dict, List
+import asyncio
 
-from data.query_campaigns import get_all_platforms
+from data.query_campaigns import CampaignService
 from dotenv import load_dotenv
 from eth_utils import to_checksum_address
 from proofs.main import VoteMarketProofs
@@ -30,6 +31,7 @@ load_dotenv()
 
 TEMP_DIR = "temp"
 
+campaign_service = CampaignService()
 
 def get_block_data(block_number: int) -> Dict[str, Any]:
     """
@@ -51,7 +53,7 @@ def get_block_data(block_number: int) -> Dict[str, Any]:
     }
 
 
-def process_protocol(
+async def process_protocol(
     protocol: str, epoch: int, block: int = None
 ) -> ProtocolData:
     """
@@ -70,7 +72,7 @@ def process_protocol(
     epoch = get_rounded_epoch(epoch)
 
     rprint(f"Processing protocol: [blue]{protocol}[/blue]")
-    platforms = get_all_platforms(protocol)
+    platforms = campaign_service.get_all_platforms(protocol)
     rprint(
         f"Found [green]{len(platforms)}[/green] platforms for [blue]{protocol}[/blue]"
     )
@@ -140,7 +142,7 @@ def process_protocol(
     return protocol_data
 
 
-def main(
+async def main(
     protocols: List[str], epoch: int, block: int = None
 ) -> AllProtocolsData:
     """
@@ -157,7 +159,7 @@ def main(
     all_protocols_data: AllProtocolsData = {"protocols": {}}
 
     for protocol in protocols:
-        protocol_data = process_protocol(protocol, epoch, block)
+        protocol_data = await process_protocol(protocol, epoch, block)
         all_protocols_data["protocols"][protocol] = protocol_data
 
     os.makedirs(TEMP_DIR, exist_ok=True)
@@ -193,4 +195,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main(args.protocols, args.epoch, args.block)
+    asyncio.run(main(args.protocols, args.epoch, args.block))
