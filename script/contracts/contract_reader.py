@@ -1,16 +1,16 @@
 from typing import Any, List
 
-from shared.web3_service import get_web3_service
+from shared.web3_service import Web3Service
 from solcx import compile_source
 
 
 class ContractReader:
     @staticmethod
     def read_contract_data(
-        contract_source: str, constructor_args: List[Any], chain_id: int
+        contract_source: str,
+        constructor_args: List[Any],
+        web3_service: Web3Service,
     ) -> Any:
-        web3_service = get_web3_service()
-
         compiled_sol = compile_source(contract_source)
         contract_interface = compiled_sol["<stdin>:BatchCampaignData"]
 
@@ -19,7 +19,6 @@ class ContractReader:
             contract_interface["abi"],
             contract_interface["bin"],
             constructor_args,
-            chain_id,
         )
 
         return result

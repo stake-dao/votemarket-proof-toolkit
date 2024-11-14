@@ -13,8 +13,12 @@ from w3multicall.multicall import W3Multicall
 
 class VoteMarketData:
     def __init__(self, chain_id: int):
-        rpc_url = GlobalConstants.get_rpc_url(chain_id)
-        self.web3_service = Web3Service(chain_id, rpc_url)
+        self.chain_id = chain_id
+        self.web3_service = Web3Service.get_instance(chain_id)
+
+    def get_web3_service_for_chain(self, chain_id: int) -> Web3Service:
+        """Get Web3Service for a specific chain"""
+        return Web3Service.get_instance(chain_id)
 
     async def get_gauge_votes(
         self, protocol: str, gauge_address: str, block_number: int
@@ -41,7 +45,7 @@ class VoteMarketData:
         current_epoch = get_rounded_epoch(current_epoch)
 
         try:
-            w3 = self.web3_service.get_w3()
+            w3 = self.web3_service.w3
 
             if chain_id is not None and platform is not None:
                 epoch_blocks = self.get_epochs_block(
@@ -128,7 +132,7 @@ class VoteMarketData:
                 chain_id, GlobalConstants.get_rpc_url(chain_id)
             )
 
-        w3 = self.web3_service.get_w3(chain_id)
+        w3 = self.web3_service.w3
         multicall = W3Multicall(w3)
 
         platform_contract = self.web3_service.get_contract(

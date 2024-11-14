@@ -22,7 +22,6 @@ from dotenv import load_dotenv
 from proofs.main import VoteMarketProofs
 from rich.console import Console
 from rich.panel import Panel
-from shared.constants import GlobalConstants
 from shared.types import AllProtocolsData, ProtocolData
 from shared.utils import get_rounded_epoch
 from shared.web3_service import Web3Service
@@ -46,11 +45,17 @@ async def process_protocol(
         "platforms": {},
     }
 
-    web3_service = Web3Service(1, GlobalConstants.get_rpc_url(1))
+    # Cache for web3 services per chain
+    web3_services: Dict[int, Web3Service] = {}
     gauge_proofs_cache = {}  # Cache for gauge proofs
     user_proofs_cache = {}  # Cache for user proofs
 
     for chain_id, platform_data in platforms.items():
+        # Get or create Web3Service for this chain
+        if chain_id not in web3_services:
+            web3_services[chain_id] = Web3Service.get_instance(chain_id)
+
+        web3_service = web3_services[chain_id]
         platform_address = platform_data["address"]
         block_number = platform_data["latest_setted_block"]
 

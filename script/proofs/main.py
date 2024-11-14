@@ -46,7 +46,7 @@ class VoteMarketProofs:
             protocol
         ]
         gauge_controller_contract = self.web3_service.get_contract(
-            gauge_controller_address, "gauge_controller", self.chain_id
+            gauge_controller_address, "gauge_controller"
         )
 
         try:
@@ -81,7 +81,7 @@ class VoteMarketProofs:
         """
         try:
             account_proof, storage_proof = generate_user_proof(
-                self.web3_service.get_w3(),
+                self.web3_service.w3,
                 protocol,
                 gauge_address,
                 user,
@@ -107,7 +107,7 @@ class VoteMarketProofs:
 
         try:
             gauge_controller_proof, point_data_proof = generate_gauge_proof(
-                self.web3_service.get_w3(),
+                self.web3_service.w3,
                 protocol,
                 gauge_address,
                 current_epoch,
@@ -123,9 +123,7 @@ class VoteMarketProofs:
     def get_block_info(self, block_number: int) -> BlockInfo:
         """Get block info for a given block number"""
         try:
-            block_info = get_block_info(
-                self.web3_service.get_w3(), block_number
-            )
+            block_info = get_block_info(self.web3_service.w3, block_number)
             return BlockInfo(
                 block_number=block_info["block_number"],
                 block_hash=block_info["block_hash"],

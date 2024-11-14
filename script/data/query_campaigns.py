@@ -3,7 +3,7 @@ from typing import List
 
 from contracts.contract_reader import ContractReader
 from eth_utils import to_checksum_address
-from shared.constants import ContractRegistry, GlobalConstants
+from shared.constants import ContractRegistry
 from shared.types import Campaign, Platform
 from shared.web3_service import Web3Service
 
@@ -36,17 +36,16 @@ def query_active_campaigns(
     """
     Query active campaigns for a given chain + platform using multiple RPC calls in batches of 10
     """
-
-    if chain_id not in web3_service.w3:
-        web3_service.add_chain(chain_id, GlobalConstants.get_rpc_url(chain_id))
+    # Ensure we have the correct web3 instance for this chain
+    web3_service = Web3Service.get_instance(chain_id)
 
     platform = to_checksum_address(platform.lower())
 
     # Get the campaign count
-    platform_contract = web3_service.get_contract(
-        platform, "vm_platform", chain_id
-    )
+    platform_contract = web3_service.get_contract(platform, "vm_platform")
     campaigns_count = platform_contract.functions.campaignCount().call()
+
+    print(f"Campaigns count: {campaigns_count}")
 
     # Read the Solidity contract source
     contract_path = os.path.join(
@@ -64,7 +63,7 @@ def query_active_campaigns(
 
         # Read contract data for the current batch
         result = ContractReader.read_contract_data(
-            contract_source, [platform, start_index, end_index], chain_id
+            contract_source, [platform, start_index, end_index], web3_service
         )
 
         # Decode the result
