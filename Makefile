@@ -1,71 +1,60 @@
 # Makefile for VoteMarket Proofs Generation
 
 # Configuration
-PYTHON := python3
-VENV := venv
-VENV_ACTIVATE := . $(VENV)/bin/activate
-SRC_DIR := script
-export PYTHONPATH := ${PYTHONPATH}:script
+PYTHON := uv run
+VENV := .venv
 
 # Phony targets declaration
 .PHONY: all install clean test help integration
 .PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
-.PHONY: format lint
+.PHONY: format lint requirements
 
 # Default target: Set up the virtual environment and install dependencies
 all: install
 
-# Create virtual environment and install dependencies
-install: $(VENV)/bin/activate
-$(VENV)/bin/activate: requirements.txt
-	PYTHONPATH=script $(PYTHON) -m venv $(VENV)
-	$(VENV_ACTIVATE) && pip install -r requirements.txt
+# Install development dependencies
+install-dev:
+	uv pip install -e ".[dev]"
 
 # Remove virtual environment and cached Python files
 clean:
 	rm -rf $(VENV)
+	rm -rf .uv
+	rm -rf *.egg-info
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
+	find . -type d -name '.ruff_cache' -delete
+	find . -type d -name '.pytest_cache' -delete
 
-# Format all Python files
+# Format and lint all Python files using ruff
 format:
-	black --line-length 79 .
-	isort -rc .
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
+	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	ruff check --fix $(TARGET)
+	ruff format $(TARGET)
 
-# Format Python files. Usage: make format [FILE=path/to/file]
-format:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	black --line-length 79 $(TARGET)
-	isort $(TARGET)
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
+# Individual formatting commands
+check:
+	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	ruff check $(TARGET)
 
-black:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	black --line-length 79 $(TARGET)
-
-isort:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	isort $(TARGET)
-
-autoflake:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
+format-only:
+	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	ruff format $(TARGET)
 
 # Run integration tests
-integration:
-	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)
+integration: install-dev
+	 && make -f src/tests/integration/Makefile $(TARGET)
 
 # Proof generation commands
 user-proof: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/user_proof.py \
+	 $(PYTHON) src/votemarket_proofs/commands/user_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(USER_ADDRESS)" \
 		"$(BLOCK_NUMBER)"
 
 gauge-proof: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/gauge_proof.py \
+	 $(PYTHON) src/votemarket_proofs/commands/gauge_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(CURRENT_EPOCH)" \
@@ -73,21 +62,21 @@ gauge-proof: install
 
 # Information retrieval commands
 block-info: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/block_info.py \
+	 $(PYTHON) src/votemarket_proofs/commands/block_info.py \
 		"$(BLOCK_NUMBER)"
 
 get-active-campaigns: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/active_campaigns.py \
+	 $(PYTHON) src/votemarket_proofs/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)")
 
 get-epoch-blocks: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/get_epoch_blocks.py \
+	$(PYTHON) src/votemarket_proofs/commands/get_epoch_blocks.py \
 		"$(CHAIN_ID)" \
 		"$(PLATFORM)" \
 		"$(EPOCHS)"
 
 # Display help information
 help:
-	@$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/help.py
+	@ $(PYTHON) src/votemarket_proofs/commands/help.py
