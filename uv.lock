@@ -568,7 +568,7 @@ name = "cytoolz"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "toolz" },
+    { name = "toolz", marker = "implementation_name == 'cpython'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e2/4c/ca9b05bdfa28ddbb4a5365c27021a1d4be61db7d8f6b4e5d4e76aa4ba3b7/cytoolz-1.0.0.tar.gz", hash = "sha256:eb453b30182152f9917a5189b7d99046b6ce90cdf8aeb0feff4b2683e600defd", size = 626708 }
 wheels = [
@@ -947,6 +947,7 @@ dependencies = [
     { name = "packaging" },
     { name = "pandas" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/66/862da14f5fde4eff2cedc0f51a8dc34ba145088e5041b45b2d57ac54f922/fastparquet-2024.11.0.tar.gz", hash = "sha256:e3b1fc73fd3e1b70b0de254bae7feb890436cb67e99458b88cb9bd3cc44db419", size = 467192 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/56/476f5b83476a256489879b78513bee737691a80905e246a2daa30ebcc362/fastparquet-2024.11.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:60ccf587410f0979105e17036df61bb60e1c2b81880dc91895cdb4ee65b71e7f", size = 910272 },
     { url = "https://files.pythonhosted.org/packages/3b/ad/4ce73440df874479f7205fe5445090f71ed4e9bd77fdb3b740253ce82703/fastparquet-2024.11.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a5ad5fc14b0567e700bea3cd528a0bd45a6f9371370b49de8889fb3d10a6574a", size = 684095 },
@@ -2509,7 +2510,7 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a8/fe/1ea0ba0896dfa47186692655b86db3214c4b7c9e0e76c7b1dc257d101ab1/varint-1.0.2.tar.gz", hash = "sha256:a6ecc02377ac5ee9d65a6a8ad45c9ff1dac8ccee19400a5950fb51d594214ca5", size = 1886 }
 
 [[package]]
-name = "votemarket-proofs"
+name = "votemarket-toolkit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -2524,6 +2525,7 @@ dependencies = [
     { name = "fastparquet" },
     { name = "py-solc-x" },
     { name = "pyarrow" },
+    { name = "rich" },
     { name = "ruff" },
     { name = "w3multicall" },
     { name = "web3" },
@@ -2542,6 +2544,7 @@ requires-dist = [
     { name = "fastparquet", specifier = ">=2024.5.0" },
     { name = "py-solc-x", specifier = ">=2.0.3" },
     { name = "pyarrow", specifier = ">=17.0.0" },
+    { name = "rich", specifier = ">=13.7.0" },
     { name = "ruff", specifier = ">=0.7.4" },
     { name = "w3multicall", specifier = ">=0.3.1" },
     { name = "web3", specifier = ">=6.19.0" },

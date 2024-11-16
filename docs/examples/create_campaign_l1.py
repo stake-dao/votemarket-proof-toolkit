@@ -7,8 +7,8 @@ script_dir = str(Path(__file__).parent.parent.parent / "script")
 sys.path.insert(0, script_dir)
 
 from eth_utils import to_checksum_address
-from shared.ccip_client import encode_campaign_creation_message
-from shared.utils import load_json
+from votemarket_toolkit.utils import load_json
+from votemarket_toolkit.shared.services.ccip_fee_service import CcipFeeService
 from web3 import Web3
 
 w3 = Web3(Web3.HTTPProvider("https://ethereum.llamarpc.com"))
@@ -38,32 +38,64 @@ def create_campaign(
         max_reward_per_vote: Maximum reward per vote (in token units)
         total_reward_amount: Total amount of rewards for the campaign (in token units)
     """
+    fee_calculator = CcipFeeService(w3, CCIP_ROUTER_ADDRESS)
 
     # Initialize contract
     campaign_remote_manager_contract = w3.eth.contract(
         address=to_checksum_address(CAMPAIGN_REMOTE_MANAGER_ADDRESS),
-        abi=load_json("abi/campaign_remote_manager.json"),
+        abi=load_json("src/votemarket_toolkit/resources/abi/campaign_remote_manager.json"),
     )
 
     # Convert decimal amounts to wei
     max_reward_per_vote_wei = w3.to_wei(max_reward_per_vote, "ether")
     total_reward_amount_wei = w3.to_wei(total_reward_amount, "ether")
 
-    # Get CCIP fee from client
-    fee = encode_campaign_creation_message(
-        w3,
-        to_checksum_address(CCIP_ROUTER_ADDRESS),
-        chain_id,
-        gauge_address,
-        reward_token_address,
-        number_of_periods,
-        max_reward_per_vote_wei,
-        total_reward_amount_wei,
-        gas_limit=2_500_000,
-    )
 
-    # Add 20% buffer to CCIP fee
-    fee = int(fee * 1.2)
+
+    """
+    const value =
+      chainId === mainnet.id
+        ? await getCcipFee({
+            sourceChainId: mainnet.id,
+            destChainId: arbitrum.id,
+            executionGasLimit: 2_500_000,
+            receiver: address,
+            tokens: [
+              {
+                address: rewardToken.address,
+                amount: formatUnits(parseUnits(totalRewardAmount, rewardToken.decimals), 0),
+              },
+            ],
+          })
+        : BigInt(0)
+    """
+
+    """
+     [
+                self.router_address,
+                bridge_chain_id,
+                chain_id,
+                self.sender_address,
+                1_000_000,
+                [],
+                additional_data,
+            ]
+    """
+
+
+    # Using contract utils to get CCIP fee
+    fee = fee_calculator.get_ccip_fee(
+        dest_chain_id=chain_id,
+        execution_gas_limit=2_500_000,
+        receiver=to_checksum_address(MANAGER_ADDRESS),
+        tokens=[
+            {
+                "address": reward_token_address,
+                "amount": total_reward_amount_wei,
+            },
+        ],
+        additional_data=b"",
+    )
 
     # Build transaction with message value for CCIP fees
     campaign_params = {
@@ -93,7 +125,6 @@ def create_campaign(
         }
     )
     return tx
-
 
 # Example usage
 if __name__ == "__main__":

@@ -10,9 +10,10 @@ sys.path.insert(0, script_dir)
 
 from eth_abi import encode
 from eth_utils import function_signature_to_4byte_selector, to_checksum_address
-from proofs.main import VoteMarketProofs
-from shared.constants import GlobalConstants
-from shared.utils import load_json
+
+from votemarket_toolkit.proofs.manager import VoteMarketProofs
+from votemarket_toolkit.shared.constants import GlobalConstants
+from votemarket_toolkit.utils import load_json
 from web3 import Web3
 
 # Initialize Web3 and constants
@@ -27,12 +28,12 @@ BUNDLER_ADDRESS = "0x67346f8b9B7dDA4639600C190DDaEcDc654359c8"
 # Initialize contracts
 votemarket_contract = w3.eth.contract(
     address=to_checksum_address(VOTEMARKET_ADDRESS),
-    abi=load_json("abi/vm_platform.json"),
+    abi=load_json("src/votemarket_toolkit/resources/abi/vm_platform.json"),
 )
 
 verifier_contract = w3.eth.contract(
     address=to_checksum_address(VERIFIER_ADDRESS),
-    abi=load_json("abi/verifier.json"),
+    abi=load_json("src/votemarket_toolkit/resources/abi/verifier.json"),
 )
 
 lens_address = votemarket_contract.functions.ORACLE().call()
@@ -41,13 +42,13 @@ if lens_address == "0x0000000000000000000000000000000000000000":
 
 lens_contract = w3.eth.contract(
     address=to_checksum_address(lens_address),
-    abi=load_json("abi/oracle_lens.json"),
+    abi=load_json("src/votemarket_toolkit/resources/abi/oracle_lens.json"),
 )
 
 oracle_address = lens_contract.functions.oracle().call()
 oracle_contract = w3.eth.contract(
     address=to_checksum_address(oracle_address),
-    abi=load_json("abi/oracle.json"),
+    abi=load_json("src/votemarket_toolkit/resources/abi/oracle.json"),
 )
 
 
@@ -331,7 +332,7 @@ def process_claim(campaign_id: int, user_address: str, epoch: int) -> dict:
 if __name__ == "__main__":
     from time import time
 
-    from shared.constants import GlobalConstants
+    from votemarket_toolkit.shared.constants import GlobalConstants
 
     # Calculate current epoch (rounded down to week)
     current_epoch = (
