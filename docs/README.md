@@ -32,8 +32,31 @@ This guide is designed to help developers integrate and migrate their applicatio
 
 ## Campaign Creation
 
+> [!NOTE]
+> VoteMarket V2 introduces a new cross-chain campaign creation flow. Below is a comparison between V1 and V2:
+
+<table>
+<tr>
+<th>VoteMarket V1</th>
+<th>VoteMarket V2</th>
+</tr>
+<tr>
+<td>
+<img src="assets/votemarket_v1_creation.png" alt="VoteMarket V1 Campaign Creation" width="400"/>
+</td>
+<td>
+<img src="assets/votemarket_v2_creation.png" alt="VoteMarket V2 Campaign Creation" width="400"/>
+</td>
+</tr>
+</table>
+
+Key differences in V2:
+- msg.value (CCIP fees)
+- Different signature (additional gas limt for CCIP - L2 / destination chain, hook address)
+
+For detailed implementation:
 - [L1 Token Campaigns (Ethereum → L2)](guides/campaign_creation.md#l1-token-campaigns-ethereum)
-- [L2 Token Campaigns (Native L2)](guides/campaign_creation.md#l2-token-campaigns-native-l2)
+- [L2 Token Campaigns (Directly on L2)](guides/campaign_creation.md#l2-token-campaigns-native-l2)
 
 ## Campaign Management
 

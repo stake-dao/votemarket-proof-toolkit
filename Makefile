@@ -1,71 +1,45 @@
 # Makefile for VoteMarket Proofs Generation
 
 # Configuration
-PYTHON := python3
-VENV := venv
-VENV_ACTIVATE := . $(VENV)/bin/activate
-SRC_DIR := script
-export PYTHONPATH := ${PYTHONPATH}:script
+PYTHON := uv run
+VENV := .venv
 
 # Phony targets declaration
 .PHONY: all install clean test help integration
 .PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
-.PHONY: format lint
+.PHONY: format lint requirements run-examples
 
-# Default target: Set up the virtual environment and install dependencies
+# Default target
 all: install
 
-# Create virtual environment and install dependencies
-install: $(VENV)/bin/activate
-$(VENV)/bin/activate: requirements.txt
-	PYTHONPATH=script $(PYTHON) -m venv $(VENV)
-	$(VENV_ACTIVATE) && pip install -r requirements.txt
+# Development setup
+install-dev:
+	uv pip install -e ".[dev]"
 
-# Remove virtual environment and cached Python files
+# Format and lint all Python files using black and ruff
+format:
+	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	uv run black $(TARGET)
+	uv run ruff check --fix $(TARGET)
+	uv run ruff format $(TARGET)
+
 clean:
-	rm -rf $(VENV)
+	rm -rf $(VENV) .uv *.egg-info
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
-
-# Format all Python files
-format:
-	black --line-length 79 .
-	isort -rc .
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables .
-
-# Format Python files. Usage: make format [FILE=path/to/file]
-format:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	black --line-length 79 $(TARGET)
-	isort $(TARGET)
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
-
-black:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	black --line-length 79 $(TARGET)
-
-isort:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	isort $(TARGET)
-
-autoflake:
-	$(eval TARGET := $(if $(FILE),$(FILE),script/))
-	autoflake -r --in-place --remove-all-unused-imports --remove-unused-variables $(TARGET)
-
-# Run integration tests
-integration:
-	$(VENV_ACTIVATE) && make -f script/tests/integration/Makefile $(TARGET)
+	find . -type d -name '.ruff_cache' -delete
+	find . -type d -name '.pytest_cache' -delete
 
 # Proof generation commands
 user-proof: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/user_proof.py \
+	$(PYTHON) src/votemarket_toolkit/commands/user_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(USER_ADDRESS)" \
 		"$(BLOCK_NUMBER)"
 
 gauge-proof: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/gauge_proof.py \
+	$(PYTHON) src/votemarket_toolkit/commands/gauge_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(CURRENT_EPOCH)" \
@@ -73,21 +47,27 @@ gauge-proof: install
 
 # Information retrieval commands
 block-info: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/block_info.py \
-		"$(BLOCK_NUMBER)"
+	$(PYTHON) src/votemarket_toolkit/commands/block_info.py "$(BLOCK_NUMBER)"
 
 get-active-campaigns: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/active_campaigns.py \
+	$(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)")
 
 get-epoch-blocks: install
-	$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/get_epoch_blocks.py \
-		"$(CHAIN_ID)" \
-		"$(PLATFORM)" \
-		"$(EPOCHS)"
+	$(PYTHON) src/votemarket_toolkit/commands/get_epoch_blocks.py \
+		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
+		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
+		$(if $(EPOCHS),"--epochs=$(EPOCHS)")
 
-# Display help information
+# Help and examples
 help:
-	@$(VENV_ACTIVATE) && PYTHONPATH=script $(PYTHON) script/commands/help.py
+	$(PYTHON) src/votemarket_toolkit/commands/help.py
+
+run-example:
+	$(PYTHON) src/votemarket_toolkit/commands/help.py $(EXAMPLE)
+	$(PYTHON) docs/examples/$(EXAMPLE).py
+
+.PHONY: all install-dev clean help run-example
+.PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks

@@ -7,14 +7,14 @@ script_dir = str(Path(__file__).parent.parent.parent / "script")
 sys.path.insert(0, script_dir)
 
 from eth_utils import to_checksum_address
-from shared.utils import get_rounded_epoch, load_json
+from votemarket_toolkit.utils import get_rounded_epoch, load_json
 from web3 import Web3
 
 w3 = Web3(Web3.HTTPProvider("https://arb1.arbitrum.io/rpc"))
 
 MANAGER_ADDRESS = "0x8898502BA35AB64b3562aBC509Befb7Eb178D4df"
 VOTEMARKET_ADDRESS = "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"
-VOTEMARKET_ABI = load_json("abi/vm_platform.json")
+VOTEMARKET_ABI = load_json("src/votemarket_toolkit/resources/abi/vm_platform.json")
 
 
 def close_campaign_l2(campaign_id: int) -> dict:

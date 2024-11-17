@@ -1,0 +1,37 @@
+[project]
+name = "votemarket-toolkit"
+version = "0.1.0"
+description = "VoteMarket Toolkit"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0.1",
+    "w3multicall>=0.3.1",
+    "web3>=6.19.0",
+    "eth_utils>=5.1.0",
+    "py-solc-x>=2.0.3",
+    "cmake>=3.30.5",
+    "fastparquet>=2024.5.0",
+    "pyarrow>=17.0.0",
+    "ruff>=0.7.4",
+    "rich>=13.7.0",
+    "black>=24.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/votemarket_toolkit"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py310"
+extend-select = ["I"]
+
+[tool.black]
+line-length = 79
+
+
+[tool.uv]
+pip.no-binary = ["*"]
