@@ -151,10 +151,19 @@ For detailed information on each component and function, please refer to:
   - Campaign creation and management
   - Claiming rewards
   - Using the Bundler for batch operations
-- Inline documentation in the source code:
-  - `proofs/main.py`: Main interface for generating proofs
-  - `votes/main.py`: Functions for querying votes and campaigns
-  - `shared/`: Utility functions and shared constants
-  - `Makefile`: Various commands for interacting with the toolkit
 
 The developer documentation provides detailed examples and best practices for integrating with the protocol, while the source code documentation offers technical details about implementation.
+
+## Usage
+
+See `make help` for available commands or run specific examples:
+
+```bash
+# Show all available commands
+make help
+
+# Run specific example
+make run-example EXAMPLE=create_campaign_l1
+```
+
+For detailed implementation examples, check the `docs/examples/` directory.

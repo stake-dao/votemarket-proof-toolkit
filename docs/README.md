@@ -42,10 +42,10 @@ This guide is designed to help developers integrate and migrate their applicatio
 </tr>
 <tr>
 <td>
-<img src="assets/votemarket_v1_creation.png" alt="VoteMarket V1 Campaign Creation" width="400"/>
+<img src="../assets/votemarket_v1_creation.png" alt="VoteMarket V1 Campaign Creation" width="400"/>
 </td>
 <td>
-<img src="assets/votemarket_v2_creation.png" alt="VoteMarket V2 Campaign Creation" width="400"/>
+<img src="../assets/votemarket_v2_creation.png" alt="VoteMarket V2 Campaign Creation" width="400"/>
 </td>
 </tr>
 </table>
