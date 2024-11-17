@@ -51,8 +51,11 @@ This guide is designed to help developers integrate and migrate their applicatio
 </table>
 
 Key differences in V2:
-- msg.value (CCIP fees)
-- Different signature (additional gas limt for CCIP - L2 / destination chain, hook address)
+
+- **msg.value** is required to cover *CCIP cross-chain messaging fees*
+- **Different function signature** with additional parameters:
+  - *Gas limit* for CCIP execution on L2/destination chain 
+  - *Hook address* for custom logic integration
 
 For detailed implementation:
 - [L1 Token Campaigns (Ethereum → L2)](guides/campaign_creation.md#l1-token-campaigns-ethereum)
