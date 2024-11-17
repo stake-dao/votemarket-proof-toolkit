@@ -37,6 +37,17 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
 - Get voters for a gauge
 - Get active campaigns on Votemarket
 
+## Prerequisites
+
+- Python 3.8 or higher
+- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
+  ```bash
+  # Install uv
+  pip install uv
+  # or
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+
 ## Installation
 
 1. **Clone the repository:**
@@ -45,24 +56,31 @@ The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with 
    cd votemarket-proof-toolkit
    ```
 
-2. **Install Solidity Compiler:**
+2. **Install dependencies using uv:**
    ```bash
-   # For macOS users (using Homebrew)
-   brew install solidity
-
-   # For Ubuntu/Debian users
-   sudo add-apt-repository ppa:ethereum/ethereum
-   sudo apt-get update
-   sudo apt-get install solc
-
-   # For other systems, please refer to the official Solidity documentation:
-   # https://docs.soliditylang.org/en/v0.8.19/installing-solidity.html
+   make install-dev
    ```
 
-3. **Set up a virtual environment and install dependencies:**
+3. **Verify installation:**
    ```bash
-   export PYTHONPATH="${PYTHONPATH}:/script"
-   make install
+   make help
+   ```
+
+## Quick Start
+
+1. **View available commands:**
+   ```bash
+   make help
+   ```
+
+2. **Generate a user proof:**
+   ```bash
+   make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER_ADDRESS=0x... BLOCK_NUMBER=12345678
+   ```
+
+3. **Run example scripts:**
+   ```bash
+   make run-examples
    ```
 
 ## Configuration

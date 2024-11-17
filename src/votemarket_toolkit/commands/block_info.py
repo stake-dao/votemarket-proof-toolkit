@@ -29,6 +29,34 @@ def get_block_info(block_number: int):
     rprint(f'[green]{info["rlp_block_header"]}[/green]')
 
 
+def show_usage():
+    rprint("[red]Error:[/red] Missing or invalid block number")
+    rprint("\n[cyan]Required arguments:[/cyan]")
+    rprint("- BLOCK_NUMBER: Positive integer representing the block number")
+    rprint("\n[cyan]Example usage:[/cyan]")
+    rprint("make block-info BLOCK_NUMBER=21203532")
+
+
+def main():
+    if len(sys.argv) != 2:
+        show_usage()
+        sys.exit(1)
+
+    try:
+        block_number = int(sys.argv[1])
+        if block_number <= 0:
+            raise ValueError("Block number must be a positive integer")
+
+        get_block_info(block_number)
+
+    except ValueError as e:
+        rprint(f"[red]Error:[/red] {str(e)}")
+        show_usage()
+        sys.exit(1)
+    except Exception as e:
+        rprint(f"[red]Unexpected error:[/red] {str(e)}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    block_number = int(sys.argv[1])
-    get_block_info(block_number)
+    main()

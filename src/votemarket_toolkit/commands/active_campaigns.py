@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime
 from typing import List, Optional
 
@@ -12,6 +13,11 @@ from rich.table import Table
 
 from votemarket_toolkit.campaigns.services.campaign_service import (
     CampaignService,
+)
+from votemarket_toolkit.commands.validation import (
+    validate_chain_id,
+    validate_eth_address,
+    validate_protocol,
 )
 from votemarket_toolkit.shared.constants import ContractRegistry
 
@@ -194,30 +200,53 @@ async def get_all_active_campaigns(
 
 
 def main():
-    """Entry point that parses arguments and runs the async function"""
     parser = argparse.ArgumentParser(
         description="Query active campaigns across chains/platforms"
     )
     parser.add_argument(
-        "--chain-id", type=int, help="Specific chain ID to query"
+        "--chain-id",
+        type=int,
+        help="Chain ID (1 for Ethereum, 42161 for Arbitrum)",
     )
     parser.add_argument(
-        "--platform", type=str, help="Specific platform address to query"
+        "--platform",
+        type=str,
+        help="Platform address (e.g., 0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5)",
     )
     parser.add_argument(
-        "--protocol", type=str, help="Protocol name to query all platforms"
+        "--protocol", type=str, help="Protocol name (curve, balancer)"
     )
 
     args = parser.parse_args()
 
-    # Run the async function
-    asyncio.run(
-        get_all_active_campaigns(
-            chain_id=args.chain_id,
-            platform=args.platform,
-            protocol=args.protocol,
+    try:
+        # Validate chain ID if provided
+        if args.chain_id:
+            validate_chain_id(args.chain_id)
+
+        # Validate platform address if provided
+        if args.platform:
+            args.platform = validate_eth_address(args.platform, "platform")
+
+        # Validate protocol if provided
+        if args.protocol:
+            args.protocol = validate_protocol(args.protocol)
+
+        # Run the async function
+        asyncio.run(
+            get_all_active_campaigns(
+                chain_id=args.chain_id,
+                platform=args.platform,
+                protocol=args.protocol,
+            )
         )
-    )
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {str(e)}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

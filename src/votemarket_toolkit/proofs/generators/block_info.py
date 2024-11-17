@@ -1,4 +1,4 @@
-""" Block header encoder """
+"""Block header encoder"""
 
 from typing import Any, Dict
 

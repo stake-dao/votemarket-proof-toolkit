@@ -5,7 +5,6 @@ from w3multicall.multicall import W3Multicall
 
 from votemarket_toolkit.shared.constants import (
     GaugeControllerConstants,
-    GlobalConstants,
 )
 from votemarket_toolkit.shared.exceptions import VoteMarketDataException
 from votemarket_toolkit.shared.services.web3_service import Web3Service
@@ -114,26 +113,22 @@ class VoteMarketDataService:
     def get_epochs_block(
         self, chain_id: int, platform: str, epochs: List[int]
     ) -> Dict[int, int]:
-
         # We always treat the epoch rounded to the day
         epochs = [get_rounded_epoch(epoch) for epoch in epochs]
-
-        if chain_id not in self.web3_service.w3:
-            self.web3_service.add_chain(
-                chain_id, GlobalConstants.get_rpc_url(chain_id)
-            )
 
         w3 = self.web3_service.w3
         multicall = W3Multicall(w3)
 
         platform_contract = self.web3_service.get_contract(
-            platform, "vm_platform", chain_id
+            platform, "vm_platform"
         )
+
         lens = platform_contract.functions.ORACLE().call()
+
         lens_address = to_checksum_address(lens.lower())
 
         lens_contract = self.web3_service.get_contract(
-            lens_address, "oracle_lens", chain_id
+            lens_address, "oracle_lens"
         )
         oracle_address = lens_contract.functions.oracle().call()
         oracle_address = to_checksum_address(oracle_address.lower())

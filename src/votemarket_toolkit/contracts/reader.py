@@ -169,12 +169,12 @@ class ContractReader:
 
         constructor_types = [
             "address",  # _router
-            "uint64",   # _destChainSelector
+            "uint64",  # _destChainSelector
             "uint256",  # _destChainId
             "address",  # _receiver
             "uint256",  # _executionGasLimit
             "(address,uint256)[]",  # _tokens array
-            "bytes",    # _payload
+            "bytes",  # _payload
         ]
 
         constructor_args = [
@@ -184,12 +184,16 @@ class ContractReader:
             receiver,
             execution_gas_limit,
             formatted_tokens,
-            payload
+            payload,
         ]
 
         encoded_args = encode(constructor_types, constructor_args)
         # Access the bytecode string from the artifact
-        data = artifact["bytecode"]["bytecode"] if isinstance(artifact["bytecode"], dict) else artifact["bytecode"]
+        data = (
+            artifact["bytecode"]["bytecode"]
+            if isinstance(artifact["bytecode"], dict)
+            else artifact["bytecode"]
+        )
         data = data + encoded_args.hex()
 
         default_params = {

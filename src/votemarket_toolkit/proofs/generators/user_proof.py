@@ -1,4 +1,4 @@
-""" User proof generator """
+"""User proof generator"""
 
 from typing import Tuple
 

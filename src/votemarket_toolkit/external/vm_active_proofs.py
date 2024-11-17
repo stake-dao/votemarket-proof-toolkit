@@ -153,9 +153,9 @@ async def process_protocol(
                         block_number,
                         campaign["listed_users"],
                     )
-                platform_output["gauges"][gauge_address][
-                    "listed_users"
-                ] = listed_users_data
+                platform_output["gauges"][gauge_address]["listed_users"] = (
+                    listed_users_data
+                )
 
         output_data["platforms"][chain_id] = platform_output
 

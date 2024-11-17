@@ -1,4 +1,4 @@
-""" All constants for the project """
+"""All constants for the project"""
 
 import os
 

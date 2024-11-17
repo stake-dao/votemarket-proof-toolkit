@@ -1,4 +1,4 @@
-""" Gauge proof generator """
+"""Gauge proof generator"""
 
 from typing import Tuple
 

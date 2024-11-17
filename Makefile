@@ -7,51 +7,39 @@ VENV := .venv
 # Phony targets declaration
 .PHONY: all install clean test help integration
 .PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
-.PHONY: format lint requirements
+.PHONY: format lint requirements run-examples
 
-# Default target: Set up the virtual environment and install dependencies
+# Default target
 all: install
 
-# Install development dependencies
+# Development setup
 install-dev:
 	uv pip install -e ".[dev]"
 
-# Remove virtual environment and cached Python files
+# Format and lint all Python files using black and ruff
+format:
+	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	uv run black $(TARGET)
+	uv run ruff check --fix $(TARGET)
+	uv run ruff format $(TARGET)
+
 clean:
-	rm -rf $(VENV)
-	rm -rf .uv
-	rm -rf *.egg-info
+	rm -rf $(VENV) .uv *.egg-info
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -delete
 	find . -type d -name '.ruff_cache' -delete
 	find . -type d -name '.pytest_cache' -delete
 
-# Format and lint all Python files using black and ruff
-format:
-	$(eval TARGET := $(if $(FILE),$(FILE),src/))
-	black $(TARGET) --experimental-string-processing
-	ruff check --fix $(TARGET)
-	ruff format $(TARGET)
-
-# Individual formatting commands
-check:
-	$(eval TARGET := $(if $(FILE),$(FILE),src/))
-	ruff check $(TARGET)
-
-# Run integration tests
-integration: install-dev
-	 && make -f src/tests/integration/Makefile $(TARGET)
-
 # Proof generation commands
 user-proof: install
-	 $(PYTHON) src/votemarket_toolkit/commands/user_proof.py \
+	$(PYTHON) src/votemarket_toolkit/commands/user_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(USER_ADDRESS)" \
 		"$(BLOCK_NUMBER)"
 
 gauge-proof: install
-	 $(PYTHON) src/votemarket_toolkit/commands/gauge_proof.py \
+	$(PYTHON) src/votemarket_toolkit/commands/gauge_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(CURRENT_EPOCH)" \
@@ -59,21 +47,27 @@ gauge-proof: install
 
 # Information retrieval commands
 block-info: install
-	 $(PYTHON) src/votemarket_toolkit/commands/block_info.py \
-		"$(BLOCK_NUMBER)"
+	$(PYTHON) src/votemarket_toolkit/commands/block_info.py "$(BLOCK_NUMBER)"
 
 get-active-campaigns: install
-	 $(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
+	$(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)")
 
 get-epoch-blocks: install
 	$(PYTHON) src/votemarket_toolkit/commands/get_epoch_blocks.py \
-		"$(CHAIN_ID)" \
-		"$(PLATFORM)" \
-		"$(EPOCHS)"
+		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
+		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
+		$(if $(EPOCHS),"--epochs=$(EPOCHS)")
 
-# Display help information
+# Help and examples
 help:
-	@ $(PYTHON) src/votemarket_toolkit/commands/help.py
+	$(PYTHON) src/votemarket_toolkit/commands/help.py
+
+run-example:
+	$(PYTHON) src/votemarket_toolkit/commands/help.py $(EXAMPLE)
+	$(PYTHON) docs/examples/$(EXAMPLE).py
+
+.PHONY: all install-dev clean help run-example
+.PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
