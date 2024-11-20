@@ -145,17 +145,34 @@ async def process_protocol(
         # Process listed users for each campaign
         for campaign in active_campaigns:
             gauge_address = campaign["gauge"].lower()
-            if gauge_address in platform_output["gauges"]:
-                with console.status("[cyan]Processing listed users...[/cyan]"):
-                    listed_users_data = process_listed_users(
-                        protocol,
-                        gauge_address,
-                        block_number,
-                        campaign["listed_users"],
-                    )
-                platform_output["gauges"][gauge_address]["listed_users"] = (
-                    listed_users_data
+            if gauge_address not in platform_output["gauges"]:
+                continue
+
+            gauge_data = platform_output["gauges"][gauge_address]
+
+            # Initialize active_campaigns_ids if needed
+            if "active_campaigns_ids" not in gauge_data:
+                gauge_data["active_campaigns_ids"] = []
+            if campaign["id"] not in gauge_data["active_campaigns_ids"]:
+                gauge_data["active_campaigns_ids"].append(campaign["id"])
+
+            with console.status("[cyan]Processing listed users...[/cyan]"):
+                # Initialize listed_users structure if needed
+                if "listed_users" not in gauge_data:
+                    gauge_data["listed_users"] = {}
+                if campaign["chain_id"] not in gauge_data["listed_users"]:
+                    gauge_data["listed_users"][campaign["chain_id"]] = {}
+
+                # Process and store listed users data
+                listed_users_data = process_listed_users(
+                    protocol,
+                    gauge_address,
+                    block_number,
+                    campaign["listed_users"],
                 )
+                gauge_data["listed_users"][campaign["chain_id"]][
+                    campaign["id"]
+                ] = listed_users_data
 
         output_data["platforms"][chain_id] = platform_output
 
