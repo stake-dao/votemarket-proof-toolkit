@@ -47,50 +47,41 @@ class CampaignService:
         chain_id: int,
         platform_address: str,
         start_index: int,
-        campaign_count: int,
+        end_index: int,
     ) -> List[Campaign]:
         """Fetch campaigns for a specific chain in batches"""
         try:
             campaigns: List[Campaign] = []
-            batch_size = 10
+            try:
+                # Load bytecode using resource manager
+                bytecode_data = resource_manager.load_bytecode(
+                    "BatchCampaigns"
+                )
 
-            for i in range(start_index, campaign_count, batch_size):
-                batch_end = min(i + batch_size, campaign_count)
+                # Build contract call
+                tx = self.contract_reader.build_get_campaigns_constructor_tx(
+                    bytecode_data,
+                    [platform_address, start_index, end_index - start_index],  # skip, limit
+                )
 
-                try:
-                    # Load bytecode using resource manager
-                    bytecode_data = resource_manager.load_bytecode(
-                        "BatchCampaigns"
+                # Execute call
+                result = web3_service.w3.eth.call(tx)
+
+                # Decode the result using specific campaign decoder
+                campaign_data_list = (
+                    self.contract_reader.decode_campaign_data(result)
+                )
+
+                # Convert CampaignData to Campaign type
+                for campaign_data in campaign_data_list:
+                    campaign = self._convert_campaign_data_to_campaign(
+                        campaign_data
                     )
+                    campaigns.append(campaign)
 
-                    # Build contract call
-                    tx = self.contract_reader.build_get_campaigns_constructor_tx(
-                        bytecode_data,
-                        [platform_address, i, batch_end - i],  # skip, limit
-                    )
-
-                    # Execute call
-                    result = web3_service.w3.eth.call(tx)
-
-                    # Decode the result using specific campaign decoder
-                    campaign_data_list = (
-                        self.contract_reader.decode_campaign_data(result)
-                    )
-
-                    # Convert CampaignData to Campaign type
-                    for campaign_data in campaign_data_list:
-                        campaign = self._convert_campaign_data_to_campaign(
-                            campaign_data
-                        )
-                        campaigns.append(campaign)
-
-                    # Add a small delay between batches
-                    await asyncio.sleep(0.1)
-
-                except Exception as e:
-                    print(f"Error fetching batch at index {i}: {str(e)}")
-                    print(f"Transaction data: {tx}")
-                    continue
+            except Exception as e:
+                print(f"Error fetching batch from {start_index} to {end_index}: {str(e)}")
+                print(f"Transaction data: {tx}")
 
             return campaigns
 
