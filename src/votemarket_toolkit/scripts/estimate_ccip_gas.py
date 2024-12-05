@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 from web3 import Web3
 from eth_abi import encode
@@ -83,6 +84,13 @@ BALANCE_ABI = [
     }
 ]
 
+# Chain-specific addresses
+ROUTER_ADDRESSES = {
+    # Chain ID -> Router Address
+    42161: "0x141fa059441E0ca23ce184B6A78bafD2A517DdE8",  # Arbitrum
+    1: "0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D",      # Ethereum
+}
+
 # Move global Web3 instances to top level
 source_w3 = None
 destination_w3 = None
@@ -127,9 +135,21 @@ def get_chain_selector(adapter_address: str, chain_id: int, w3: Web3) -> int:
     try:
         adapter_contract = w3.eth.contract(address=adapter_address, abi=ADAPTER_ABI)
         selector = adapter_contract.functions.getBridgeChainId(chain_id).call()
+        logger.info(f"Chain selector for chain ID {chain_id}: {selector}")
         return selector
     except Exception as e:
         logger.error(f"Error getting chain selector: {str(e)}")
+        raise
+
+def get_chain_id_from_selector(adapter_address: str, selector: int, w3: Web3) -> int:
+    """Get the chain ID from a selector using the adapter contract"""
+    try:
+        adapter_contract = w3.eth.contract(address=adapter_address, abi=ADAPTER_ABI)
+        chain_id = adapter_contract.functions.getChainId(selector).call()
+        logger.info(f"Chain ID for selector {selector}: {chain_id}")
+        return chain_id
+    except Exception as e:
+        logger.error(f"Error getting chain ID from selector: {str(e)}")
         raise
 
 def get_next_nonce(laposte_address: str, destination_chain_id: int) -> int:
@@ -228,6 +248,56 @@ def print_transfer_summary():
     for t in details['transfers']:
         logger.info(f"- {t['amount']} {t['symbol']} ({t['token']})")
 
+def estimate_ccip_fee(
+    router_address: str,
+    adapter_address: str,
+    destination_chain_selector: int,
+    message: bytes,
+    gas_limit: int
+) -> int:
+    """
+    Estimate CCIP fee for the cross-chain message
+    Returns the fee in wei
+    """
+    try:
+        # Load Router ABI from the resources file
+        router_abi_path = "src/votemarket_toolkit/resources/abi/ccip_router.json"
+        with open(router_abi_path, 'r') as f:
+            ROUTER_ABI = json.load(f)
+
+        router_contract = source_w3.eth.contract(
+            address=router_address,
+            abi=ROUTER_ABI
+        )
+
+        # Create EVM extra args with gas limit
+        # This matches the Client._argsToBytes implementation in the Adapter contract
+        EVM_EXTRA_ARGS_V1_TAG = bytes.fromhex('97a657c9')  # bytes4(keccak256("CCIP EVMExtraArgsV1"))
+        
+        # Encode EVMExtraArgsV1 struct
+        extra_args_data = encode(['uint256'], [gas_limit])
+        evm_extra_args = EVM_EXTRA_ARGS_V1_TAG + extra_args_data
+        
+        # Create the CCIP message struct according to the correct ABI structure
+        ccip_message = {
+            'receiver': encode(['address'], [adapter_address]),
+            'data': message,
+            'tokenAmounts': [],  # No tokens being transferred
+            'feeToken': '0x0000000000000000000000000000000000000000',  # Using native token
+            'extraArgs': evm_extra_args
+        }
+
+        # Get the fee from router
+        fee = router_contract.functions.getFee(
+            destination_chain_selector,
+            ccip_message
+        ).call()
+
+        return fee
+    except Exception as e:
+        logger.error(f"Fee estimation failed: {str(e)}")
+        raise
+
 def simulate_ccip_receive(
     adapter_address: str,
     laposte_address: str,
@@ -235,21 +305,25 @@ def simulate_ccip_receive(
     tokens: List[Tuple[str, int]],
 ) -> Dict:
     """
-    Simulate CCIP receive and estimate gas
-    Returns a dictionary with gas estimate and buffer
+    Simulate CCIP receive and estimate gas and fee
+    Returns a dictionary with gas estimate, buffer and required fee
     """
     # Arbitrum chain ID is 42161
     ARBITRUM_CHAIN_ID = 42161
+    ETHEREUM_CHAIN_ID = 1
     
-    # Get chain selector from adapter
+    # Get chain selector for source chain (Arbitrum)
     source_chain_selector = get_chain_selector(adapter_address, ARBITRUM_CHAIN_ID, destination_w3)
     
+    # Get chain selector for destination chain (Ethereum)
+    destination_chain_selector = get_chain_selector(adapter_address, ETHEREUM_CHAIN_ID, source_w3)
+    
     # Get next nonce from LaPoste contract on source chain
-    nonce = get_next_nonce(laposte_address, 1)  # 1 is Ethereum chain ID
+    nonce = get_next_nonce(laposte_address, ETHEREUM_CHAIN_ID)
     
     # Create the Laposte message
     laposte_message = create_laposte_message(
-        destination_chain_id=1,  # Always Ethereum
+        destination_chain_id=ETHEREUM_CHAIN_ID,
         to_address=to_address,
         sender_address=laposte_address,
         tokens=tokens,
@@ -298,12 +372,12 @@ def simulate_ccip_receive(
     
     data = contract.encodeABI(fn_name='ccipReceive', args=[message])
     
-    # Router address for gas estimation
-    ROUTER_ADDRESS = "0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D"
+    # Get router address for destination chain (Ethereum)
+    DESTINATION_ROUTER_ADDRESS = ROUTER_ADDRESSES[1]  # Ethereum Mainnet
     
     try:
         gas = destination_w3.eth.estimate_gas({
-            'from': ROUTER_ADDRESS,
+            'from': DESTINATION_ROUTER_ADDRESS,
             'to': adapter_address,
             'data': data
         })
@@ -318,11 +392,33 @@ def simulate_ccip_receive(
         
         logger.info("\n=== Gas Estimation ===")
         logger.info(f"Base gas: {gas:,}")
-        logger.info(f"Gas with 20% buffer: {gas_with_buffer:,}")
+        logger.info(f"Gas with 7.7% buffer: {gas_with_buffer:,}")
+        
+        # After gas estimation, calculate CCIP fee
+        BASE_GAS_LIMIT = 50_000  # Base gas limit from the Adapter contract
+        total_gas_limit = gas_with_buffer + BASE_GAS_LIMIT
+        
+        # Get router address for source chain (Arbitrum)
+        SOURCE_ROUTER_ADDRESS = ROUTER_ADDRESSES[42161]  # Arbitrum
+        
+        fee = estimate_ccip_fee(
+            router_address=SOURCE_ROUTER_ADDRESS,
+            adapter_address=adapter_address,
+            destination_chain_selector=destination_chain_selector,  # Use destination chain selector
+            message=laposte_message,
+            gas_limit=total_gas_limit
+        )
+
+        # Add 2% buffer to the fee
+        fee = int(fee * 1.02)
+
+        # Add fee information to logs
+        logger.info(f"CCIP Fee: {Web3.from_wei(fee, 'ether')} with 2% buffer")
         
         return {
             'base_gas': gas,
-            'gas_with_buffer': gas_with_buffer
+            'gas_with_buffer': gas_with_buffer,
+            'ccip_fee': fee
         }
     except Exception as e:
         logger.error(f"Gas estimation failed: {str(e)}")
