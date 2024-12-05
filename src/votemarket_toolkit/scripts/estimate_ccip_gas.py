@@ -315,8 +315,11 @@ def simulate_ccip_receive(
             'to': adapter_address,
             'data': data
         })
+
+        # Remove Base Gas
+        gas = gas - 50_000
         
-        gas_with_buffer = int(gas * 1.2)  # Add 20% buffer
+        gas_with_buffer = int(gas * 1.077)  # Add 7.7% buffer
         
         # Print the transfer summary
         print_transfer_summary()
