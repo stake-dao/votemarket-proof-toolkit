@@ -83,41 +83,59 @@ BALANCE_ABI = [
     }
 ]
 
+# Move global Web3 instances to top level
+source_w3 = None
+destination_w3 = None
+
+def initialize_web3_connections(source_rpc_url=None, destination_rpc_url=None):
+    """Initialize Web3 connections for source and destination chains"""
+    global source_w3, destination_w3
+    
+    if not source_rpc_url:
+        source_rpc_url = os.getenv('ARBITRUM_MAINNET_RPC_URL')
+        if not source_rpc_url:
+            raise ValueError("No source RPC URL provided or found in environment")
+    
+    if not destination_rpc_url:
+        destination_rpc_url = os.getenv('ETHEREUM_MAINNET_RPC_URL')
+        if not destination_rpc_url:
+            raise ValueError("No destination RPC URL provided or found in environment")
+    
+    source_w3 = Web3(Web3.HTTPProvider(source_rpc_url))
+    destination_w3 = Web3(Web3.HTTPProvider(destination_rpc_url))
+    
+    return source_w3, destination_w3
+
 def create_token_transfer(token_address: str, amount: int) -> Tuple[str, int]:
     """Create a token transfer tuple"""
-    w3 = Web3()
-    return (w3.to_checksum_address(token_address), amount)
+    return (Web3.to_checksum_address(token_address), amount)
 
 def fetch_token_metadata(token_address: str, w3: Web3) -> Tuple[str, str, int]:
     """Fetch token metadata directly from the contract"""
-    checksummed_address = w3.to_checksum_address(token_address)
-    token_contract = w3.eth.contract(address=checksummed_address, abi=ERC20_ABI)
+    token_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
     try:
         name = token_contract.functions.name().call()
         symbol = token_contract.functions.symbol().call()
         decimals = token_contract.functions.decimals().call()
         return (name, symbol, decimals)
     except Exception as e:
-        logger.error(f"Error fetching metadata for token {checksummed_address}: {str(e)}")
+        logger.error(f"Error fetching metadata for token {token_address}: {str(e)}")
         return ("Unknown", "???", 18)
 
 def get_chain_selector(adapter_address: str, chain_id: int, w3: Web3) -> int:
     """Get the chain selector from the adapter contract"""
     try:
-        checksummed_address = w3.to_checksum_address(adapter_address)
-        adapter_contract = w3.eth.contract(address=checksummed_address, abi=ADAPTER_ABI)
+        adapter_contract = w3.eth.contract(address=adapter_address, abi=ADAPTER_ABI)
         selector = adapter_contract.functions.getBridgeChainId(chain_id).call()
         return selector
     except Exception as e:
         logger.error(f"Error getting chain selector: {str(e)}")
         raise
 
-def get_next_nonce(laposte_address: str, destination_chain_id: int, source_rpc_url: str) -> int:
+def get_next_nonce(laposte_address: str, destination_chain_id: int) -> int:
     """Get the next nonce from LaPoste contract on the source chain"""
     try:
-        w3 = Web3(Web3.HTTPProvider(source_rpc_url))
-        checksummed_address = w3.to_checksum_address(laposte_address)
-        laposte_contract = w3.eth.contract(address=checksummed_address, abi=LAPOSTE_ABI)
+        laposte_contract = source_w3.eth.contract(address=laposte_address, abi=LAPOSTE_ABI)
         current_nonce = laposte_contract.functions.sentNonces(destination_chain_id).call()
         return current_nonce + 1
     except Exception as e:
@@ -129,28 +147,22 @@ def create_laposte_message(
     to_address: str,
     sender_address: str,
     tokens: List[Tuple[str, int]],
-    w3: Web3,
     nonce: int,
     payload: bytes = b''
 ) -> bytes:
     """Create and encode a Laposte message"""
-    checksummed_to = w3.to_checksum_address(to_address)
-    checksummed_sender = w3.to_checksum_address(sender_address)
-    
     token_metadata = []
     formatted_tokens = []
     transfer_summary = []
     
     for token_address, amount in tokens:
-        checksummed_token = w3.to_checksum_address(token_address)
-        name, symbol, decimals = fetch_token_metadata(checksummed_token, w3)
+        name, symbol, decimals = fetch_token_metadata(token_address, destination_w3)
         token_metadata.append((name, symbol, decimals))
-        formatted_tokens.append((checksummed_token, amount))
+        formatted_tokens.append((token_address, amount))
         
-        # Store summary info
         human_amount = amount / (10 ** decimals)
         transfer_summary.append({
-            'token': checksummed_token,
+            'token': token_address,
             'symbol': symbol,
             'amount': human_amount,
             'raw_amount': amount
@@ -158,8 +170,8 @@ def create_laposte_message(
     
     message_tuple = (
         destination_chain_id,
-        checksummed_to,
-        checksummed_sender,
+        to_address,
+        sender_address,
         formatted_tokens,
         token_metadata,
         payload,
@@ -169,9 +181,9 @@ def create_laposte_message(
     # Store summary in global state for final recap
     global transfer_details
     transfer_details = {
-        'to_address': checksummed_to,
+        'to_address': to_address,
         'chain_id': destination_chain_id,
-        'sender': checksummed_sender,
+        'sender': sender_address,
         'transfers': transfer_summary,
         'nonce': nonce
     }
@@ -181,25 +193,21 @@ def create_laposte_message(
         [message_tuple]
     )
 
-def get_wrapped_token(token_address: str, token_factory_address: str, w3: Web3) -> str:
+def get_wrapped_token(token_address: str, token_factory_address: str) -> str:
     """Get the wrapped version of a token from the TokenFactory contract"""
     try:
-        checksummed_token = w3.to_checksum_address(token_address)
-        checksummed_factory = w3.to_checksum_address(token_factory_address)
-        factory_contract = w3.eth.contract(address=checksummed_factory, abi=TOKEN_FACTORY_ABI)
-        wrapped_token = factory_contract.functions.wrappedTokens(checksummed_token).call()
+        factory_contract = source_w3.eth.contract(address=token_factory_address, abi=TOKEN_FACTORY_ABI)
+        wrapped_token = factory_contract.functions.wrappedTokens(token_address).call()
         return wrapped_token
     except Exception as e:
         logger.error(f"Error getting wrapped token: {str(e)}")
         raise
 
-def get_token_balance(token_address: str, holder_address: str, w3: Web3) -> int:
+def get_token_balance(token_address: str, holder_address: str) -> int:
     """Get the token balance for a specific address"""
     try:
-        checksummed_token = w3.to_checksum_address(token_address)
-        checksummed_holder = w3.to_checksum_address(holder_address)
-        token_contract = w3.eth.contract(address=checksummed_token, abi=BALANCE_ABI)
-        balance = token_contract.functions.balanceOf(checksummed_holder).call()
+        token_contract = source_w3.eth.contract(address=token_address, abi=BALANCE_ABI)
+        balance = token_contract.functions.balanceOf(holder_address).call()
         return balance
     except Exception as e:
         logger.error(f"Error getting token balance: {str(e)}")
@@ -225,34 +233,19 @@ def simulate_ccip_receive(
     laposte_address: str,
     to_address: str,
     tokens: List[Tuple[str, int]],
-    destination_rpc_url: str = None,
-    source_rpc_url: str = None
 ) -> Dict:
     """
     Simulate CCIP receive and estimate gas
     Returns a dictionary with gas estimate and buffer
     """
-    if not destination_rpc_url:
-        destination_rpc_url = os.getenv('ETHEREUM_MAINNET_RPC_URL')
-        if not destination_rpc_url:
-            raise ValueError("No destination RPC URL provided or found in environment")
-    
-    if not source_rpc_url:
-        source_rpc_url = os.getenv('ARBITRUM_MAINNET_RPC_URL')
-        if not source_rpc_url:
-            raise ValueError("No source RPC URL provided or found in environment")
-
-    # Connect to destination chain (Ethereum)
-    w3 = Web3(Web3.HTTPProvider(destination_rpc_url))
-    
     # Arbitrum chain ID is 42161
     ARBITRUM_CHAIN_ID = 42161
     
     # Get chain selector from adapter
-    source_chain_selector = get_chain_selector(adapter_address, ARBITRUM_CHAIN_ID, w3)
+    source_chain_selector = get_chain_selector(adapter_address, ARBITRUM_CHAIN_ID, destination_w3)
     
     # Get next nonce from LaPoste contract on source chain
-    nonce = get_next_nonce(laposte_address, 1, source_rpc_url)  # 1 is Ethereum chain ID
+    nonce = get_next_nonce(laposte_address, 1)  # 1 is Ethereum chain ID
     
     # Create the Laposte message
     laposte_message = create_laposte_message(
@@ -260,7 +253,6 @@ def simulate_ccip_receive(
         to_address=to_address,
         sender_address=laposte_address,
         tokens=tokens,
-        w3=w3,
         nonce=nonce
     )
     
@@ -274,7 +266,7 @@ def simulate_ccip_receive(
     }
     
     # Create contract instance for gas estimation
-    contract = w3.eth.contract(
+    contract = destination_w3.eth.contract(
         address=adapter_address,
         abi=[{
             "inputs": [{
@@ -310,7 +302,7 @@ def simulate_ccip_receive(
     ROUTER_ADDRESS = "0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D"
     
     try:
-        gas = w3.eth.estimate_gas({
+        gas = destination_w3.eth.estimate_gas({
             'from': ROUTER_ADDRESS,
             'to': adapter_address,
             'data': data
@@ -347,19 +339,22 @@ def main():
     
     args = parser.parse_args()
     
-    # Connect to Arbitrum for balance queries
-    source_rpc_url = os.getenv('ARBITRUM_MAINNET_RPC_URL')
-    if not source_rpc_url:
-        raise ValueError("ARBITRUM_MAINNET_RPC_URL environment variable is required")
+    # Initialize Web3 connections
+    initialize_web3_connections()
     
-    source_w3 = Web3(Web3.HTTPProvider(source_rpc_url))
+    # Convert addresses to checksum format
+    args.adapter = Web3.to_checksum_address(args.adapter)
+    args.laposte = Web3.to_checksum_address(args.laposte)
+    args.to_address = Web3.to_checksum_address(args.to_address)
+    args.token_factory = Web3.to_checksum_address(args.token_factory)
+    args.tokens = [Web3.to_checksum_address(token) for token in args.tokens]
     
     # If amounts not provided, query balances of wrapped tokens
     if not args.amounts:
         amounts = []
         for token in args.tokens:
-            wrapped_token = get_wrapped_token(token, args.token_factory, source_w3)
-            balance = get_token_balance(wrapped_token, args.to_address, source_w3)
+            wrapped_token = get_wrapped_token(token, args.token_factory)
+            balance = get_token_balance(wrapped_token, args.to_address)
             amounts.append(balance)
         args.amounts = amounts
     elif len(args.tokens) != len(args.amounts):
@@ -371,8 +366,7 @@ def main():
         adapter_address=args.adapter,
         laposte_address=args.laposte,
         to_address=args.to_address,
-        tokens=tokens_with_amounts,
-        source_rpc_url=source_rpc_url
+        tokens=tokens_with_amounts
     )
 
 if __name__ == "__main__":
