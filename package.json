@@ -1,0 +1,20 @@
+{
+  "name": "votemarket-proof-toolkit",
+  "version": "1.0.0",
+  "description": "VoteMarket Proof Toolkit with CCIP Gas Estimation",
+  "scripts": {
+    "simulate": "ts-node src/scripts/estimate-ccip-gas.ts",
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "ethers": "^5.7.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/yargs": "^17.0.32",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+} 

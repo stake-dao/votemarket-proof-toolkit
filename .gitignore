@@ -18,3 +18,4 @@ env/
 
 # Temporary files
 temp/
+node_modules/
