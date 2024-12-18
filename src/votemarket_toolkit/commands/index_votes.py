@@ -1,5 +1,5 @@
+import argparse
 import asyncio
-import sys
 from datetime import datetime
 
 from rich import print as rprint
@@ -48,7 +48,29 @@ async def index_votes(protocol: str, gauge_address: str):
     rprint(panel)
 
 
+async def main():
+    parser = argparse.ArgumentParser(
+        description="Index votes for a gauge + show summary"
+    )
+
+    parser.add_argument(
+        "--protocol",
+        type=str,
+        required=True,
+        help="Protocol name",
+    )
+
+    parser.add_argument(
+        "--gauge-address",
+        type=str,
+        required=True,
+        help="Gauge address",
+    )
+
+    args = parser.parse_args()
+
+    await index_votes(args.protocol, args.gauge_address)
+
+
 if __name__ == "__main__":
-    protocol = sys.argv[1]
-    gauge_address = sys.argv[2]
-    asyncio.run(index_votes(protocol, gauge_address))
+    asyncio.run(main())

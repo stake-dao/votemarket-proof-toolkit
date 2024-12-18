@@ -61,6 +61,11 @@ get-epoch-blocks: install
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(EPOCHS),"--epochs=$(EPOCHS)")
 
+index-votes: install
+	$(PYTHON) src/votemarket_toolkit/commands/index_votes.py \
+		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
+		$(if $(GAUGE_ADDRESS),"--gauge-address=$(GAUGE_ADDRESS)")
+
 # Help and examples
 help:
 	$(PYTHON) src/votemarket_toolkit/commands/help.py
