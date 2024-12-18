@@ -114,6 +114,11 @@ class ContractRegistry:
         137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
     }
 
+    BALANCER = {
+        1: None,
+        42161: "0x00000000567E1FE94a27f64D50A1a15875182c3E",
+    }
+
     @staticmethod
     def get_address(contract_name: str, chain_id: int) -> str:
         """Get contract address for specified chain"""
