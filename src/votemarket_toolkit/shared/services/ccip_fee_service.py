@@ -10,7 +10,6 @@ from votemarket_toolkit.utils.file_utils import load_json
 
 CCIP_ADAPTER_ADDRESS = "0x4200740090f72e89302f001da5860000007d7ea7"
 
-
 class CcipFeeService:
     def __init__(self, w3, ccip_router_address: str):
         self.w3 = w3

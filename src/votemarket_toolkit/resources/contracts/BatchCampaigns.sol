@@ -94,31 +94,43 @@ contract BatchCampaignData {
 
     constructor(address platform, uint256 skip, uint256 limit) {
         IVotemarket votemarket = IVotemarket(platform);
-        limit = limit == 0 ? votemarket.campaignCount() : limit;
-
-        CampaignData[] memory returnData = new CampaignData[](limit - skip);
-
-        for (uint256 i = skip; i < limit; i++) {
+        uint256 campaignCount = votemarket.campaignCount();
+        
+        // If limit is 0, use remaining campaigns from skip
+        if (limit == 0) {
+            require(skip < campaignCount, "Skip exceeds campaign count");
+            limit = campaignCount - skip;
+        }
+        
+        // Ensure limit doesn't exceed remaining campaigns
+        uint256 remainingCampaigns = campaignCount - skip;
+        limit = limit > remainingCampaigns ? remainingCampaigns : limit;
+        
+        // Create array of correct size
+        CampaignData[] memory returnData = new CampaignData[](limit);
+        
+        // Fetch campaigns
+        for (uint256 i = 0; i < limit; i++) {
+            uint256 campaignId = skip + i;
             CampaignData memory c;
-
-            c.id = i;
-            c.campaign = votemarket.getCampaign(i);
-            c.isClosed = votemarket.isClosedCampaign(i);
-            c.isWhitelistOnly = votemarket.whitelistOnly(i);
-            c.addresses = votemarket.getAddressesByCampaign(i);
+            c.id = campaignId;
+            c.campaign = votemarket.getCampaign(campaignId);
+            c.isClosed = votemarket.isClosedCampaign(campaignId);
+            c.isWhitelistOnly = votemarket.whitelistOnly(campaignId);
+            c.addresses = votemarket.getAddressesByCampaign(campaignId);
 
             uint256 currentEpoch = votemarket.currentEpoch();
             uint256 lastPeriod = c.isClosed
                 ? c.campaign.endTimestamp
                 : currentEpoch;
-            c.currentPeriod = votemarket.getPeriodPerCampaign(i, lastPeriod);
-            c.periodLeft = votemarket.getRemainingPeriods(i, currentEpoch);
+            c.currentPeriod = votemarket.getPeriodPerCampaign(campaignId, lastPeriod);
+            c.periodLeft = votemarket.getRemainingPeriods(campaignId, currentEpoch);
 
             // Check for latest upgrade
             uint256 checkedEpoch = currentEpoch;
             while (checkedEpoch > c.campaign.startTimestamp) {
                 IVotemarket.CampaignUpgrade memory campaignUpgrade = votemarket
-                    .getCampaignUpgrade(i, checkedEpoch);
+                    .getCampaignUpgrade(campaignId, checkedEpoch);
                 // If an upgrade is found, add the latest upgrade
                 if (campaignUpgrade.totalRewardAmount != 0) {
                     c.campaign.numberOfPeriods = campaignUpgrade
@@ -134,7 +146,7 @@ contract BatchCampaignData {
                 checkedEpoch -= votemarket.EPOCH_LENGTH();
             }
 
-            returnData[i - skip] = c;
+            returnData[i] = c;
         }
 
         bytes memory _data = abi.encode(returnData);
