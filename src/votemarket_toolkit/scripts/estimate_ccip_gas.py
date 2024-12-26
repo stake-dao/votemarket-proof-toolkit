@@ -207,7 +207,7 @@ def create_laposte_message(
         'transfers': transfer_summary,
         'nonce': nonce
     }
-    
+
     return encode(
         ['(uint256,address,address,(address,uint256)[],(string,string,uint8)[],bytes,uint256)'],
         [message_tuple]
@@ -317,10 +317,10 @@ def simulate_ccip_receive(
     
     # Get chain selector for destination chain (Ethereum)
     destination_chain_selector = get_chain_selector(adapter_address, ETHEREUM_CHAIN_ID, source_w3)
-    
+
     # Get next nonce from LaPoste contract on source chain
     nonce = get_next_nonce(laposte_address, ETHEREUM_CHAIN_ID)
-    
+
     # Create the Laposte message
     laposte_message = create_laposte_message(
         destination_chain_id=ETHEREUM_CHAIN_ID,
@@ -329,6 +329,7 @@ def simulate_ccip_receive(
         tokens=tokens,
         nonce=nonce
     )
+
     
     # Create Any2EVMMessage struct
     message = {
@@ -371,10 +372,14 @@ def simulate_ccip_receive(
     )
     
     data = contract.encodeABI(fn_name='ccipReceive', args=[message])
+
     
     # Get router address for destination chain (Ethereum)
     DESTINATION_ROUTER_ADDRESS = ROUTER_ADDRESSES[1]  # Ethereum Mainnet
     
+    print(f"DESTINATION_ROUTER_ADDRESS: {DESTINATION_ROUTER_ADDRESS}")
+
+
     try:
         gas = destination_w3.eth.estimate_gas({
             'from': DESTINATION_ROUTER_ADDRESS,
@@ -400,6 +405,8 @@ def simulate_ccip_receive(
         
         # Get router address for source chain (Arbitrum)
         SOURCE_ROUTER_ADDRESS = ROUTER_ADDRESSES[42161]  # Arbitrum
+
+        print(f"SOURCE_ROUTER_ADDRESS: {SOURCE_ROUTER_ADDRESS}")
         
         fee = estimate_ccip_fee(
             router_address=SOURCE_ROUTER_ADDRESS,

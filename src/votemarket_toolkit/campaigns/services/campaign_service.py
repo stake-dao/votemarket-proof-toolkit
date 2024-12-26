@@ -47,43 +47,34 @@ class CampaignService:
         chain_id: int,
         platform_address: str,
         start_index: int,
-        end_index: int,
+        limit: int,
     ) -> List[Campaign]:
         """Fetch campaigns for a specific chain in batches"""
         try:
-            campaigns: List[Campaign] = []
-            try:
-                # Load bytecode using resource manager
-                bytecode_data = resource_manager.load_bytecode(
-                    "BatchCampaigns"
-                )
+            # Validate inputs
+            if limit <= 0:
+                return []
 
-                # Build contract call
-                tx = self.contract_reader.build_get_campaigns_constructor_tx(
-                    bytecode_data,
-                    [platform_address, start_index, end_index - start_index],  # skip, limit
-                )
+            # Load bytecode using resource manager
+            bytecode_data = resource_manager.load_bytecode("BatchCampaigns")
 
-                # Execute call
-                result = web3_service.w3.eth.call(tx)
+            # Build contract call
+            tx = self.contract_reader.build_get_campaigns_constructor_tx(
+                bytecode_data,
+                [platform_address, start_index, limit],
+            )
 
-                # Decode the result using specific campaign decoder
-                campaign_data_list = (
-                    self.contract_reader.decode_campaign_data(result)
-                )
+            # Execute call
+            result = web3_service.w3.eth.call(tx)
 
-                # Convert CampaignData to Campaign type
-                for campaign_data in campaign_data_list:
-                    campaign = self._convert_campaign_data_to_campaign(
-                        campaign_data
-                    )
-                    campaigns.append(campaign)
+            # Decode the result using specific campaign decoder
+            campaign_data_list = self.contract_reader.decode_campaign_data(result)
 
-            except Exception as e:
-                print(f"Error fetching batch from {start_index} to {end_index}: {str(e)}")
-                print(f"Transaction data: {tx}")
-
-            return campaigns
+            # Convert CampaignData to Campaign type
+            return [
+                self._convert_campaign_data_to_campaign(campaign_data)
+                for campaign_data in campaign_data_list
+            ]
 
         except Exception as e:
             print(f"Error fetching campaigns for chain {chain_id}: {str(e)}")
@@ -102,13 +93,36 @@ class CampaignService:
                 platform_address, "vm_platform"
             )
             campaign_count = platform_contract.functions.campaignCount().call()
+            if campaign_count == 0:
+                return []
 
-            # Fetch campaigns
-            campaigns = await self._fetch_chain_campaigns(
-                web3_service, chain_id, platform_address, 0, campaign_count
-            )
+            # Fetch campaigns in chunks
+            CHUNK_SIZE = 20
+            all_campaigns = []
 
-            return campaigns
+            # Sequential fetching to avoid RPC overload
+            for start_idx in range(0, campaign_count, CHUNK_SIZE):
+                try:
+                    # Calculate end index for this chunk
+                    end_idx = min(start_idx + CHUNK_SIZE, campaign_count)
+                    remaining = end_idx - start_idx  # This is our actual chunk size
+
+                    chunk = await self._fetch_chain_campaigns(
+                        web3_service,
+                        chain_id,
+                        platform_address,
+                        start_idx,
+                        remaining  # Pass the actual number of campaigns to fetch
+                    )
+                    all_campaigns.extend(chunk)
+                except Exception as e:
+                    print(f"Error fetching chunk from {start_idx} to {end_idx}: {str(e)}")
+                    continue
+
+                # Optional: Add a small delay between chunks to prevent rate limiting
+                await asyncio.sleep(0.1)
+
+            return all_campaigns
 
         except Exception as e:
             print(f"Error in query_active_campaigns: {str(e)}")
