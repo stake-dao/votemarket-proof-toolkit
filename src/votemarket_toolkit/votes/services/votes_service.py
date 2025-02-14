@@ -1,4 +1,7 @@
 import asyncio
+import httpx
+import os
+
 from typing import Any, Dict, List
 
 from rich import print as rprint
@@ -20,6 +23,7 @@ class VotesService:
         self.cache_dir = cache_dir
         self.parquet_service = ParquetService(cache_dir)
         self.votes_cache_file = "{protocol}_votes_cache.parquet"
+        self.api_base_url = "https://raw.githubusercontent.com/stake-dao/api/main/api/votemarket/votes_cache"
 
     def _get_start_block(self, protocol: str, cache_file: str) -> int:
         """Get the starting block for vote fetching"""
@@ -36,14 +40,48 @@ class VotesService:
         except Exception:
             return GaugeControllerConstants.CREATION_BLOCKS[protocol]
 
+    async def _get_remote_parquet(self, protocol: str) -> None:
+        """Fetch parquet file from stake-dao/api repository"""
+
+        remote_file = f"{self.api_base_url}/{protocol}_votes_cache.parquet"
+        cache_file = os.path.join(self.cache_dir, self.votes_cache_file.format(protocol=protocol))
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(remote_file)
+                response.raise_for_status()
+
+                # Ensure cache directory exists
+                os.makedirs(self.cache_dir, exist_ok=True)
+
+                # Write the downloaded file
+                with open(cache_file, "wb") as f:
+                    f.write(response.content)
+                rprint(f"[green]Successfully downloaded votes cache from stake-dao/api[/green]")
+        except Exception as e:
+            rprint(f"[red]Failed to fetch remote parquet file: {str(e)}[/red]")
+            # If file doesn't exist locally, create empty cache
+            if not os.path.exists(cache_file):
+                self.parquet_service.save_votes(self.votes_cache_file.format(protocol=protocol), 0, [])
+
     async def get_gauge_votes(
         self, protocol: str, gauge_address: str, block_number: int
     ) -> GaugeVotes:
         """Query and return votes for a specific gauge"""
         cache_file = self.votes_cache_file.format(protocol=protocol)
 
+        # Try to fetch latest data from stake-dao/api
+        await self._get_remote_parquet(protocol)
+
+        if cache_file:
+            rprint(f"[cyan]Using cached votes file: {cache_file}[/cyan]")
+
         start_block = self._get_start_block(protocol, cache_file)
         end_block = block_number
+
+
+        rprint(f"[cyan]Fetching votes from block {start_block} to {end_block}[/cyan]")
+
 
         all_votes = await self._get_all_votes(
             protocol, start_block, end_block, cache_file
