@@ -6,8 +6,9 @@ This script handles the generation of proofs for protocols, including:
 - Point data proof for each gauge
 - User proofs for eligible users and listed users
 
-It processes all platforms and gauges associated with the protocols and returns
-a dictionary containing the processed data with active proofs.
+It processes all platforms (now supporting multiple platforms per chain)
+and gauges associated with the protocols and returns a dictionary containing
+the processed data with active proofs.
 """
 
 import argparse
@@ -56,125 +57,147 @@ def is_campaign_active(campaign: dict) -> bool:
 async def process_protocol(
     protocol: str, protocol_data: ProtocolData, current_epoch: int
 ) -> Dict[str, Any]:
+    """
+    Process each protocol, iterating over each chain and every platform in its list.
+    Also generate a gauge controller proof per chain (using the first encountered platform).
+    """
     platforms = protocol_data["platforms"]
     current_epoch = get_rounded_epoch(current_epoch)
 
+    # Adjusted output structure: platforms is now a dict mapping chain_id -> list of platforms.
     output_data = {
         "platforms": {},
+        "gauge_controller_proofs": {},  # Store one proof per chain
     }
 
     gauge_proofs_cache: Dict[str, Dict[str, Any]] = {}
     user_proofs_cache: Dict[str, Dict[str, Any]] = {}
 
-    for chain_id, platform_data in platforms.items():
-        # Get or create Web3Service for this chain
-        platform_address = platform_data["address"]
-        block_number = platform_data["latest_setted_block"]
+    for chain_id, platforms_list in platforms.items():
+        output_data["platforms"][chain_id] = []
+        for platform_data in platforms_list:
+            platform_address = platform_data["address"]
+            block_number = platform_data["latest_setted_block"]
 
-        platform_output = {
-            "chain_id": chain_id,
-            "platform_address": platform_address,
-            "block_data": platform_data["block_data"],
-            "gauges": {},
-        }
-
-        # Generate gauge controller proof only if not already generated
-        if "gauge_controller_proof" not in output_data:
-            with console.status(
-                "[cyan]Generating gauge controller proof...[/cyan]"
-            ):
-                gauge_proofs = vm_proofs.get_gauge_proof(
-                    protocol=protocol,
-                    gauge_address="0x0000000000000000000000000000000000000000",
-                    current_epoch=current_epoch,
-                    block_number=block_number,
-                )
-                output_data["gauge_controller_proof"] = (
-                    "0x" + gauge_proofs["gauge_controller_proof"].hex()
-                )
-
-        # Query active campaigns using the new campaign service
-        with console.status("[magenta]Querying active campaigns...[/magenta]"):
-            campaign_svc = CampaignService()
-            all_campaigns = await campaign_svc.query_active_campaigns(
-                chain_id, platform_address
-            )
-
-            # Filter only truly active campaigns
-            active_campaigns = [
-                campaign
-                for campaign in all_campaigns
-                if is_campaign_active(campaign)
-            ]
-
-            if len(active_campaigns) < len(all_campaigns):
-                console.print(
-                    "[yellow]Filtered out"
-                    f" {len(all_campaigns) - len(active_campaigns)} inactive"
-                    " campaigns[/yellow]"
-                )
-
-        # Process all valid gauges for this chain/platform
-        unique_gauges = {
-            campaign["gauge"].lower()
-            for campaign in active_campaigns
-            if vm_proofs.is_valid_gauge(protocol, campaign["gauge"].lower())
-        }
-
-        for gauge_address in unique_gauges:
-            if gauge_address not in gauge_proofs_cache:
-                console.print(
-                    Panel(
-                        f"Processing gauge: [magenta]{gauge_address}[/magenta]"
+            # Generate gauge controller proof for the chain (if not already generated)
+            if chain_id not in output_data["gauge_controller_proofs"]:
+                with console.status(
+                    "[cyan]Generating gauge controller proof for chain"
+                    f" {chain_id}...[/cyan]"
+                ):
+                    gauge_proofs = vm_proofs.get_gauge_proof(
+                        protocol=protocol,
+                        gauge_address=(
+                            "0x0000000000000000000000000000000000000000"
+                        ),
+                        current_epoch=current_epoch,
+                        block_number=block_number,
                     )
+                    output_data["gauge_controller_proofs"][chain_id] = (
+                        "0x" + gauge_proofs["gauge_controller_proof"].hex()
+                    )
+
+            # Initialize output for this platform
+            platform_output = {
+                "chain_id": chain_id,
+                "platform_address": platform_address,
+                "block_data": platform_data["block_data"],
+                "gauges": {},
+            }
+
+            # Query active campaigns using the new campaign service
+            with console.status(
+                "[magenta]Querying active campaigns for platform"
+                f" {platform_address}...[/magenta]"
+            ):
+                campaign_svc = CampaignService()
+                all_campaigns = await campaign_svc.query_active_campaigns(
+                    chain_id, platform_address
                 )
-                with console.status("[green]Processing gauge data...[/green]"):
-                    gauge_data = await process_gauge(
+
+                # Filter only truly active campaigns
+                active_campaigns = [
+                    campaign
+                    for campaign in all_campaigns
+                    if is_campaign_active(campaign)
+                ]
+
+                if len(active_campaigns) < len(all_campaigns):
+                    console.print(
+                        "[yellow]Filtered out"
+                        f" {len(all_campaigns) - len(active_campaigns)} inactive"
+                        f" campaigns for platform {platform_address}[/yellow]"
+                    )
+
+            # Process all valid gauges for this platform
+            unique_gauges = {
+                campaign["gauge"].lower()
+                for campaign in active_campaigns
+                if vm_proofs.is_valid_gauge(
+                    protocol, campaign["gauge"].lower()
+                )
+            }
+
+            for gauge_address in unique_gauges:
+                if gauge_address not in gauge_proofs_cache:
+                    console.print(
+                        Panel(
+                            "Processing gauge:"
+                            f" [magenta]{gauge_address}[/magenta]"
+                        )
+                    )
+                    with console.status(
+                        "[green]Processing gauge data...[/green]"
+                    ):
+                        gauge_data = await process_gauge(
+                            protocol,
+                            gauge_address,
+                            current_epoch,
+                            block_number,
+                            user_proofs_cache,
+                        )
+                    gauge_proofs_cache[gauge_address] = gauge_data
+
+                platform_output["gauges"][gauge_address] = gauge_proofs_cache[
+                    gauge_address
+                ]
+
+            # Process listed users for each campaign
+            for campaign in active_campaigns:
+                gauge_address = campaign["gauge"].lower()
+                if gauge_address not in platform_output["gauges"]:
+                    continue
+
+                gauge_data = platform_output["gauges"][gauge_address]
+
+                # Initialize active_campaigns_ids if needed
+                if "active_campaigns_ids" not in gauge_data:
+                    gauge_data["active_campaigns_ids"] = []
+                if campaign["id"] not in gauge_data["active_campaigns_ids"]:
+                    gauge_data["active_campaigns_ids"].append(campaign["id"])
+
+                with console.status(
+                    "[cyan]Processing listed users for platform"
+                    f" {platform_address}...[/cyan]"
+                ):
+                    # Initialize listed_users structure if needed
+                    if "listed_users" not in gauge_data:
+                        gauge_data["listed_users"] = {}
+                    if campaign["chain_id"] not in gauge_data["listed_users"]:
+                        gauge_data["listed_users"][campaign["chain_id"]] = {}
+
+                    # Process and store listed users data
+                    listed_users_data = process_listed_users(
                         protocol,
                         gauge_address,
-                        current_epoch,
                         block_number,
-                        user_proofs_cache,
+                        campaign["listed_users"],
                     )
-                gauge_proofs_cache[gauge_address] = gauge_data
+                    gauge_data["listed_users"][campaign["chain_id"]][
+                        campaign["id"]
+                    ] = listed_users_data
 
-            platform_output["gauges"][gauge_address] = gauge_proofs_cache[
-                gauge_address
-            ]
-
-        # Process listed users for each campaign
-        for campaign in active_campaigns:
-            gauge_address = campaign["gauge"].lower()
-            if gauge_address not in platform_output["gauges"]:
-                continue
-
-            gauge_data = platform_output["gauges"][gauge_address]
-
-            # Initialize active_campaigns_ids if needed
-            if "active_campaigns_ids" not in gauge_data:
-                gauge_data["active_campaigns_ids"] = []
-            if campaign["id"] not in gauge_data["active_campaigns_ids"]:
-                gauge_data["active_campaigns_ids"].append(campaign["id"])
-
-            with console.status("[cyan]Processing listed users...[/cyan]"):
-                # Initialize listed_users structure if needed
-                if "listed_users" not in gauge_data:
-                    gauge_data["listed_users"] = {}
-                if campaign["chain_id"] not in gauge_data["listed_users"]:
-                    gauge_data["listed_users"][campaign["chain_id"]] = {}
-
-                # Process and store listed users data
-                listed_users_data = process_listed_users(
-                    protocol,
-                    gauge_address,
-                    block_number,
-                    campaign["listed_users"],
-                )
-                gauge_data["listed_users"][campaign["chain_id"]][
-                    campaign["id"]
-                ] = listed_users_data
-
-        output_data["platforms"][chain_id] = platform_output
+            output_data["platforms"][chain_id].append(platform_output)
 
     console.print(f"Finished processing protocol: [blue]{protocol}[/blue]")
     return output_data
@@ -253,20 +276,19 @@ def write_protocol_data(
 ):
     """
     Write processed protocol data to files in the specified structure.
-
-    Args:
-        protocol (str): The protocol name.
-        current_epoch (int): The current voting epoch.
-        processed_data (Dict[str, Any]): The processed data for the protocol.
+    Note: since we now support multiple platforms per chain, we expect that
+    processed_data["platforms"][chain_id] is a list.
     """
     protocol_dir = os.path.join(TEMP_DIR, protocol.lower())
     os.makedirs(protocol_dir, exist_ok=True)
 
-    # Write header.json
+    # For header, we assume chain "42161" exists and pick the first platform.
     header_data = {
         "epoch": current_epoch,
-        "block_data": processed_data["platforms"]["42161"]["block_data"],
-        "gauge_controller_proof": processed_data["gauge_controller_proof"],
+        "block_data": processed_data["platforms"]["42161"][0]["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proofs"][
+            "42161"
+        ],
     }
     with open(os.path.join(protocol_dir, "header.json"), "w") as f:
         json.dump(header_data, f, indent=2)
@@ -274,26 +296,30 @@ def write_protocol_data(
     # Write main.json (contains all data for the protocol)
     main_data = {
         "epoch": current_epoch,
-        "block_data": processed_data["platforms"]["42161"]["block_data"],
-        "gauge_controller_proof": processed_data["gauge_controller_proof"],
+        "block_data": processed_data["platforms"]["42161"][0]["block_data"],
+        "gauge_controller_proof": processed_data["gauge_controller_proofs"][
+            "42161"
+        ],
         "platforms": processed_data["platforms"],
+        "gauge_controller_proofs": processed_data["gauge_controller_proofs"],
     }
     with open(os.path.join(protocol_dir, "index.json"), "w") as f:
         json.dump(main_data, f, indent=2)
 
-    # Process platforms
-    for platform_address, platform_data in processed_data["platforms"].items():
-        platform_folder_name = f"{platform_address.lower()}"
-        platform_dir = os.path.join(protocol_dir, platform_folder_name)
-        os.makedirs(platform_dir, exist_ok=True)
+    # Process each platform folder: iterate over each chain and then each platform in the list.
+    for chain_id, platforms_list in processed_data["platforms"].items():
+        for platform_data in platforms_list:
+            platform_folder_name = platform_data["platform_address"].lower()
+            platform_dir = os.path.join(protocol_dir, platform_folder_name)
+            os.makedirs(platform_dir, exist_ok=True)
 
-        # Write gauge files
-        for gauge_address, gauge_data in platform_data["gauges"].items():
-            gauge_file = os.path.join(
-                platform_dir, f"{gauge_address.lower()}.json"
-            )
-            with open(gauge_file, "w") as f:
-                json.dump(gauge_data, f, indent=2)
+            # Write gauge files
+            for gauge_address, gauge_data in platform_data["gauges"].items():
+                gauge_file = os.path.join(
+                    platform_dir, f"{gauge_address.lower()}.json"
+                )
+                with open(gauge_file, "w") as f:
+                    json.dump(gauge_data, f, indent=2)
 
     console.print(f"Saved data for [blue]{protocol}[/blue] in {protocol_dir}")
 
@@ -324,14 +350,10 @@ def process_listed_users(
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
     """
     Main function to process all protocols and generate active proofs.
-
-    Args:
-        all_protocols_data (AllProtocolsData): Data containing all protocols and platforms.
-        current_epoch (int): The current voting epoch.
     """
     console.print(
-        "Starting active proofs generation for epoch:"
-        f" [yellow]{current_epoch}[/yellow]"
+        "Starting active proofs generation for epoch: [yellow]"
+        f"{current_epoch}[/yellow]"
     )
 
     for protocol, protocol_data in all_protocols_data["protocols"].items():

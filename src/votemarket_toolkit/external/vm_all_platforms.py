@@ -134,13 +134,19 @@ async def process_protocol(
             continue
 
         # Store platform data according to type structure
-        protocol_data["platforms"][chain_id] = {
+        platform_data = {
             "address": platform_address,
             "latest_setted_block": latest_setted_block,
             "block_data": block_data,
             "oracle_address": oracle_address,
             "lens_address": lens_address,
         }
+
+        # Append if already for that chain
+        if chain_id in protocol_data["platforms"]:
+            protocol_data["platforms"][chain_id].append(platform_data)
+        else:
+            protocol_data["platforms"][chain_id] = [platform_data]
 
     return protocol_data
 
