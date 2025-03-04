@@ -298,12 +298,10 @@ def write_protocol_data(
         with open(os.path.join(chain_dir, "index.json"), "w") as f:
             json.dump(main_data, f, indent=2)
 
-        # Write each gauge file into a subfolder
-        gauges_dir = os.path.join(chain_dir, "gauges")
-        os.makedirs(gauges_dir, exist_ok=True)
+        # Write each gauge file into chain folder
         for gauge_address, gauge_data in chain_data["gauges"].items():
             gauge_file = os.path.join(
-                gauges_dir, f"{gauge_address.lower()}.json"
+                chain_dir, f"{gauge_address.lower()}.json"
             )
             with open(gauge_file, "w") as f:
                 json.dump(gauge_data, f, indent=2)
