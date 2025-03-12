@@ -265,49 +265,77 @@ def write_protocol_data(
     protocol: str, current_epoch: int, processed_data: Dict[str, Any]
 ):
     """
-    Write processed protocol data to files per chain.
-    For each chain a folder is created with its header and main data files.
-    Each gauge is saved in a subfolder.
+    Write processed protocol data to files.
+    Creates a protocol-level header.json and index.json that merge data from all chains.
+    Each gauge is saved in a subfolder with chain-specific data.
     """
     protocol_dir = os.path.join(TEMP_DIR, protocol.lower())
     os.makedirs(protocol_dir, exist_ok=True)
 
-    # Iterate over each chain
+    # Prepare merged data structures
+    merged_header = {
+        "epoch": current_epoch,
+        "chains": {}
+    }
+    
+    merged_index = {
+        "epoch": current_epoch,
+        "chains": {},
+        "gauges": {}
+    }
+
+    # Iterate over each chain to collect data
     for chain_id, chain_data in processed_data["platforms"].items():
+        # Add chain data to merged header
+        merged_header["chains"][chain_id] = {
+            "block_data": chain_data["block_data"],
+            "gauge_controller_proof": processed_data["gauge_controller_proofs"][chain_id]
+        }
+        
+        # Add chain data to merged index
+        merged_index["chains"][chain_id] = {
+            "block_data": chain_data["block_data"],
+            "gauge_controller_proof": processed_data["gauge_controller_proofs"][chain_id]
+        }
+        
+        # Merge gauge data
+        for gauge_address, gauge_data in chain_data["gauges"].items():
+            if gauge_address not in merged_index["gauges"]:
+                merged_index["gauges"][gauge_address] = gauge_data
+            else:
+                # Merge users data
+                for user_address, user_data in gauge_data["users"].items():
+                    if user_address not in merged_index["gauges"][gauge_address]["users"]:
+                        merged_index["gauges"][gauge_address]["users"][user_address] = user_data
+                
+                # Merge platform-specific data
+                if "platforms" in gauge_data:
+                    if "platforms" not in merged_index["gauges"][gauge_address]:
+                        merged_index["gauges"][gauge_address]["platforms"] = {}
+                    
+                    for platform_address, platform_data in gauge_data["platforms"].items():
+                        merged_index["gauges"][gauge_address]["platforms"][platform_address] = platform_data
+
+        # Write chain-specific gauge files
         chain_dir = os.path.join(protocol_dir, chain_id)
         os.makedirs(chain_dir, exist_ok=True)
-
-        header_data = {
-            "epoch": current_epoch,
-            "block_data": chain_data["block_data"],
-            "gauge_controller_proof": processed_data[
-                "gauge_controller_proofs"
-            ][chain_id],
-        }
-        with open(os.path.join(chain_dir, "header.json"), "w") as f:
-            json.dump(header_data, f, indent=2)
-
-        main_data = {
-            "epoch": current_epoch,
-            "block_data": chain_data["block_data"],
-            "gauge_controller_proof": processed_data[
-                "gauge_controller_proofs"
-            ][chain_id],
-            "gauges": chain_data["gauges"],
-        }
-        with open(os.path.join(chain_dir, "index.json"), "w") as f:
-            json.dump(main_data, f, indent=2)
-
-        # Write each gauge file into chain folder
+        
         for gauge_address, gauge_data in chain_data["gauges"].items():
-            gauge_file = os.path.join(
-                chain_dir, f"{gauge_address.lower()}.json"
-            )
+            gauge_file = os.path.join(chain_dir, f"{gauge_address.lower()}.json")
             with open(gauge_file, "w") as f:
                 json.dump(gauge_data, f, indent=2)
-        console.print(
-            f"Saved data for chain [blue]{chain_id}[/blue] in {chain_dir}"
-        )
+        
+        console.print(f"Saved gauge data for chain [blue]{chain_id}[/blue] in {chain_dir}")
+
+    # Write protocol-level header.json
+    with open(os.path.join(protocol_dir, "header.json"), "w") as f:
+        json.dump(merged_header, f, indent=2)
+    
+    # Write protocol-level index.json
+    with open(os.path.join(protocol_dir, "index.json"), "w") as f:
+        json.dump(merged_index, f, indent=2)
+    
+    console.print(f"Saved merged protocol data for [blue]{protocol}[/blue] in {protocol_dir}")
 
 
 def process_listed_users(
