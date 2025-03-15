@@ -60,18 +60,16 @@ async def process_protocol(
 ) -> Dict[str, Any]:
     """
     Process each protocol, iterating over each chain and every platform in its list.
-    For each chain we generate one gauge controller proof and merge gauge data.
-    For each active campaign on a platform, the gauge data is updated with an extra level
-    keyed by the platform address to store campaign-specific info.
+    For each chain we generate one gauge controller proof.
+    For each platform, we generate a separate output file with its specific campaigns and gauges.
     """
     platforms_by_chain = protocol_data["platforms"]
     current_epoch = get_rounded_epoch(current_epoch)
 
-    # Output structure: per chain.
-    # Each chain holds a "block_data" (from the first platform encountered) and "gauges".
+    # Output structure: per chain -> per platform
     output_data = {
-        "platforms": {},  # chain_id -> { "block_data": ..., "gauges": { ... } }
-        "gauge_controller_proofs": {},  # chain_id -> gauge controller proof
+        "chains": {},  # chain_id -> { "block_data": ..., "gauge_controller_proof": ... }
+        "platforms": {},  # chain_id -> { platform_address -> { gauges, campaigns, etc. } }
     }
 
     # Cache for gauges & users (so we process each gauge only once per protocol)
@@ -79,23 +77,23 @@ async def process_protocol(
     user_proofs_cache: Dict[str, Dict[str, Any]] = {}
 
     for chain_id, platforms_list in platforms_by_chain.items():
-        if chain_id not in output_data["platforms"]:
-            output_data["platforms"][chain_id] = {
+        if chain_id not in output_data["chains"]:
+            output_data["chains"][chain_id] = {
                 "block_data": None,
-                "gauges": {},
+                "gauge_controller_proof": None,
             }
-        chain_output = output_data["platforms"][chain_id]
+        if chain_id not in output_data["platforms"]:
+            output_data["platforms"][chain_id] = {}
+            
+        chain_output = output_data["chains"][chain_id]
 
-        for platform_data in platforms_list:
-            platform_address = platform_data["address"]
-            block_number = platform_data["latest_setted_block"]
-
-            # For block_data, use the first encountered platform.
-            if chain_output["block_data"] is None:
-                chain_output["block_data"] = platform_data["block_data"]
-
+        # For block_data, use the first encountered platform.
+        if len(platforms_list) > 0:
+            chain_output["block_data"] = platforms_list[0]["block_data"]
+            block_number = platforms_list[0]["latest_setted_block"]
+            
             # Generate gauge controller proof for the chain (if not already generated)
-            if chain_id not in output_data["gauge_controller_proofs"]:
+            if chain_output["gauge_controller_proof"] is None:
                 with console.status(
                     f"[cyan]Generating gauge controller proof for chain {chain_id}...[/cyan]"
                 ):
@@ -105,9 +103,23 @@ async def process_protocol(
                         current_epoch=current_epoch,
                         block_number=block_number,
                     )
-                    output_data["gauge_controller_proofs"][chain_id] = (
+                    chain_output["gauge_controller_proof"] = (
                         "0x" + gauge_proofs["gauge_controller_proof"].hex()
                     )
+
+        for platform_data in platforms_list:
+            platform_address = platform_data["address"]
+            block_number = platform_data["latest_setted_block"]
+
+            # Initialize platform data structure
+            if platform_address not in output_data["platforms"][chain_id]:
+                output_data["platforms"][chain_id][platform_address] = {
+                    "block_data": platform_data["block_data"],
+                    "gauges": {},
+                    "active_campaigns": [],
+                }
+            
+            platform_output = output_data["platforms"][chain_id][platform_address]
 
             # Query active campaigns for this platform
             with console.status(
@@ -129,6 +141,11 @@ async def process_protocol(
                     console.print(
                         f"[yellow]Filtered out {len(all_campaigns) - len(active_campaigns)} inactive campaigns for platform {platform_address}[/yellow]"
                     )
+                
+                # Store active campaign IDs
+                platform_output["active_campaigns"] = [
+                    campaign["id"] for campaign in active_campaigns
+                ]
 
             # Process each active campaign
             for campaign in active_campaigns:
@@ -157,26 +174,17 @@ async def process_protocol(
                 else:
                     gauge_data = gauge_proofs_cache[gauge_address]
 
-                # Update gauge_data with campaign info for this platform
-                if "platforms" not in gauge_data:
-                    gauge_data["platforms"] = {}
-                if platform_address not in gauge_data["platforms"]:
-                    gauge_data["platforms"][platform_address] = {
-                        "active_campaigns_ids": [],
-                        "listed_users": {},
-                    }
-                if (
-                    campaign["id"]
-                    not in gauge_data["platforms"][platform_address][
-                        "active_campaigns_ids"
-                    ]
-                ):
-                    gauge_data["platforms"][platform_address][
-                        "active_campaigns_ids"
-                    ].append(campaign["id"])
+                # Create a copy of gauge data for this platform
+                platform_gauge_data = {
+                    "point_data_proof": gauge_data["point_data_proof"],
+                    "users": gauge_data["users"],
+                    "campaign_id": campaign["id"],
+                    "listed_users": {},
+                }
 
+                # Process listed users for this campaign
                 with console.status(
-                    f"[cyan]Processing listed users for platform {platform_address}...[/cyan]"
+                    f"[cyan]Processing listed users for campaign {campaign['id']}...[/cyan]"
                 ):
                     listed_users_data = process_listed_users(
                         protocol,
@@ -184,13 +192,17 @@ async def process_protocol(
                         block_number,
                         campaign["listed_users"],
                     )
-                gauge_data["platforms"][platform_address]["listed_users"][
-                    campaign["id"]
-                ] = listed_users_data
+                platform_gauge_data["listed_users"] = listed_users_data
 
-                # Merge gauge_data into chain output (if not already present)
-                if gauge_address not in chain_output["gauges"]:
-                    chain_output["gauges"][gauge_address] = gauge_data
+                # Add gauge data to platform output
+                if gauge_address not in platform_output["gauges"]:
+                    platform_output["gauges"][gauge_address] = platform_gauge_data
+                else:
+                    # If gauge already exists for this platform (multiple campaigns for same gauge),
+                    # merge the listed users
+                    platform_output["gauges"][gauge_address]["listed_users"].update(
+                        listed_users_data
+                    )
 
     console.print(f"Finished processing protocol: [blue]{protocol}[/blue]")
     return output_data
@@ -265,77 +277,54 @@ def write_protocol_data(
     protocol: str, current_epoch: int, processed_data: Dict[str, Any]
 ):
     """
-    Write processed protocol data to files.
-    Creates a protocol-level header.json and index.json that merge data from all chains.
-    Each gauge is saved in a subfolder with chain-specific data.
+    Write processed protocol data to files per platform.
+    Structure: protocol/chainID/platform_address/index.json
     """
     protocol_dir = os.path.join(TEMP_DIR, protocol.lower())
     os.makedirs(protocol_dir, exist_ok=True)
 
-    # Prepare merged data structures
-    merged_header = {
-        "epoch": current_epoch,
-        "chains": {}
-    }
-    
-    merged_index = {
-        "epoch": current_epoch,
-        "chains": {},
-        "gauges": {}
-    }
-
-    # Iterate over each chain to collect data
-    for chain_id, chain_data in processed_data["platforms"].items():
-        # Add chain data to merged header
-        merged_header["chains"][chain_id] = {
-            "block_data": chain_data["block_data"],
-            "gauge_controller_proof": processed_data["gauge_controller_proofs"][chain_id]
-        }
-        
-        # Add chain data to merged index
-        merged_index["chains"][chain_id] = {
-            "block_data": chain_data["block_data"],
-            "gauge_controller_proof": processed_data["gauge_controller_proofs"][chain_id]
-        }
-        
-        # Merge gauge data
-        for gauge_address, gauge_data in chain_data["gauges"].items():
-            if gauge_address not in merged_index["gauges"]:
-                merged_index["gauges"][gauge_address] = gauge_data
-            else:
-                # Merge users data
-                for user_address, user_data in gauge_data["users"].items():
-                    if user_address not in merged_index["gauges"][gauge_address]["users"]:
-                        merged_index["gauges"][gauge_address]["users"][user_address] = user_data
-                
-                # Merge platform-specific data
-                if "platforms" in gauge_data:
-                    if "platforms" not in merged_index["gauges"][gauge_address]:
-                        merged_index["gauges"][gauge_address]["platforms"] = {}
-                    
-                    for platform_address, platform_data in gauge_data["platforms"].items():
-                        merged_index["gauges"][gauge_address]["platforms"][platform_address] = platform_data
-
-        # Write chain-specific gauge files
+    # Iterate over each chain
+    for chain_id, chain_data in processed_data["chains"].items():
         chain_dir = os.path.join(protocol_dir, chain_id)
         os.makedirs(chain_dir, exist_ok=True)
         
-        for gauge_address, gauge_data in chain_data["gauges"].items():
-            gauge_file = os.path.join(chain_dir, f"{gauge_address.lower()}.json")
-            with open(gauge_file, "w") as f:
-                json.dump(gauge_data, f, indent=2)
-        
-        console.print(f"Saved gauge data for chain [blue]{chain_id}[/blue] in {chain_dir}")
+        # Write chain-level header file with gauge controller proof
+        header_data = {
+            "epoch": current_epoch,
+            "block_data": chain_data["block_data"],
+            "gauge_controller_proof": chain_data["gauge_controller_proof"],
+        }
+        with open(os.path.join(chain_dir, "header.json"), "w") as f:
+            json.dump(header_data, f, indent=2)
 
-    # Write protocol-level header.json
-    with open(os.path.join(protocol_dir, "header.json"), "w") as f:
-        json.dump(merged_header, f, indent=2)
-    
-    # Write protocol-level index.json
-    with open(os.path.join(protocol_dir, "index.json"), "w") as f:
-        json.dump(merged_index, f, indent=2)
-    
-    console.print(f"Saved merged protocol data for [blue]{protocol}[/blue] in {protocol_dir}")
+        # Iterate over each platform in this chain
+        for platform_address, platform_data in processed_data["platforms"][chain_id].items():
+            platform_dir = os.path.join(chain_dir, platform_address.lower())
+            os.makedirs(platform_dir, exist_ok=True)
+            
+            # Create platform index file
+            platform_index = {
+                "epoch": current_epoch,
+                "block_data": platform_data["block_data"],
+                "gauge_controller_proof": chain_data["gauge_controller_proof"],
+                "active_campaigns": platform_data["active_campaigns"],
+                "gauges": platform_data["gauges"],
+            }
+            
+            with open(os.path.join(platform_dir, "index.json"), "w") as f:
+                json.dump(platform_index, f, indent=2)
+                
+            # Write individual gauge files if needed
+            for gauge_address, gauge_data in platform_data["gauges"].items():
+                gauge_file = os.path.join(
+                    platform_dir, f"{gauge_address.lower()}.json"
+                )
+                with open(gauge_file, "w") as f:
+                    json.dump(gauge_data, f, indent=2)
+                    
+            console.print(
+                f"Saved data for platform [cyan]{platform_address}[/cyan] on chain [blue]{chain_id}[/blue]"
+            )
 
 
 def process_listed_users(
