@@ -102,13 +102,18 @@ async def process_protocol(
                 if len(active_campaigns) < len(all_campaigns):
                     console.print(f"[yellow]Filtered out {len(all_campaigns) - len(active_campaigns)} inactive campaigns for platform {platform_address}[/yellow]")
 
-                platform_output["active_campaigns"] = [campaign["id"] for campaign in active_campaigns]
+                # Here we store composite keys in the platform-level active_campaigns list.
+                for campaign in active_campaigns:
+                    composite_campaign_id = f"{platform_address.lower()}-{campaign['id']}"
+                    if composite_campaign_id not in platform_output["active_campaigns"]:
+                        platform_output["active_campaigns"].append(composite_campaign_id)
 
             for campaign in active_campaigns:
                 gauge_address = campaign["gauge"].lower()
                 if not vm_proofs.is_valid_gauge(protocol, gauge_address):
                     continue
 
+                composite_campaign_id = f"{platform_address.lower()}-{campaign['id']}"
                 # Process gauge if not already processed
                 if gauge_address not in gauge_proofs_cache:
                     console.print(Panel(f"Processing gauge: [magenta]{gauge_address}[/magenta] on {platform_address}"))
@@ -121,14 +126,18 @@ async def process_protocol(
                             user_proofs_cache,
                         )
                     # Store campaign info directly on gauge_data (no inner "platforms" key)
-                    gauge_data["active_campaigns_ids"] = [campaign["id"]]
-                    gauge_data["listed_users"] = {str(campaign["id"]): process_listed_users(protocol, gauge_address, block_number, campaign["listed_users"])}
+                    gauge_data["active_campaigns_ids"] = [composite_campaign_id]
+                    gauge_data["listed_users"] = {composite_campaign_id: process_listed_users(
+                        protocol, gauge_address, block_number, campaign["listed_users"]
+                    )}
                     gauge_proofs_cache[gauge_address] = gauge_data
                 else:
                     gauge_data = gauge_proofs_cache[gauge_address]
-                    if campaign["id"] not in gauge_data.get("active_campaigns_ids", []):
-                        gauge_data.setdefault("active_campaigns_ids", []).append(campaign["id"])
-                    gauge_data.setdefault("listed_users", {})[str(campaign["id"])] = process_listed_users(protocol, gauge_address, block_number, campaign["listed_users"])
+                    if composite_campaign_id not in gauge_data.get("active_campaigns_ids", []):
+                        gauge_data.setdefault("active_campaigns_ids", []).append(composite_campaign_id)
+                    gauge_data.setdefault("listed_users", {})[composite_campaign_id] = process_listed_users(
+                        protocol, gauge_address, block_number, campaign["listed_users"]
+                    )
 
                 # Save gauge data for this platform under the chain.
                 output_data["platforms"][chain_id][platform_address]["gauges"][gauge_address] = gauge_data
@@ -311,6 +320,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
 
 
 if __name__ == "__main__":
+    import sys
     parser = argparse.ArgumentParser(description="Generate active proofs for protocols")
     parser.add_argument("all_platforms_file", type=str, help="Path to the JSON file containing all platforms data")
     parser.add_argument("current_epoch", type=int, help="Current epoch timestamp")
