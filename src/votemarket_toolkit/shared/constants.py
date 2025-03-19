@@ -97,15 +97,6 @@ class ContractRegistry:
     Format: CONTRACT_NAME = {chain_id: address}
     """
 
-    # VOTEMARKET
-    ORACLE = {
-        1: None,  # Not deployed on mainnet
-        42161: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Arbitrum
-        10: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Optimism
-        8453: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Base
-        137: "0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",  # Polygon
-    }
-
     CURVE = {
         1: None,
         42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
@@ -114,32 +105,85 @@ class ContractRegistry:
         137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
     }
 
+    CURVE_V2 = {
+        42161: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+        10: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+        8453: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+        137: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+    }
+
     BALANCER = {
         1: None,
-        42161: "0x00000000567E1FE94a27f64D50A1a15875182c3E",
+        42161: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+        10: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+        8453: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+        137: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+    }
+
+    FXN = {
+        1: None,
+        42161: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+        10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+        8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+        137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
     }
 
     @staticmethod
-    def get_address(contract_name: str, chain_id: int) -> str:
-        """Get contract address for specified chain"""
-        addresses = getattr(ContractRegistry, contract_name, None)
-        if not addresses:
-            raise ValueError(f"Contract {contract_name} not found")
-        address = addresses.get(chain_id)
-        if not address:
-            raise ValueError(
-                f"Contract {contract_name} not deployed on chain {chain_id}"
-            )
-        return address
+    def get_matching_contracts(base_name: str) -> list:
+        """Get all contract names that match the base name pattern"""
+        matches = []
+        for attr_name in dir(ContractRegistry):
+            if (
+                not attr_name.startswith("__")
+                and not callable(getattr(ContractRegistry, attr_name))
+                and isinstance(getattr(ContractRegistry, attr_name), dict)
+                and base_name.upper() in attr_name
+            ):
+                matches.append(attr_name)
+        return matches
 
     @staticmethod
     def get_chains(contract_name: str) -> list:
         """Get list of chains where contract is deployed"""
-        addresses = getattr(ContractRegistry, contract_name, None)
+        # Get all matching contracts
+        matching_contracts = ContractRegistry.get_matching_contracts(
+            contract_name
+        )
+        if not matching_contracts:
+            raise ValueError(f"No contracts matching {contract_name} found")
 
-        if not addresses:
-            raise ValueError(f"Contract {contract_name} not found")
-        return [chain for chain, addr in addresses.items() if addr is not None]
+        # Combine chains from all matching contracts
+        all_chains = set()
+        for contract in matching_contracts:
+            addresses = getattr(ContractRegistry, contract)
+            all_chains.update(
+                chain for chain, addr in addresses.items() if addr is not None
+            )
+        return list(all_chains)
+
+    @staticmethod
+    def get_address(contract_name: str, chain_id: int) -> dict:
+        """
+        Get contract address(es) for specified chain
+        Returns a dict of {contract_name: address} for all matching contracts
+        """
+        matching_contracts = ContractRegistry.get_matching_contracts(
+            contract_name
+        )
+        if not matching_contracts:
+            raise ValueError(f"No contracts matching {contract_name} found")
+
+        results = {}
+        for contract in matching_contracts:
+            addresses = getattr(ContractRegistry, contract)
+            if chain_id in addresses and addresses[chain_id] is not None:
+                results[contract] = addresses[chain_id]
+
+        if not results:
+            raise ValueError(
+                f"No matching contracts deployed on chain {chain_id}"
+            )
+        return results
 
     @staticmethod
     def get_contracts_for_chain(chain_id: int, pattern: str = None) -> dict:
@@ -151,26 +195,21 @@ class ContractRegistry:
         Returns: dict of {contract_name: address}
         """
         contracts = {}
-        for attr_name in dir(ContractRegistry):
-            # Skip special methods and non-contract attributes
-            if attr_name.startswith("__") or attr_name in [
-                "get_address",
-                "get_chains",
-                "get_contracts_for_chain",
-            ]:
-                continue
+        matching_contracts = (
+            ContractRegistry.get_matching_contracts(pattern)
+            if pattern
+            else [
+                attr_name
+                for attr_name in dir(ContractRegistry)
+                if not attr_name.startswith("__")
+                and not callable(getattr(ContractRegistry, attr_name))
+                and isinstance(getattr(ContractRegistry, attr_name), dict)
+            ]
+        )
 
-            # Apply pattern filter if provided
-            if pattern and pattern.upper() not in attr_name:
-                continue
-
-            # Get the contract mapping
-            contract_map = getattr(ContractRegistry, attr_name)
-            if (
-                isinstance(contract_map, dict)
-                and chain_id in contract_map
-                and contract_map[chain_id] is not None
-            ):
-                contracts[attr_name] = contract_map[chain_id]
+        for contract_name in matching_contracts:
+            contract_map = getattr(ContractRegistry, contract_name)
+            if chain_id in contract_map and contract_map[chain_id] is not None:
+                contracts[contract_name] = contract_map[chain_id]
 
         return contracts

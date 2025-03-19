@@ -68,7 +68,9 @@ class CampaignService:
             result = web3_service.w3.eth.call(tx)
 
             # Decode the result using specific campaign decoder
-            campaign_data_list = self.contract_reader.decode_campaign_data(result)
+            campaign_data_list = self.contract_reader.decode_campaign_data(
+                result
+            )
 
             # Convert CampaignData to Campaign type
             return [
@@ -105,18 +107,23 @@ class CampaignService:
                 try:
                     # Calculate end index for this chunk
                     end_idx = min(start_idx + CHUNK_SIZE, campaign_count)
-                    remaining = end_idx - start_idx  # This is our actual chunk size
+                    remaining = (
+                        end_idx - start_idx
+                    )  # This is our actual chunk size
 
                     chunk = await self._fetch_chain_campaigns(
                         web3_service,
                         chain_id,
                         platform_address,
                         start_idx,
-                        remaining  # Pass the actual number of campaigns to fetch
+                        remaining,  # Pass the actual number of campaigns to fetch
                     )
                     all_campaigns.extend(chunk)
                 except Exception as e:
-                    print(f"Error fetching chunk from {start_idx} to {end_idx}: {str(e)}")
+                    print(
+                        f"Error fetching chunk from {start_idx} to {end_idx}:"
+                        f" {str(e)}"
+                    )
                     continue
 
                 # Optional: Add a small delay between chunks to prevent rate limiting
@@ -132,16 +139,21 @@ class CampaignService:
         """Get all platforms for a protocol"""
         try:
             chains = ContractRegistry.get_chains(protocol.upper())
-            return [
-                Platform(
-                    protocol=protocol,
-                    chain_id=chain_id,
-                    address=ContractRegistry.get_address(
-                        protocol.upper(), chain_id
-                    ),
+            platforms = []
+            for chain_id in chains:
+                addresses = ContractRegistry.get_address(
+                    protocol.upper(), chain_id
                 )
-                for chain_id in chains
-            ]
+                # Create a Platform instance for each version of the contract
+                for contract_address in addresses.values():
+                    platforms.append(
+                        Platform(
+                            protocol=protocol,
+                            chain_id=chain_id,
+                            address=contract_address,
+                        )
+                    )
+            return platforms
         except ValueError:
             return []
 
