@@ -361,7 +361,7 @@ def write_protocol_data(
         ),
     }
     with open(os.path.join(protocol_dir, "header.json"), "w") as f:
-        json.dump(header_data, f, indent=2)
+        json.dump(header_data, f)
 
     # Write main index file (proofs only).
     index_data = {
@@ -373,7 +373,7 @@ def write_protocol_data(
         "platforms": platforms_by_address,
     }
     with open(os.path.join(protocol_dir, "index.json"), "w") as f:
-        json.dump(index_data, f, indent=2)
+        json.dump(index_data, f)
 
     # Write individual gauge files for each platform/chain (proofs only).
     for platform_addr, chains in platforms_by_address.items():
@@ -383,13 +383,13 @@ def write_protocol_data(
             chain_folder = os.path.join(platform_folder, chain_id)
             os.makedirs(chain_folder, exist_ok=True)
             with open(os.path.join(chain_folder, "index.json"), "w") as f:
-                json.dump(chain_info, f, indent=2)
+                json.dump(chain_info, f)
             for gauge_address, gauge_data in chain_info["gauges"].items():
                 gauge_file = os.path.join(
                     chain_folder, f"{gauge_address.lower()}.json"
                 )
                 with open(gauge_file, "w") as f:
-                    json.dump(gauge_data, f, indent=2)
+                    json.dump(gauge_data, f)
             console.print(
                 f"Saved gauge files for platform [cyan]{platform_addr}[/cyan] on chain [blue]{chain_id}[/blue] in {chain_folder}"
             )
@@ -408,7 +408,7 @@ def write_protocol_data(
         "platforms": votes_platforms,
     }
     with open(os.path.join(protocol_dir, "votes.json"), "w") as f:
-        json.dump(votes_index_data, f, indent=2)
+        json.dump(votes_index_data, f)
 
 
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
