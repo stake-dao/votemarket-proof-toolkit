@@ -26,12 +26,12 @@ class GaugeControllerConstants:
             "vote_user_slope": 1000000005,
         },
         "frax": {
-            "point_weights": 10000000011,
+            "point_weights": 1000000011,
             "last_user_vote": 1000000010,
             "vote_user_slope": 1000000008,
         },
         "fxn": {
-            "point_weights": 10000000011,
+            "point_weights": 1000000011,
             "last_user_vote": 1000000010,
             "vote_user_slope": 1000000008,
         },
