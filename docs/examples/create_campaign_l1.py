@@ -85,8 +85,8 @@ def create_campaign(
 
     # Using contract utils to get CCIP fee
     fee = fee_calculator.get_ccip_fee(
-        dest_chain_id=chain_id,
-        execution_gas_limit=2_500_000,
+        dest_chain_id=chain_id, 
+        execution_gas_limit=600_000, # IF PTOKEN EXISTS, else USE 2_000_000
         receiver=to_checksum_address(MANAGER_ADDRESS),
         tokens=[
             {
