@@ -14,8 +14,8 @@ from web3 import Web3
 w3 = Web3(Web3.HTTPProvider("https://ethereum.llamarpc.com"))
 
 CCIP_ROUTER_ADDRESS = "0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D"  # from https://docs.chain.link/ccip/directory/mainnet/chain/mainnet
-MANAGER_ADDRESS = "0x8898502BA35AB64b3562aBC509Befb7Eb178D4df"
-CAMPAIGN_REMOTE_MANAGER_ADDRESS = "0xd1f0101Df22Cb7447F486Da5784237AB7a55eB4e"
+MANAGER_ADDRESS = "0x8898502BA35AB64b3562aBC509Befb7Eb178D4df" # Example (Stake DAO Deployer)
+CAMPAIGN_REMOTE_MANAGER_ADDRESS = "0x53aD4Cd1F1e52DD02aa9FC4A8250A1b74F351CA2"
 HOOK_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 
@@ -114,7 +114,7 @@ def create_campaign(
     tx = campaign_remote_manager_contract.functions.createCampaign(
         campaign_params,
         42161,  # Destination chain id
-        2_500_000,  # Additional gas limit
+        550_000,  # Additional gas limit
     ).build_transaction(
         {
             "from": to_checksum_address(MANAGER_ADDRESS),

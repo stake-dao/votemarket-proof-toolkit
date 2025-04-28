@@ -94,6 +94,9 @@ def generate_user_proof(
         protocol
     ]["vote_user_slope"]
 
+    print(last_user_vote_base_slot)
+    print(vote_user_slope_base_slot)
+
     # Calculate last user vote storage slot
     last_user_vote_slot = get_user_gauge_storage_slot(
         web_3.to_checksum_address(user.lower()),
