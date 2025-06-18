@@ -153,10 +153,10 @@ class VotesService:
                 GaugeControllerConstants.GAUGE_CONTROLLER[protocol],
                 start_block,
                 end_block,
-                {"0": GaugeControllerConstants.VOTE_EVENT_HASH},
+                {"0": GaugeControllerConstants.VOTE_EVENT_HASH.get(protocol, GaugeControllerConstants.VOTE_EVENT_HASH["default"])},
             )
             rprint(f"{len(votes_logs)} votes logs found")
-            return [self._decode_vote_log(log) for log in votes_logs]
+            return [self._get_decode_vote_log_func(protocol)(log) for log in votes_logs]
         except Exception as e:
             if "No records found" in str(e):
                 return []
@@ -182,6 +182,11 @@ class VotesService:
         chunks = await asyncio.gather(*tasks)
         return [vote for chunk in chunks for vote in chunk]
 
+    def _get_decode_vote_log_func(self, protocol: str):
+        if protocol == "pendle":
+            return self._decode_vote_log_pendle
+        return self._decode_vote_log
+    
     def _decode_vote_log(self, log: Dict[str, Any]) -> Dict[str, Any]:
         """Decode a vote log"""
         data = bytes.fromhex(log["data"][2:])
@@ -198,7 +203,25 @@ class VotesService:
             raise ValueError(
                 f"Error decoding vote log: {str(e)}. Raw data: {log['data']}"
             )
+        
+    def _decode_vote_log_pendle(self, log: Dict[str, Any]) -> Dict[str, Any]:
+        """Decode a vote log with indexed user/pool, weight, and tuple vote"""
+        data = bytes.fromhex(log["data"][2:])
+        try:
+            weight = int.from_bytes(data[0:32], byteorder="big")
+            
+            # Decode indexed addresses from topics
+            user = Web3.to_checksum_address("0x" + log["topics"][1][-40:])
+            pool = Web3.to_checksum_address("0x" + log["topics"][2][-40:])
 
+            return {
+                "time": 0,
+                "user": user,
+                "gauge_addr": pool,
+                "weight": weight,
+            }
+        except Exception as e:
+            raise ValueError(f"Error decoding log: {e}. Raw data: {log['data']}")
 
 # Global instance
 votes_service = VotesService()
