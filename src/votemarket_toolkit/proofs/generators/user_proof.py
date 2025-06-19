@@ -87,12 +87,14 @@ def generate_user_proof(
     """
 
     # Get base slots for last user vote and vote user slope
-    last_user_vote_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
-        "last_user_vote"
-    ]
+    last_user_vote_base_slot = None
+    if protocol != "pendle":
+        last_user_vote_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
+            "last_user_vote"
+        ]
     vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[
         protocol
-    ]["vote_user_slope"]
+    ]["getUserPoolVote" if protocol == "pendle" else "vote_user_slope"]
 
     print(last_user_vote_base_slot)
     print(vote_user_slope_base_slot)
@@ -124,9 +126,12 @@ def generate_user_proof(
 
     # Combine all slots
     slots = [
-        web_3.to_hex(last_user_vote_slot),
+        web_3.to_hex(last_user_vote_slot)
+    ] if protocol != "pendle" else []
+
+    slots += [
         web_3.to_hex(vote_user_slope_slope),
-        web_3.to_hex(vote_user_slope_end),
+        web_3.to_hex(vote_user_slope_end)
     ]
 
     # Get raw proof from the blockchain

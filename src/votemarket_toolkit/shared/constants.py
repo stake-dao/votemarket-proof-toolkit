@@ -36,6 +36,10 @@ class GaugeControllerConstants:
             "last_user_vote": 1000000010,
             "vote_user_slope": 1000000008,
         },
+        "pendle": {
+            "getPoolTotalVoteAt": 161,
+            "getUserPoolVote": 162,
+        }
     }
 
     GAUGE_CONTROLLER = {

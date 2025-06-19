@@ -41,6 +41,21 @@ def get_gauge_time_storage_slot(gauge: str, time: int, base_slot: int) -> int:
     final_slot = keccak(_encode_gauge_time(gauge, time, base_slot))
     return int.from_bytes(final_slot, byteorder="big")
 
+def get_gauge_time_storage_slot_pendle(gauge: str, time: int, base_slot: int) -> int:
+    """
+    Calculate storage position for gauge time (used for Pendle protocol).
+
+    Args:
+        gauge (str): The gauge address.
+        time (int): The current epoch.
+        base_slot (int): The base slot for point weights.
+
+    Returns:
+        int: The calculated storage position.
+    """
+    gauge_encoded = keccak(encode(["uint256", "address"], [base_slot, gauge]))
+    final_slot = keccak(encode(["bytes32", "uint128"], [gauge_encoded, time]))
+    return int.from_bytes(final_slot, byteorder="big")
 
 def get_gauge_time_storage_slot_pre_vyper03(
     gauge: str, time: int, base_slot: int
@@ -83,11 +98,12 @@ def generate_gauge_proof(
         Tuple[bytes, bytes]: The encoded RLP account proof and storage proof for the gauge.
     """
     point_weights_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
-        "point_weights"
+        "getPoolTotalVoteAt" if protocol == "pendle" else "point_weights"
     ]
 
     position_functions = {
         "curve": get_gauge_time_storage_slot_pre_vyper03,
+        "pendle": get_gauge_time_storage_slot_pendle,
         "default": get_gauge_time_storage_slot,
     }
 

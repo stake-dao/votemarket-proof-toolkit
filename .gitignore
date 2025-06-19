@@ -20,3 +20,4 @@ env/
 cache/
 temp/
 node_modules/
+.venv
