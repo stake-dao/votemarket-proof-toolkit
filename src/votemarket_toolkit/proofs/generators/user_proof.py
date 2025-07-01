@@ -87,24 +87,26 @@ def generate_user_proof(
     """
 
     # Get base slots for last user vote and vote user slope
-    last_user_vote_base_slot = None
     if protocol != "pendle":
         last_user_vote_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
             "last_user_vote"
         ]
+
+        print(last_user_vote_base_slot)
+
+        # Calculate last user vote storage slot
+        last_user_vote_slot = get_user_gauge_storage_slot(
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
+            last_user_vote_base_slot,
+        )
+
     vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[
         protocol
     ]["getUserPoolVote" if protocol == "pendle" else "vote_user_slope"]
 
-    print(last_user_vote_base_slot)
+    
     print(vote_user_slope_base_slot)
-
-    # Calculate last user vote storage slot
-    last_user_vote_slot = get_user_gauge_storage_slot(
-        web_3.to_checksum_address(user.lower()),
-        web_3.to_checksum_address(gauge_address.lower()),
-        last_user_vote_base_slot,
-    )
 
     # Calculate vote user slope storage slot (different for Curve protocol)
     if protocol == "curve":

@@ -25,7 +25,7 @@ def validate_chain_id(chain_id: int) -> None:
 
 def validate_protocol(protocol: str) -> str:
     """Validate and normalize protocol name"""
-    valid_protocols = {"curve", "balancer", "fxn"}
+    valid_protocols = {"curve", "balancer", "fxn", "pendle"}
     protocol = protocol.lower()
     if protocol not in valid_protocols:
         raise ValueError(

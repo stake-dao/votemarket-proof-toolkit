@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "python-dotenv>=1.0.1",
     "w3multicall>=0.3.1",
-    "web3>=6.19.0",
+    "web3>=7.12.0",
     "eth_utils>=5.1.0",
     "py-solc-x>=2.0.3",
     "cmake>=3.30.5",
@@ -32,7 +32,6 @@ extend-select = ["I"]
 
 [tool.black]
 line-length = 79
-
 
 [tool.uv]
 pip.no-binary = ["*"]
