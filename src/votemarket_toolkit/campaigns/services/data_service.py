@@ -59,26 +59,47 @@ class VoteMarketDataService:
             unique_users = list(set(vote.user for vote in gauge_votes.votes))
 
             for user in unique_users:
-                multicall.add(
-                    W3Multicall.Call(
-                        gauge_controller_address,
-                        "last_user_vote(address,address)(uint256)",
-                        [
-                            to_checksum_address(user),
-                            to_checksum_address(gauge_address),
-                        ],
+                if protocol == "pendle":
+                    multicall.add(
+                        W3Multicall.Call(
+                            gauge_controller_address,
+                            "getUserPoolVote(address,address)(uint256,uint256,uint256)",
+                            [
+                                to_checksum_address(user),
+                                to_checksum_address(gauge_address),
+                            ],
+                        )
                     )
-                )
-                multicall.add(
-                    W3Multicall.Call(
-                        gauge_controller_address,
-                        "vote_user_slopes(address,address)(int128,int128,uint256)",
-                        [
-                            to_checksum_address(user),
-                            to_checksum_address(gauge_address),
-                        ],
+                    multicall.add(
+                        W3Multicall.Call(
+                            to_checksum_address(GaugeControllerConstants.VE_ADDRESSES[protocol]),
+                            "positionData(address)(uint128,uint128)",
+                            [
+                                to_checksum_address(user)
+                            ],
+                        )
                     )
-                )
+                else:
+                    multicall.add(
+                        W3Multicall.Call(
+                            gauge_controller_address,
+                            "last_user_vote(address,address)(uint256)",
+                            [
+                                to_checksum_address(user),
+                                to_checksum_address(gauge_address),
+                            ],
+                        )
+                    )
+                    multicall.add(
+                        W3Multicall.Call(
+                            gauge_controller_address,
+                            "vote_user_slopes(address,address)(int128,int128,uint256)",
+                            [
+                                to_checksum_address(user),
+                                to_checksum_address(gauge_address),
+                            ],
+                        )
+                    )
 
             results = multicall.call(block_number)
 
@@ -86,8 +107,14 @@ class VoteMarketDataService:
 
             for i in range(0, len(results), 2):
                 user = unique_users[i // 2]
-                last_vote = results[i]
-                slope, power, end = results[i + 1]
+
+                if protocol == "pendle":
+                    last_vote = 0
+                    power, _, slope = results[i]
+                    end = results[i + 1]
+                else:
+                    last_vote = results[i]
+                    slope, power, end = results[i + 1]
 
                 if (
                     current_epoch < end
