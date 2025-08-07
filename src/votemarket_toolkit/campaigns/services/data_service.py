@@ -111,7 +111,7 @@ class VoteMarketDataService:
                 if protocol == "pendle":
                     last_vote = 0
                     power, _, slope = results[i]
-                    end = results[i + 1]
+                    end = results[i + 1][1]
                 else:
                     last_vote = results[i]
                     slope, power, end = results[i + 1]

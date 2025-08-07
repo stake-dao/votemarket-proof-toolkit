@@ -37,8 +37,8 @@ class GaugeControllerConstants:
             "vote_user_slope": 1000000008,
         },
         "pendle": {
-            "getPoolTotalVoteAt": 161,
-            "getUserPoolVote": 162,
+            "point_weights": 161,
+            "vote_user_slope": 162,
         }
     }
 
@@ -71,6 +71,7 @@ class GaugeVotesConstants:
         "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
         "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
         "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
+        "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0"
     }
 
 
@@ -141,10 +142,7 @@ class ContractRegistry:
 
     PENDLE = {
         1: None,
-        42161: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
-        10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
-        8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
-        137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+        42161: "0x3B3500439D8F781015cB99Bab4573bf452b170E2",
     }
 
     @staticmethod

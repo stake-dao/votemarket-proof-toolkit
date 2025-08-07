@@ -43,6 +43,27 @@ def get_user_gauge_storage_slot(user: str, gauge: str, base_slot: int) -> int:
     final_slot = keccak(_encode_user_gauge_data(user, gauge, base_slot))
     return int.from_bytes(final_slot, byteorder="big")
 
+def get_user_gauge_storage_slot_pendle(user: str, gauge: str, base_slot: int) -> int:
+    """
+    Calculate storage slot for user gauge data in gauge controllers (post Vyper 0.3).
+
+    This function is used for protocols other than Curve.
+
+    Args:
+        user (str): The user address.
+        gauge (str): The gauge address.
+        base_slot (int): The base slot for user vote or slope in the gauge controller.
+
+    Returns:
+        int: The calculated storage slot for the user's gauge data.
+    """
+    encoded_1 = keccak(encode(['address', 'uint256'], [user, base_slot]))
+    struct_slot_int = int.from_bytes(encoded_1, byteorder='big')
+
+    encoded_2 = keccak(encode(['address', 'uint256'], [gauge, struct_slot_int + 1]))
+    final_slot = int.from_bytes(encoded_2, byteorder='big')
+
+    return final_slot
 
 def get_user_gauge_storage_slot_pre_vyper03(
     user: str, gauge: str, base_slot: int
@@ -92,8 +113,6 @@ def generate_user_proof(
             "last_user_vote"
         ]
 
-        print(last_user_vote_base_slot)
-
         # Calculate last user vote storage slot
         last_user_vote_slot = get_user_gauge_storage_slot(
             web_3.to_checksum_address(user.lower()),
@@ -103,18 +122,23 @@ def generate_user_proof(
 
     vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[
         protocol
-    ]["getUserPoolVote" if protocol == "pendle" else "vote_user_slope"]
-
-    
-    print(vote_user_slope_base_slot)
+    ]["vote_user_slope"]
 
     # Calculate vote user slope storage slot (different for Curve protocol)
+    index_additionnal_slot = 2
     if protocol == "curve":
         vote_user_slope_slot = get_user_gauge_storage_slot_pre_vyper03(
             web_3.to_checksum_address(user.lower()),
             web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
+    elif protocol == "pendle":
+        vote_user_slope_slot = get_user_gauge_storage_slot_pendle(
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
+            vote_user_slope_base_slot,
+        )
+        index_additionnal_slot = 1
     else:
         vote_user_slope_slot = get_user_gauge_storage_slot(
             web_3.to_checksum_address(user.lower()),
@@ -124,7 +148,7 @@ def generate_user_proof(
 
     # Calculate additional slots
     vote_user_slope_slope = vote_user_slope_slot
-    vote_user_slope_end = vote_user_slope_slot + 2
+    vote_user_slope_end = vote_user_slope_slot + index_additionnal_slot
 
     # Combine all slots
     slots = [

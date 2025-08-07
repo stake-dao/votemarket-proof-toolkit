@@ -21,3 +21,4 @@ cache/
 temp/
 node_modules/
 .venv
+out/

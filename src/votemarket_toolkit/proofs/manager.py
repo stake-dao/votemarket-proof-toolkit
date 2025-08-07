@@ -123,14 +123,25 @@ class VoteMarketProofs:
         gauge_controller_address = GaugeVotesConstants.GAUGE_CONTROLLER[
             protocol
         ]
-        gauge_controller_contract = self.web3_service.get_contract(
-            gauge_controller_address, "gauge_controller"
-        )
 
         try:
-            gauge_controller_contract.functions.gauge_types(
-                to_checksum_address(gauge)
-            ).call()
-            return True
+            if protocol == "pendle":
+                gauge_controller_contract = self.web3_service.get_contract(
+                    gauge_controller_address, "pendle_gauge_controller"
+                )
+                active_pools = gauge_controller_contract.functions.getAllActivePools().call()
+
+                for active_pool in active_pools:
+                    if active_pool.lower() == gauge.lower():
+                        return True
+                return False
+            else:
+                gauge_controller_contract = self.web3_service.get_contract(
+                    gauge_controller_address, "gauge_controller"
+                )
+                gauge_controller_contract.functions.gauge_types(
+                    to_checksum_address(gauge)
+                ).call()
+                return True
         except Exception:
             return False
