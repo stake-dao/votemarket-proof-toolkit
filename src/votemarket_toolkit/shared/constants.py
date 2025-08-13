@@ -142,7 +142,7 @@ class ContractRegistry:
 
     PENDLE = {
         1: None,
-        42161: "0x3B3500439D8F781015cB99Bab4573bf452b170E2",
+        42161: "0xD4bf7C45EE02A45bC4399805015B2194b276937D",
     }
 
     @staticmethod
