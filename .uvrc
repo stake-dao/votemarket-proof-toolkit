@@ -5,4 +5,4 @@ no-binary = []
 only-binary = []
 
 [venv]
-python = "3.10"  # Default Python version
+python = "3.12"  # Default Python version

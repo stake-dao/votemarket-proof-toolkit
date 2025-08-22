@@ -91,15 +91,36 @@ def get_logs_by_address_and_topics(
         List[Dict[str, Any]]: List of logs.
     """
     topic0 = topics.get("0", "")
-    url = f"https://api.etherscan.io/v2/api?chainid={chain_id}&module=logs&action=getLogs&address={address}&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}&apikey={EXPLORER_KEY}"
+    offset = 1000
+    page = 1
+    all_logs = []
 
-    try:
-        response = _make_request_with_retry(url, "logs")
-        return response if response else []
-    except Exception as e:
-        if "No records found" in str(e):
-            return []
-        raise
+    while True:
+        url = (
+            f"https://api.etherscan.io/v2/api?"
+            f"chainid={chain_id}&module=logs&action=getLogs&"
+            f"address={address}&fromBlock={from_block}&toBlock={to_block}&"
+            f"topic0={topic0}&page={page}&offset={offset}&apikey={EXPLORER_KEY}"
+        )
+
+        try:
+            response = _make_request_with_retry(url, "logs")
+            if not response:
+                break
+
+            all_logs.extend(response)
+
+            # Stop if less than offset logs returned (meaning no more pages)
+            if len(response) < offset:
+                break
+
+            page += 1  # Go to next page
+        except Exception as e:
+            if "No records found" in str(e):
+                break
+            raise
+
+    return all_logs
 
 
 def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:

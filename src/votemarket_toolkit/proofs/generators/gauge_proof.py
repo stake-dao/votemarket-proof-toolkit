@@ -41,6 +41,25 @@ def get_gauge_time_storage_slot(gauge: str, time: int, base_slot: int) -> int:
     final_slot = keccak(_encode_gauge_time(gauge, time, base_slot))
     return int.from_bytes(final_slot, byteorder="big")
 
+def get_gauge_time_storage_slot_pendle(gauge: str, time: int, base_slot: int) -> int:
+    """
+    Calculate storage position for gauge time (used for Pendle protocol).
+
+    Args:
+        gauge (str): The gauge address.
+        time (int): The current epoch.
+        base_slot (int): The base slot for point weights.
+
+    Returns:
+        int: The calculated storage position.
+    """
+    encoded_1 = keccak(encode(['uint128', 'uint256'], [time, base_slot]))
+    struct_slot_int = int.from_bytes(encoded_1, byteorder='big')
+
+    encoded_2 = keccak(encode(['address', 'uint256'], [gauge, struct_slot_int + 1]))
+    final_slot = int.from_bytes(encoded_2, byteorder='big')
+
+    return final_slot
 
 def get_gauge_time_storage_slot_pre_vyper03(
     gauge: str, time: int, base_slot: int
@@ -88,6 +107,7 @@ def generate_gauge_proof(
 
     position_functions = {
         "curve": get_gauge_time_storage_slot_pre_vyper03,
+        "pendle": get_gauge_time_storage_slot_pendle,
         "default": get_gauge_time_storage_slot,
     }
 

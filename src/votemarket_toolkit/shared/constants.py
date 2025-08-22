@@ -10,9 +10,10 @@ load_dotenv()
 class GaugeControllerConstants:
     """Global class constants Gauge Controller related ops"""
 
-    VOTE_EVENT_HASH = (
-        "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
-    )
+    VOTE_EVENT_HASH = {
+        "pendle": "0xc71e393f1527f71ce01b78ea87c9bd4fca84f1482359ce7ac9b73f358c61b1e1",
+        "default": "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
+    }
 
     GAUGES_SLOTS = {
         "curve": {
@@ -35,6 +36,10 @@ class GaugeControllerConstants:
             "last_user_vote": 1000000010,
             "vote_user_slope": 1000000008,
         },
+        "pendle": {
+            "point_weights": 161,
+            "vote_user_slope": 162,
+        }
     }
 
     GAUGE_CONTROLLER = {
@@ -42,6 +47,7 @@ class GaugeControllerConstants:
         "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
         "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
         "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
+        "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0",
     }
 
     CREATION_BLOCKS = {
@@ -49,6 +55,11 @@ class GaugeControllerConstants:
         "balancer": 14457014,
         "frax": 14052749,
         "fxn": 18156185,
+        "pendle": 16032096
+    }
+
+    VE_ADDRESSES = {
+        "pendle": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210"
     }
 
 
@@ -60,6 +71,7 @@ class GaugeVotesConstants:
         "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
         "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
         "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
+        "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0"
     }
 
 
@@ -126,6 +138,14 @@ class ContractRegistry:
         10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
         8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
         137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+    }
+
+    PENDLE = {
+        1: None,
+        42161: "0x105694FC5204787eD571842671d1262A54a8135B",
+        10: "0x105694FC5204787eD571842671d1262A54a8135B",
+        8453: "0x105694FC5204787eD571842671d1262A54a8135B",
+        137: "0x105694FC5204787eD571842671d1262A54a8135B",
     }
 
     @staticmethod
