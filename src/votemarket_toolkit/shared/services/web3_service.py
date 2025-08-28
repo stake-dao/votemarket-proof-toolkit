@@ -45,10 +45,10 @@ class Web3Service:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
 
         # Add POA middleware for non-mainnet chains
-        if self.chain_id != 1:
-            from web3.middleware import geth_poa_middleware
+        #if self.chain_id != 1:
+            #from web3.middleware import geth_poa_middleware
 
-            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+            #w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         return w3
 
