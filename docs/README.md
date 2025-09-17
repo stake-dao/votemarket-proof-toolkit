@@ -20,15 +20,7 @@ This guide is designed to help developers integrate and migrate their applicatio
 ## Quick Reference
 
 ### Contract Addresses & Deployments
-
-| Contract              | Networks                                    | Address                                    |
-|----------------------|---------------------------------------------|--------------------------------------------|
-| CampaignRemoteManager| Ethereum, Arbitrum, Base, Optimism, Polygon | `0xd1f0101Df22Cb7447F486Da5784237AB7a55eB4e` |
-| CCIP Adapter         | Ethereum, Arbitrum, Base, Optimism, Polygon | `0x4200740090f72e89302f001da5860000007d7ea7` |
-| VoteMarket           | Arbitrum, Base, Optimism, Polygon          | `0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5` |
-| Oracle               | Arbitrum, Base, Optimism, Polygon          | `0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8` |
-| ProofVerifier        | Arbitrum, Base, Optimism, Polygon          | `0x2Fa15A44eC5737077a747ed93e4eBD5b4960a465` |
-| Bundler              | Arbitrum, Base, Optimism, Polygon          | `0x67346f8b9B7dDA4639600C190DDaEcDc654359c8` |
+Find all supported protocols, contract addresses, and learn how Votemarket V2 works in our [GitHub repository](https://github.com/stake-dao/votemarket-v2).
 
 ## Campaign Creation
 
