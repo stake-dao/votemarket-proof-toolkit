@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import Dict, List, Optional, TypedDict
 
 
 class Platform(TypedDict):
@@ -8,10 +8,13 @@ class Platform(TypedDict):
 
 
 class Period(TypedDict):
+    timestamp: int
     reward_per_period: int
     reward_per_vote: int
     leftover: int
     updated: bool
+    point_data_inserted: bool
+
 
 
 class CampaignDetails(TypedDict):
@@ -39,7 +42,7 @@ class Campaign(TypedDict):
     listed_users: List[str]
     period_left: int
     details: CampaignDetails
-    current_period: Period
+    periods : List[Period]
 
 
 class CampaignData(TypedDict):

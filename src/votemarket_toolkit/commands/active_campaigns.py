@@ -296,7 +296,7 @@ async def get_all_active_campaigns(
                         "period_left": c["period_left"],
                         "listed_users": c["listed_users"],
                         "details": c["details"],
-                        "current_period": c["current_period"],
+                        "current_period": c["current_period"], # TODO : Just use latest period from "periods"
                         "closability": closability,
                     }
                 )

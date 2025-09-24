@@ -3,7 +3,11 @@ from typing import Dict, List
 
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.campaigns.types import Campaign, CampaignData, Platform
+from votemarket_toolkit.campaigns.types import (
+    Campaign,
+    CampaignData,
+    Platform,
+)
 from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.resource_manager import (
@@ -82,6 +86,48 @@ class CampaignService:
             print(f"Error fetching campaigns for chain {chain_id}: {str(e)}")
             return []
 
+    async def _fetch_chain_campaigns_with_periods(
+        self,
+        web3_service: Web3Service,
+        chain_id: int,
+        platform_address: str,
+        start_index: int,
+        limit: int,
+    ) -> List[Dict]:
+        """Fetch campaigns with all periods for a specific chain"""
+        try:
+            # Validate inputs
+            if limit <= 0:
+                return []
+
+            # Load bytecode for the new contract
+            bytecode_data = resource_manager.load_bytecode(
+                "BatchCampaignsWithPeriods"
+            )
+
+            # Build contract call
+            tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                bytecode_data,
+                [platform_address, start_index, limit],
+            )
+
+            # Execute call
+            result = web3_service.w3.eth.call(tx)
+
+            # Decode the result using the new decoder
+            campaign_data_list = (
+                self.contract_reader.decode_campaign_data_with_periods(result)
+            )
+
+            # Return the extended campaign data with all periods
+            return campaign_data_list
+
+        except Exception as e:
+            print(
+                f"Error fetching campaigns with periods for chain {chain_id}: {str(e)}"
+            )
+            return []
+
     async def query_active_campaigns(
         self, chain_id: int, platform: str
     ) -> List[Campaign]:
@@ -139,6 +185,98 @@ class CampaignService:
         """Get all platforms for a protocol"""
         return registry.get_all_platforms(protocol)
 
+    async def get_campaigns_with_all_periods(
+        self,
+        chain_id: int,
+        platform_address: str,
+        total_campaigns: int = None,
+        parallel_requests: int = 5,
+    ) -> List[Dict]:
+        """
+        Get all campaigns with periods using parallel batch fetching.
+        Automatically handles the 2-campaign limit per request.
+
+        Args:
+            chain_id: Chain ID to query
+            platform_address: Votemarket platform address
+            total_campaigns: Total number of campaigns (None to auto-fetch)
+            parallel_requests: Number of concurrent requests (default 5)
+
+        Returns:
+            List of campaign dictionaries with all periods included
+        """
+        try:
+            web3_service = self.get_web3_service(chain_id)
+            if not web3_service:
+                print(f"Web3 service not available for chain {chain_id}")
+                return []
+
+            # Get total campaign count if not provided
+            if total_campaigns is None:
+                platform_contract = web3_service.get_contract(
+                    to_checksum_address(platform_address.lower()),
+                    "vm_platform",
+                )
+                total_campaigns = (
+                    platform_contract.functions.campaignCount().call()
+                )
+
+            if total_campaigns == 0:
+                return []
+
+            # Load bytecode once
+            bytecode_data = resource_manager.load_bytecode(
+                "BatchCampaignsWithPeriods"
+            )
+
+            # Helper function for fetching a single batch
+            async def fetch_batch(start_idx: int, limit: int) -> List[Dict]:
+                try:
+                    tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                        bytecode_data,
+                        [platform_address, start_idx, limit],
+                    )
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None, web3_service.w3.eth.call, tx
+                    )
+                    return (
+                        self.contract_reader.decode_campaign_data_with_periods(
+                            result
+                        )
+                    )
+                except Exception as e:
+                    print(
+                        f"Error fetching batch at index {start_idx}: {str(e)}"
+                    )
+                    return []
+
+            # Create all batch tasks (2 campaigns per batch due to code size limit)
+            batch_size = 2
+            tasks = []
+            for start_idx in range(0, total_campaigns, batch_size):
+                limit = min(batch_size, total_campaigns - start_idx)
+                tasks.append(fetch_batch(start_idx, limit))
+
+            # Execute in parallel chunks
+            all_campaigns = []
+            for i in range(0, len(tasks), parallel_requests):
+                chunk = tasks[i : i + parallel_requests]
+                results = await asyncio.gather(*chunk, return_exceptions=True)
+
+                for result in results:
+                    if isinstance(result, list):
+                        all_campaigns.extend(result)
+
+                # Small delay between chunks to avoid rate limiting
+                if i + parallel_requests < len(tasks):
+                    await asyncio.sleep(0.1)
+
+            return all_campaigns
+
+        except Exception as e:
+            print(f"Error fetching campaigns with periods: {str(e)}")
+            return []
+
     def get_proofs_per_campaign(self) -> int:
         # TEMP
         campaign_id = 97
@@ -187,10 +325,41 @@ class CampaignService:
 campaign_service = CampaignService()
 
 
-# TEMP
-if __name__ == "__main__":
+async def test():
     from votemarket_toolkit.shared.services.web3_service import Web3Service
 
     web3_service = Web3Service.get_instance(42161)
     campaign_service.w3 = web3_service.w3
+
+    """
     print(campaign_service.get_proofs_per_campaign())
+    """
+
+    platforms = campaign_service.get_all_platforms("curve")
+
+    for platform in platforms:
+        if (
+            platform["chain_id"] == 42161
+            and platform["address"]
+            == "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"
+        ):
+            # Fetch all campaigns with automatic parallel batching
+            print("Fetching all campaigns with parallel batching:")
+            campaigns = await campaign_service.get_campaigns_with_all_periods(
+                chain_id=42161,
+                platform_address=platform["address"],
+                parallel_requests=5,  # Process 5 batches concurrently
+            )
+            print(f"Fetched {len(campaigns)} campaigns")
+
+            # Display sample data
+            if campaigns:
+                print(f"\nFirst campaign ID: {campaigns[0].get('id')}")
+                print(
+                    f"Total periods in first campaign: {len(campaigns[0].get('periods', []))}"
+                )
+
+
+# TEMP
+if __name__ == "__main__":
+    asyncio.run(test())
