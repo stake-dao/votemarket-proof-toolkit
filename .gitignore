@@ -22,3 +22,4 @@ temp/
 node_modules/
 .venv
 out/
+.address_registry_cache.json

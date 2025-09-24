@@ -6,7 +6,7 @@ from eth_abi import encode
 from eth_utils import keccak
 from web3 import Web3
 
-from votemarket_toolkit.shared.constants import GaugeControllerConstants
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 
 
@@ -43,7 +43,10 @@ def get_user_gauge_storage_slot(user: str, gauge: str, base_slot: int) -> int:
     final_slot = keccak(_encode_user_gauge_data(user, gauge, base_slot))
     return int.from_bytes(final_slot, byteorder="big")
 
-def get_user_gauge_storage_slot_pendle(user: str, gauge: str, base_slot: int) -> int:
+
+def get_user_gauge_storage_slot_pendle(
+    user: str, gauge: str, base_slot: int
+) -> int:
     """
     Calculate storage slot for user gauge data in gauge controllers (post Vyper 0.3).
 
@@ -57,13 +60,16 @@ def get_user_gauge_storage_slot_pendle(user: str, gauge: str, base_slot: int) ->
     Returns:
         int: The calculated storage slot for the user's gauge data.
     """
-    encoded_1 = keccak(encode(['address', 'uint256'], [user, base_slot]))
-    struct_slot_int = int.from_bytes(encoded_1, byteorder='big')
+    encoded_1 = keccak(encode(["address", "uint256"], [user, base_slot]))
+    struct_slot_int = int.from_bytes(encoded_1, byteorder="big")
 
-    encoded_2 = keccak(encode(['address', 'uint256'], [gauge, struct_slot_int + 1]))
-    final_slot = int.from_bytes(encoded_2, byteorder='big')
+    encoded_2 = keccak(
+        encode(["address", "uint256"], [gauge, struct_slot_int + 1])
+    )
+    final_slot = int.from_bytes(encoded_2, byteorder="big")
 
     return final_slot
+
 
 def get_user_gauge_storage_slot_pre_vyper03(
     user: str, gauge: str, base_slot: int
@@ -108,10 +114,12 @@ def generate_user_proof(
     """
 
     # Get base slots for last user vote and vote user slope
+    gauge_slots = registry.get_gauge_slots(protocol)
+    if not gauge_slots:
+        raise ValueError(f"Unknown protocol: {protocol}")
+
     if protocol != "pendle":
-        last_user_vote_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
-            "last_user_vote"
-        ]
+        last_user_vote_base_slot = gauge_slots["last_user_vote"]
 
         # Calculate last user vote storage slot
         last_user_vote_slot = get_user_gauge_storage_slot(
@@ -120,9 +128,7 @@ def generate_user_proof(
             last_user_vote_base_slot,
         )
 
-    vote_user_slope_base_slot = GaugeControllerConstants.GAUGES_SLOTS[
-        protocol
-    ]["vote_user_slope"]
+    vote_user_slope_base_slot = gauge_slots["vote_user_slope"]
 
     # Calculate vote user slope storage slot (different for Curve protocol)
     index_additionnal_slot = 2
@@ -151,20 +157,20 @@ def generate_user_proof(
     vote_user_slope_end = vote_user_slope_slot + index_additionnal_slot
 
     # Combine all slots
-    slots = [
-        web_3.to_hex(last_user_vote_slot)
-    ] if protocol != "pendle" else []
+    slots = [web_3.to_hex(last_user_vote_slot)] if protocol != "pendle" else []
 
     slots += [
         web_3.to_hex(vote_user_slope_slope),
-        web_3.to_hex(vote_user_slope_end)
+        web_3.to_hex(vote_user_slope_end),
     ]
 
     # Get raw proof from the blockchain
+    gauge_controller = registry.get_gauge_controller(protocol)
+    if not gauge_controller:
+        raise ValueError(f"No gauge controller found for protocol: {protocol}")
+
     raw_proof = web_3.eth.get_proof(
-        web_3.to_checksum_address(
-            GaugeControllerConstants.GAUGE_CONTROLLER[protocol].lower()
-        ),
+        web_3.to_checksum_address(gauge_controller.lower()),
         slots,
         block_number,
     )

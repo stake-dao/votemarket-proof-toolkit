@@ -5,7 +5,7 @@ from eth_utils import to_checksum_address
 
 from votemarket_toolkit.campaigns.types import Campaign, CampaignData, Platform
 from votemarket_toolkit.contracts.reader import ContractReader
-from votemarket_toolkit.shared.constants import ContractRegistry
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
@@ -137,25 +137,7 @@ class CampaignService:
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """Get all platforms for a protocol"""
-        try:
-            chains = ContractRegistry.get_chains(protocol.upper())
-            platforms = []
-            for chain_id in chains:
-                addresses = ContractRegistry.get_address(
-                    protocol.upper(), chain_id
-                )
-                # Create a Platform instance for each version of the contract
-                for contract_address in addresses.values():
-                    platforms.append(
-                        Platform(
-                            protocol=protocol,
-                            chain_id=chain_id,
-                            address=contract_address,
-                        )
-                    )
-            return platforms
-        except ValueError:
-            return []
+        return registry.get_all_platforms(protocol)
 
 
 # Create global instance

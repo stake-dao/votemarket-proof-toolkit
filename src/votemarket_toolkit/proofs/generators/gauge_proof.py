@@ -6,7 +6,7 @@ from eth_abi import encode
 from eth_utils import keccak
 from web3 import Web3
 
-from votemarket_toolkit.shared.constants import GaugeControllerConstants
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 
 
@@ -41,7 +41,10 @@ def get_gauge_time_storage_slot(gauge: str, time: int, base_slot: int) -> int:
     final_slot = keccak(_encode_gauge_time(gauge, time, base_slot))
     return int.from_bytes(final_slot, byteorder="big")
 
-def get_gauge_time_storage_slot_pendle(gauge: str, time: int, base_slot: int) -> int:
+
+def get_gauge_time_storage_slot_pendle(
+    gauge: str, time: int, base_slot: int
+) -> int:
     """
     Calculate storage position for gauge time (used for Pendle protocol).
 
@@ -53,13 +56,16 @@ def get_gauge_time_storage_slot_pendle(gauge: str, time: int, base_slot: int) ->
     Returns:
         int: The calculated storage position.
     """
-    encoded_1 = keccak(encode(['uint128', 'uint256'], [time, base_slot]))
-    struct_slot_int = int.from_bytes(encoded_1, byteorder='big')
+    encoded_1 = keccak(encode(["uint128", "uint256"], [time, base_slot]))
+    struct_slot_int = int.from_bytes(encoded_1, byteorder="big")
 
-    encoded_2 = keccak(encode(['address', 'uint256'], [gauge, struct_slot_int + 1]))
-    final_slot = int.from_bytes(encoded_2, byteorder='big')
+    encoded_2 = keccak(
+        encode(["address", "uint256"], [gauge, struct_slot_int + 1])
+    )
+    final_slot = int.from_bytes(encoded_2, byteorder="big")
 
     return final_slot
+
 
 def get_gauge_time_storage_slot_pre_vyper03(
     gauge: str, time: int, base_slot: int
@@ -101,9 +107,11 @@ def generate_gauge_proof(
     Returns:
         Tuple[bytes, bytes]: The encoded RLP account proof and storage proof for the gauge.
     """
-    point_weights_base_slot = GaugeControllerConstants.GAUGES_SLOTS[protocol][
-        "point_weights"
-    ]
+    gauge_slots = registry.get_gauge_slots(protocol)
+    if not gauge_slots:
+        raise ValueError(f"Unknown protocol: {protocol}")
+
+    point_weights_base_slot = gauge_slots["point_weights"]
 
     position_functions = {
         "curve": get_gauge_time_storage_slot_pre_vyper03,
@@ -122,10 +130,12 @@ def generate_gauge_proof(
 
     slots = [web_3.to_hex(point_weights_position)]
 
+    gauge_controller = registry.get_gauge_controller(protocol)
+    if not gauge_controller:
+        raise ValueError(f"No gauge controller found for protocol: {protocol}")
+
     raw_proof = web_3.eth.get_proof(
-        web_3.to_checksum_address(
-            GaugeControllerConstants.GAUGE_CONTROLLER[protocol].lower()
-        ),
+        web_3.to_checksum_address(gauge_controller.lower()),
         slots,
         block_number,
     )

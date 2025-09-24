@@ -8,7 +8,7 @@ from rich import print as rprint
 from rich.console import Console
 from web3 import Web3
 
-from votemarket_toolkit.shared.constants import GaugeControllerConstants
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.etherscan_service import (
     get_logs_by_address_and_topics,
 )
@@ -32,19 +32,19 @@ class VotesService:
                 cache_file, ["latest_block"]
             ).get("latest_block", [])
 
-            return (
-                start_block_list[0]
-                if start_block_list
-                else GaugeControllerConstants.CREATION_BLOCKS[protocol]
-            )
+            creation_block = registry.get_creation_block(protocol)
+            return start_block_list[0] if start_block_list else creation_block
         except Exception:
-            return GaugeControllerConstants.CREATION_BLOCKS[protocol]
+            creation_block = registry.get_creation_block(protocol)
+            return creation_block if creation_block else 0
 
     async def _get_remote_parquet(self, protocol: str) -> None:
         """Fetch parquet file from stake-dao/api repository"""
 
         remote_file = f"{self.api_base_url}/{protocol}_votes_cache.parquet"
-        cache_file = os.path.join(self.cache_dir, self.votes_cache_file.format(protocol=protocol))
+        cache_file = os.path.join(
+            self.cache_dir, self.votes_cache_file.format(protocol=protocol)
+        )
 
         try:
             async with httpx.AsyncClient() as client:
@@ -57,12 +57,16 @@ class VotesService:
                 # Write the downloaded file
                 with open(cache_file, "wb") as f:
                     f.write(response.content)
-                rprint(f"[green]Successfully downloaded votes cache from stake-dao/api[/green]")
+                rprint(
+                    f"[green]Successfully downloaded votes cache from stake-dao/api[/green]"
+                )
         except Exception as e:
             rprint(f"[red]Failed to fetch remote parquet file: {str(e)}[/red]")
             # If file doesn't exist locally, create empty cache
             if not os.path.exists(cache_file):
-                self.parquet_service.save_votes(self.votes_cache_file.format(protocol=protocol), 0, [])
+                self.parquet_service.save_votes(
+                    self.votes_cache_file.format(protocol=protocol), 0, []
+                )
 
     async def get_gauge_votes(
         self, protocol: str, gauge_address: str, block_number: int
@@ -79,9 +83,9 @@ class VotesService:
         start_block = self._get_start_block(protocol, cache_file)
         end_block = block_number
 
-
-        rprint(f"[cyan]Fetching votes from block {start_block} to {end_block}[/cyan]")
-
+        rprint(
+            f"[cyan]Fetching votes from block {start_block} to {end_block}[/cyan]"
+        )
 
         all_votes = await self._get_all_votes(
             protocol, start_block, end_block, cache_file
@@ -149,14 +153,23 @@ class VotesService:
     ) -> List[Dict[str, Any]]:
         """Fetch a chunk of votes"""
         try:
+            gauge_controller = registry.get_gauge_controller(protocol)
+            if not gauge_controller:
+                raise ValueError(
+                    f"No gauge controller found for protocol: {protocol}"
+                )
+
             votes_logs = get_logs_by_address_and_topics(
-                GaugeControllerConstants.GAUGE_CONTROLLER[protocol],
+                gauge_controller,
                 start_block,
                 end_block,
-                {"0": GaugeControllerConstants.VOTE_EVENT_HASH.get(protocol, GaugeControllerConstants.VOTE_EVENT_HASH["default"])},
+                {"0": registry.get_vote_event_hash(protocol)},
             )
             rprint(f"{len(votes_logs)} votes logs found")
-            return [self._get_decode_vote_log_func(protocol)(log) for log in votes_logs]
+            return [
+                self._get_decode_vote_log_func(protocol)(log)
+                for log in votes_logs
+            ]
         except Exception as e:
             if "No records found" in str(e):
                 return []
@@ -186,7 +199,7 @@ class VotesService:
         if protocol == "pendle":
             return self._decode_vote_log_pendle
         return self._decode_vote_log
-    
+
     def _decode_vote_log(self, log: Dict[str, Any]) -> Dict[str, Any]:
         """Decode a vote log"""
         data = bytes.fromhex(log["data"][2:])
@@ -203,13 +216,13 @@ class VotesService:
             raise ValueError(
                 f"Error decoding vote log: {str(e)}. Raw data: {log['data']}"
             )
-        
+
     def _decode_vote_log_pendle(self, log: Dict[str, Any]) -> Dict[str, Any]:
         """Decode a vote log with indexed user/pool, weight, and tuple vote"""
         data = bytes.fromhex(log["data"][2:])
         try:
             weight = int.from_bytes(data[0:32], byteorder="big")
-            
+
             # Decode indexed addresses from topics
             user = Web3.to_checksum_address("0x" + log["topics"][1][-40:])
             pool = Web3.to_checksum_address("0x" + log["topics"][2][-40:])
@@ -221,7 +234,10 @@ class VotesService:
                 "weight": weight,
             }
         except Exception as e:
-            raise ValueError(f"Error decoding log: {e}. Raw data: {log['data']}")
+            raise ValueError(
+                f"Error decoding log: {e}. Raw data: {log['data']}"
+            )
+
 
 # Global instance
 votes_service = VotesService()

@@ -3,9 +3,7 @@ from typing import Dict, List
 from eth_utils import to_checksum_address
 from w3multicall.multicall import W3Multicall
 
-from votemarket_toolkit.shared.constants import (
-    GaugeControllerConstants,
-)
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.exceptions import VoteMarketDataException
 from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.shared.types import EligibleUser
@@ -49,9 +47,12 @@ class VoteMarketDataService:
 
             multicall = W3Multicall(w3)
 
-            gauge_controller_address = to_checksum_address(
-                GaugeControllerConstants.GAUGE_CONTROLLER[protocol]
-            )
+            gauge_controller = registry.get_gauge_controller(protocol)
+            if not gauge_controller:
+                raise VoteMarketDataException(
+                    f"No gauge controller found for protocol: {protocol}"
+                )
+            gauge_controller_address = to_checksum_address(gauge_controller)
 
             gauge_votes = await votes_service.get_gauge_votes(
                 protocol, gauge_address, block_number
@@ -70,15 +71,15 @@ class VoteMarketDataService:
                             ],
                         )
                     )
-                    multicall.add(
-                        W3Multicall.Call(
-                            to_checksum_address(GaugeControllerConstants.VE_ADDRESSES[protocol]),
-                            "positionData(address)(uint128,uint128)",
-                            [
-                                to_checksum_address(user)
-                            ],
+                    ve_address = registry.get_ve_address(protocol)
+                    if ve_address:
+                        multicall.add(
+                            W3Multicall.Call(
+                                to_checksum_address(ve_address),
+                                "positionData(address)(uint128,uint128)",
+                                [to_checksum_address(user)],
+                            )
                         )
-                    )
                 else:
                     multicall.add(
                         W3Multicall.Call(
