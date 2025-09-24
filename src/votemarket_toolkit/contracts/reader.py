@@ -147,6 +147,120 @@ class ContractReader:
         return decode(types, result)
 
     @staticmethod
+    def build_get_inserted_proofs_constructor_tx(
+        artifact: Dict,
+        oracle_address: str,
+        gauge_address: str,
+        user_addresses: List[str],
+        epochs: List[int],
+        tx_params: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Build constructor transaction for GetInsertedProofs contract.
+
+        Args:
+            artifact: Contract artifact with bytecode
+            oracle_address: Address of the Oracle contract
+            gauge_address: Address of the gauge to query
+            user_addresses: List of user addresses to check
+            epochs: List of epochs to query
+            tx_params: Optional transaction parameters
+
+        Returns:
+            Transaction dictionary ready for eth_call
+        """
+        constructor_types = [
+            "address",  # oracle
+            "address",  # gauge
+            "address[]",  # users array
+            "uint256[]",  # epochs array
+        ]
+
+        constructor_args = [
+            to_checksum_address(oracle_address),
+            to_checksum_address(gauge_address),
+            [to_checksum_address(addr) for addr in user_addresses],
+            epochs,
+        ]
+
+        encoded_args = encode(constructor_types, constructor_args)
+
+        # Handle bytecode format
+        bytecode = (
+            artifact["bytecode"]["bytecode"]
+            if isinstance(artifact["bytecode"], dict)
+            else artifact["bytecode"]
+        )
+        data = bytecode + encoded_args.hex()
+
+        default_params = {
+            "from": "0x0000000000000000000000000000000000000000",
+            "data": data,
+            "gas": 10_000_000,  # Higher gas limit for multiple oracle calls
+            "gasPrice": 0,
+        }
+
+        if tx_params:
+            default_params.update(tx_params)
+
+        return default_params
+
+    @staticmethod
+    def decode_inserted_proofs(result: bytes) -> List[Dict[str, Any]]:
+        """
+        Decode the result from GetInsertedProofs contract call.
+
+        Returns a list of dictionaries, one for each epoch, with:
+        - epoch: uint256
+        - is_block_updated: bool
+        - point_data_results: List of (gauge, is_updated) tuples
+        - voted_slope_data_results: List of (account, gauge, is_updated) tuples
+        """
+        try:
+            # Define the nested struct types for decoding
+            point_data_result_type = "(address,bool)"  # (gauge, is_updated)
+            voted_slope_data_result_type = (
+                "(address,address,bool)"  # (account, gauge, is_updated)
+            )
+
+            epoch_return_data_type = f"(uint256,bool,{point_data_result_type}[],{voted_slope_data_result_type}[])"
+
+            # Decode as array of EpochReturnData
+            return_data_type = f"{epoch_return_data_type}[]"
+
+            # Decode the result
+            decoded = decode([return_data_type], result)[0]
+
+            # Format the result for each epoch
+            epoch_results = []
+            for epoch_data in decoded:
+                epoch_results.append(
+                    {
+                        "epoch": epoch_data[0],
+                        "is_block_updated": epoch_data[1],
+                        "point_data_results": [
+                            {"gauge": point[0], "is_updated": point[1]}
+                            for point in epoch_data[2]
+                        ],
+                        "voted_slope_data_results": [
+                            {
+                                "account": vote[0],
+                                "gauge": vote[1],
+                                "is_updated": vote[2],
+                            }
+                            for vote in epoch_data[3]
+                        ],
+                    }
+                )
+
+            return epoch_results
+
+        except Exception as e:
+            print(f"Error decoding inserted proofs result: {str(e)}")
+            print(f"Raw result (hex): {result.hex()}")
+            raise
+
+    @staticmethod
     def build_get_ccip_fee_constructor_tx(
         artifact: Dict,
         router_address: str,

@@ -139,6 +139,58 @@ class CampaignService:
         """Get all platforms for a protocol"""
         return registry.get_all_platforms(protocol)
 
+    def get_proofs_per_campaign(self) -> int:
+        # TEMP
+        campaign_id = 97
+        gauge = "0xd8b712d29381748dB89c36BCa0138d7c75866ddF"
+        users = ["0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6"]
+
+        # Example: Check multiple epochs (current period and previous 2 periods)
+        current_period = (
+            self.w3.eth.get_block("latest")["timestamp"] // 604800
+        ) * 604800
+        epochs = [
+            current_period,
+            current_period - 604800,  # Previous week
+            current_period - 1209600,  # Two weeks ago
+        ]
+
+        # Load bytecode using resource manager
+        bytecode_data = resource_manager.load_bytecode("GetInsertedProofs")
+
+        tx = ContractReader.build_get_inserted_proofs_constructor_tx(
+            artifact={"bytecode": bytecode_data},
+            oracle_address="0x36F5B50D70df3D3E1c7E1BAf06c32119408Ef7D8",
+            gauge_address=gauge,
+            user_addresses=users,
+            epochs=epochs,
+        )
+
+        # Execute call
+        result = self.w3.eth.call(tx)
+
+        # Decode result - now returns a list of results per epoch
+        epoch_results = ContractReader.decode_inserted_proofs(result)
+        for epoch_result in epoch_results:
+            print(
+                f"Epoch {epoch_result['epoch']}: Block updated = {epoch_result['is_block_updated']}"
+            )
+            print(f"  Point data: {epoch_result['point_data_results']}")
+            print(
+                f"  Voted slope data: {epoch_result['voted_slope_data_results']}"
+            )
+
+        return len(epoch_results)
+
 
 # Create global instance
 campaign_service = CampaignService()
+
+
+# TEMP
+if __name__ == "__main__":
+    from votemarket_toolkit.shared.services.web3_service import Web3Service
+
+    web3_service = Web3Service.get_instance(42161)
+    campaign_service.w3 = web3_service.w3
+    print(campaign_service.get_proofs_per_campaign())

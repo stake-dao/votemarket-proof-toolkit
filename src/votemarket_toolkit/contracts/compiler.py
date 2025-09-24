@@ -1,10 +1,13 @@
 from rich import print
 from solcx import compile_source, install_solc
 
-from votemarket_toolkit.shared.resource_manager import resource_manager
+from votemarket_toolkit.shared.services.resource_manager import (
+    resource_manager,
+)
 
-# Install specific solc version
+# Install specific solc versions
 install_solc("0.8.19")
+install_solc("0.8.26")
 
 
 def compile_contract(source_path: str) -> dict:
@@ -12,11 +15,31 @@ def compile_contract(source_path: str) -> dict:
     with open(source_path, "r") as f:
         source = f.read()
 
+    # Determine Solidity version from pragma
+    solc_version = "0.8.19"  # default
+    if "pragma solidity ^0.8.26" in source:
+        solc_version = "0.8.26"
+
     compiled = compile_source(
-        source, output_values=["abi", "bin"], solc_version="0.8.19"
+        source, output_values=["abi", "bin"], solc_version=solc_version
     )
 
-    contract_id = list(compiled.keys())[0]
+    # Get the main contract (last one in the file, not interfaces)
+    contract_id = None
+    for key in compiled.keys():
+        if "GetInsertedProofs" in key:
+            contract_id = key
+            break
+        elif "BatchCampaignData" in key:  # The actual contract name
+            contract_id = key
+            break
+        elif "GetCCIPFee" in key:
+            contract_id = key
+            break
+
+    if not contract_id:
+        contract_id = list(compiled.keys())[-1]  # Fallback to last contract
+
     return compiled[contract_id]
 
 
