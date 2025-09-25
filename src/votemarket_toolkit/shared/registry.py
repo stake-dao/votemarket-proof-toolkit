@@ -13,7 +13,6 @@ class Registry:
     """Registry that fetches data from the offchain-registry."""
 
     REGISTRY_URL = "https://raw.githubusercontent.com/stake-dao/offchain-registry/refs/heads/main/data/address-book/address-book.json"
-    CACHE_FILE = "temp/address-book-cache.json"
 
     # Chain ID mapping
     CHAIN_NAMES = {
@@ -31,28 +30,11 @@ class Registry:
         self._load_data()
 
     def _load_data(self):
-        """Load registry data from cache or fetch from GitHub."""
-        # Try to load from cache first
-        if os.path.exists(self.CACHE_FILE):
-            try:
-                with open(self.CACHE_FILE, "r") as f:
-                    self._data = json.load(f)
-                    self._parse_data()
-                    return
-            except:
-                pass
-
         # Fetch from GitHub
         try:
             response = httpx.get(self.REGISTRY_URL, timeout=10)
             response.raise_for_status()
             self._data = response.json()
-
-            # Save to cache
-            os.makedirs("temp", exist_ok=True)
-            with open(self.CACHE_FILE, "w") as f:
-                json.dump(self._data, f, indent=2)
-
             self._parse_data()
 
         except Exception as e:
@@ -84,7 +66,7 @@ class Registry:
 
             # Check each chain
             for chain_id, chain_name in self.CHAIN_NAMES.items():
-                if chain_name not in protocol_data:
+                if chain_name not in protocol_data or chain_id == 1: # Skip Ethereum mainnet (no V2)
                     continue
 
                 chain_data = protocol_data[chain_name]
@@ -167,13 +149,6 @@ class Registry:
                 self._controllers[protocol] = data
             except (KeyError, TypeError):
                 pass
-
-    def refresh(self):
-        """Force refresh from GitHub."""
-        if os.path.exists(self.CACHE_FILE):
-            os.remove(self.CACHE_FILE)
-        self._load_data()
-
 
 # =============================================================================
 # SINGLETON INSTANCE

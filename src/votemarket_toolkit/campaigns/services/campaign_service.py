@@ -358,7 +358,9 @@ class CampaignService:
             return all_campaigns
 
         except Exception as e:
-            print(f"Error fetching campaigns: {str(e)}")
+            error_msg = str(e)
+            print(f"Error fetching campaigns: {error_msg}")
+
             return []
 
 

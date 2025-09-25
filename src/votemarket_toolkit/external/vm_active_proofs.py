@@ -34,10 +34,12 @@ vm_votes = VoteMarketDataService(1)
 def is_campaign_active(campaign: dict) -> bool:
     """Check if a campaign is active and should be processed."""
     current_timestamp = int(datetime.now().timestamp())
+
+    # Campaign structure from decode_campaign_data_with_periods
     return (
-        not campaign["is_closed"]
-        and campaign["details"]["end_timestamp"] > current_timestamp
-        and campaign["period_left"] > 0
+        not campaign.get("is_closed", False)
+        and campaign["campaign"]["end_timestamp"] > current_timestamp
+        and campaign.get("remaining_periods", 0) > 0
     )
 
 
@@ -220,7 +222,7 @@ async def process_protocol(
                 f"[magenta]Querying active campaigns for platform {platform_address} on chain {chain_id}...[/magenta]"
             ):
                 campaign_svc = CampaignService()
-                all_campaigns = await campaign_svc.query_active_campaigns(
+                all_campaigns = await campaign_svc.get_campaigns(
                     chain_id, platform_address
                 )
                 active_campaigns = [
@@ -233,7 +235,10 @@ async def process_protocol(
 
             # Process each campaign for the platform.
             for campaign in active_campaigns:
-                gauge_address = campaign["gauge"].lower()
+                # Get gauge and addresses from campaign structure
+                gauge_address = campaign["campaign"]["gauge"].lower()
+                listed_users = campaign.get("addresses", [])
+
                 if not vm_proofs.is_valid_gauge(protocol, gauge_address):
                     continue
 
@@ -268,7 +273,7 @@ async def process_protocol(
                             protocol,
                             gauge_address,
                             block_number,
-                            campaign["listed_users"],
+                            listed_users,
                         )
                     }
                     gauge_proofs_cache[gauge_address] = gauge_proof_data
@@ -304,7 +309,7 @@ async def process_protocol(
                             protocol,
                             gauge_address,
                             block_number,
-                            campaign["listed_users"],
+                            listed_users,
                         )
                 # Save gauge proof data for this platform.
                 output_data["platforms"][chain_id][platform_address]["gauges"][

@@ -186,8 +186,18 @@ async def get_all_active_campaigns(
     # Determine which platforms to query
     platforms_to_query = []
 
-    if protocol:
-        # Get all platforms for the protocol
+    if protocol and chain_id:
+        # Get platforms for the protocol on a specific chain
+        all_platforms = campaign_service.get_all_platforms(protocol)
+        # Filter by chain_id
+        filtered_platforms = [
+            p for p in all_platforms if p["chain_id"] == chain_id
+        ]
+        platforms_to_query.extend(
+            [(p["chain_id"], p["address"]) for p in filtered_platforms]
+        )
+    elif protocol:
+        # Get all platforms for the protocol across all chains
         all_platforms = campaign_service.get_all_platforms(protocol)
         platforms_to_query.extend(
             [(p["chain_id"], p["address"]) for p in all_platforms]
@@ -284,8 +294,6 @@ async def get_all_active_campaigns(
             if closability["is_closable"]:
                 if closability["can_be_closed_by"] == "Anyone":
                     # Extract days overdue
-                    import re
-
                     match = re.search(
                         r"(\d+)d", closability["closability_status"]
                     )
@@ -313,38 +321,38 @@ async def get_all_active_campaigns(
                     f"[dim]{closability['closability_status'][:20]}[/dim]"
                 )
 
-                # Add to table (without chain_id since it's in the header)
-                table.add_row(
-                    str(c["id"]),
-                    format_address(c["campaign"]["gauge"]),
-                    format_address(c["campaign"]["reward_token"]),
-                    status,
-                    periods_display,
-                    total_reward[:10],  # Truncate large numbers
-                    closable_display,
-                )
+            # Add to table (without chain_id since it's in the header)
+            table.add_row(
+                str(c["id"]),
+                format_address(c["campaign"]["gauge"]),
+                format_address(c["campaign"]["reward_token"]),
+                status,
+                periods_display,
+                total_reward[:10],  # Truncate large numbers
+                closable_display,
+            )
 
-                # Add to output data with all periods info
-                output_data["campaigns"].append(
-                    {
-                        "chain_id": chain_id,
-                        "platform": platform,
-                        "campaign_id": c["id"],
-                        "gauge": c["campaign"]["gauge"],
-                        "manager": c["campaign"]["manager"],
-                        "reward_token": c["campaign"]["reward_token"],
-                        "is_closed": c["is_closed"],
-                        "is_whitelist_only": c["is_whitelist_only"],
-                        "remaining_periods": c["remaining_periods"],
-                        "whitelisted_addresses": c["addresses"],
-                        "campaign_details": c["campaign"],
-                        "current_epoch": c["current_epoch"],
-                        "periods": c.get(
-                            "periods", []
-                        ),  # Include all periods with their details
-                        "closability": closability,
-                    }
-                )
+            # Add to output data with all periods info
+            output_data["campaigns"].append(
+                {
+                    "chain_id": chain_id,
+                    "platform": platform,
+                    "campaign_id": c["id"],
+                    "gauge": c["campaign"]["gauge"],
+                    "manager": c["campaign"]["manager"],
+                    "reward_token": c["campaign"]["reward_token"],
+                    "is_closed": c["is_closed"],
+                    "is_whitelist_only": c["is_whitelist_only"],
+                    "remaining_periods": c["remaining_periods"],
+                    "whitelisted_addresses": c["addresses"],
+                    "campaign_details": c["campaign"],
+                    "current_epoch": c["current_epoch"],
+                    "periods": c.get(
+                        "periods", []
+                    ),  # Include all periods with their details
+                    "closability": closability,
+                }
+            )
 
         # Display the table for this platform
         rprint(table)

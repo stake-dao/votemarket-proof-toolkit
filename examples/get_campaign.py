@@ -59,6 +59,7 @@ async def get_campaign(protocol, campaign_id, platform_address=None):
             platform_address=platform_address,
             chain_id=platform_info["chain_id"],
             campaign_id=campaign_id,
+            check_proofs=True,
         )
 
         if campaigns:
@@ -82,6 +83,7 @@ async def get_campaign(protocol, campaign_id, platform_address=None):
                 platform_address=platform["address"],
                 chain_id=platform["chain_id"],
                 campaign_id=campaign_id,
+                check_proofs=True,  # Always check proofs for complete data
             )
 
             if campaigns:
@@ -134,13 +136,24 @@ def display_campaign(campaign, platform_info):
     print(f"Whitelist Only: {campaign['is_whitelist_only']}")
     print(f"Remaining Periods: {campaign.get('remaining_periods', 0)}")
 
-    # Periods
+    # Periods with proof status
     periods = campaign.get("periods", [])
     print(f"\nPeriods ({len(periods)} total):")
     for i, period in enumerate(periods):
         reward = period["reward_per_period"] / 1e18
         per_vote = period["reward_per_vote"] / 1e18
+
+        # Check proof status
+        updated = "✓" if period.get("updated", False) else "✗"
+        proof_inserted = (
+            "✓" if period.get("point_data_inserted", False) else "✗"
+        )
+        block_updated = "✓" if period.get("block_updated", False) else "✗"
+
         print(f"  Period {i+1}: {reward:.2f} rewards, {per_vote:.6f} per vote")
+        print(
+            f"           Updated: {updated} | Proof: {proof_inserted} | Block: {block_updated}"
+        )
 
     # Save to file
     os.makedirs("temp", exist_ok=True)
