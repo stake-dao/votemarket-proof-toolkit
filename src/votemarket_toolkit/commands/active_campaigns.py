@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
@@ -70,7 +71,7 @@ def get_closability_info(campaign: dict) -> Dict[str, Any]:
     Returns dict with closability information.
     """
     current_timestamp = int(datetime.now().timestamp())
-    end_timestamp = campaign["details"]["end_timestamp"]
+    end_timestamp = campaign["campaign"]["end_timestamp"]
 
     closability = {
         "is_closable": False,
@@ -138,19 +139,22 @@ def get_campaign_status(campaign: dict) -> str:
 
     if campaign["is_closed"]:
         return "[red]Closed[/red]"
-    elif campaign["details"]["end_timestamp"] < current_timestamp:
+    elif campaign["campaign"]["end_timestamp"] < current_timestamp:
         return "[orange3]Inactive[/orange3]"  # Past end time but not closed
     else:
         return "[green]Active[/green]"
 
 
 async def get_active_campaigns_for_platform(
-    chain_id: int, platform: str, campaign_service: CampaignService
+    chain_id: int,
+    platform: str,
+    campaign_service: CampaignService,
+    check_proofs: bool = False,
 ) -> List[dict]:
-    """Get active campaigns for a specific chain/platform combination"""
+    """Get active campaigns for a specific chain/platform combination."""
     try:
-        campaigns = await campaign_service.query_active_campaigns(
-            chain_id, platform
+        campaigns = await campaign_service.get_campaigns(
+            chain_id, platform, check_proofs=check_proofs
         )
         return campaigns
     except Exception as e:
@@ -174,6 +178,7 @@ async def get_all_active_campaigns(
     chain_id: Optional[int] = None,
     platform: Optional[str] = None,
     protocol: Optional[str] = None,
+    check_proofs: bool = True,
 ):
     """Get active campaigns across multiple chains/platforms"""
     campaign_service = CampaignService()
@@ -203,7 +208,9 @@ async def get_all_active_campaigns(
 
     # Create tasks for all platforms
     tasks = [
-        get_active_campaigns_for_platform(chain_id, platform, campaign_service)
+        get_active_campaigns_for_platform(
+            chain_id, platform, campaign_service, check_proofs
+        )
         for chain_id, platform in platforms_to_query
     ]
 
@@ -221,90 +228,160 @@ async def get_all_active_campaigns(
         "campaigns": [],
     }
 
-    # Combine and display results
-    table = Table(
-        show_header=True,
-        header_style="bold cyan",
-        show_lines=True,
-        pad_edge=False,
-        collapse_padding=True,
-    )
-
-    # Simplified columns with campaign ID and closability
-    table.add_column("ID", width=4, justify="right")
-    table.add_column("Chain", width=6)
-    table.add_column("Gauge", width=14)
-    table.add_column("Token", width=14)
-    table.add_column("Status", width=10, justify="center")
-    table.add_column("Left", width=5, justify="right")
-    table.add_column("Total", width=12, justify="right")
-    table.add_column("Closable", width=25)
+    # Process results by platform
+    total_campaigns = 0
+    platforms_with_campaigns = []
 
     for (chain_id, platform), campaigns in zip(platforms_to_query, results):
         if campaigns:
-            rprint(
-                Panel(
-                    f"Found {len(campaigns)} campaigns for Chain {chain_id},"
-                    f" Platform {format_address(platform)}",
-                    style="bold magenta",
-                )
+            total_campaigns += len(campaigns)
+            platforms_with_campaigns.append((chain_id, platform, campaigns))
+
+    # Display results split by platform
+    for chain_id, platform, campaigns in platforms_with_campaigns:
+        # Create a table for this platform
+        rprint(
+            f"\n[bold magenta]━━━ Platform: {format_address(platform)} | Chain: {chain_id} | Total: {len(campaigns)} ━━━[/bold magenta]"
+        )
+
+        table = Table(
+            show_header=True,
+            header_style="bold cyan",
+            show_lines=False,
+            pad_edge=False,
+            box=None,
+        )
+
+        # Simplified columns
+        table.add_column("ID", width=4, justify="right")
+        table.add_column("Gauge", width=12)
+        table.add_column("Token", width=12)
+        table.add_column("Status", width=10, justify="center")
+        table.add_column("Periods", width=8, justify="center")
+        table.add_column("Total", width=10, justify="right")
+        table.add_column("Closable", width=22)
+
+        # Only show first 10 campaigns per platform to avoid clutter
+        campaigns_to_show = (
+            campaigns[:10] if len(campaigns) > 10 else campaigns
+        )
+
+        for c in campaigns_to_show:
+            status = get_campaign_status(c)
+            closability = get_closability_info(c)
+
+            # Format amounts in readable format
+            total_reward = f"{c['campaign']['total_reward_amount'] / 1e18:.2f}"
+
+            # Count updated vs total periods
+            updated_periods = sum(
+                1 for p in c.get("periods", []) if p["updated"]
             )
-            for c in campaigns:
-                status = get_campaign_status(c)
-                closability = get_closability_info(c)
+            total_periods = len(c.get("periods", []))
+            periods_display = f"{updated_periods}/{total_periods}"
 
-                # Format amounts in readable format
-                total_reward = (
-                    f"{c['details']['total_reward_amount'] / 1e18:.2f}"
+            # Format closability status for display - shortened
+            if closability["is_closable"]:
+                if closability["can_be_closed_by"] == "Anyone":
+                    # Extract days overdue
+                    import re
+
+                    match = re.search(
+                        r"(\d+)d", closability["closability_status"]
+                    )
+                    days = match.group(1) if match else "?"
+                    closable_display = (
+                        f"[bold yellow]Anyone ({days}d)[/bold yellow]"
+                    )
+                else:
+                    # Manager closable
+                    match = re.search(
+                        r"(\d+)d", closability["closability_status"]
+                    )
+                    days = match.group(1) if match else "?"
+                    closable_display = f"[cyan]Manager ({days}d)[/cyan]"
+            elif "Active" in closability["closability_status"]:
+                match = re.search(r"(\d+)d", closability["closability_status"])
+                days = match.group(1) if match else "?"
+                closable_display = f"[green]Active ({days}d)[/green]"
+            elif "Claim Period" in closability["closability_status"]:
+                match = re.search(r"(\d+)d", closability["closability_status"])
+                days = match.group(1) if match else "?"
+                closable_display = f"[dim]Claim ({days}d)[/dim]"
+            else:
+                closable_display = (
+                    f"[dim]{closability['closability_status'][:20]}[/dim]"
                 )
 
-                # Format closability status for display
-                closable_display = closability["closability_status"]
-                if closability["is_closable"]:
-                    if closability["can_be_closed_by"] == "Anyone":
-                        closable_display = (
-                            f"[bold yellow]{closable_display}[/bold yellow]"
-                        )
-                    else:
-                        closable_display = f"[cyan]{closable_display}[/cyan]"
-                else:
-                    closable_display = f"[dim]{closable_display}[/dim]"
-
-                # Add to table
+                # Add to table (without chain_id since it's in the header)
                 table.add_row(
                     str(c["id"]),
-                    str(chain_id),
-                    format_address(c["gauge"]),
-                    format_address(c["reward_token"]),
+                    format_address(c["campaign"]["gauge"]),
+                    format_address(c["campaign"]["reward_token"]),
                     status,
-                    str(c["period_left"]),
-                    total_reward,
+                    periods_display,
+                    total_reward[:10],  # Truncate large numbers
                     closable_display,
                 )
 
-                # Add to output data with closability info
+                # Add to output data with all periods info
                 output_data["campaigns"].append(
                     {
                         "chain_id": chain_id,
                         "platform": platform,
                         "campaign_id": c["id"],
-                        "gauge": c["gauge"],
-                        "manager": c["manager"],
-                        "reward_token": c["reward_token"],
+                        "gauge": c["campaign"]["gauge"],
+                        "manager": c["campaign"]["manager"],
+                        "reward_token": c["campaign"]["reward_token"],
                         "is_closed": c["is_closed"],
                         "is_whitelist_only": c["is_whitelist_only"],
-                        "period_left": c["period_left"],
-                        "listed_users": c["listed_users"],
-                        "details": c["details"],
-                        "current_period": c["current_period"], # TODO : Just use latest period from "periods"
+                        "remaining_periods": c["remaining_periods"],
+                        "whitelisted_addresses": c["addresses"],
+                        "campaign_details": c["campaign"],
+                        "current_epoch": c["current_epoch"],
+                        "periods": c.get(
+                            "periods", []
+                        ),  # Include all periods with their details
                         "closability": closability,
                     }
                 )
-        else:
-            rprint(
-                f"[yellow]No campaigns found for Chain {chain_id}, Platform"
-                f" {platform}[/yellow]"
+
+        # Display the table for this platform
+        rprint(table)
+
+        if len(campaigns) > 10:
+            rprint(f"[dim]... and {len(campaigns) - 10} more campaigns[/dim]")
+
+        # Add remaining campaigns to output_data (not displayed in table)
+        for c in campaigns[10:]:
+            status = get_campaign_status(c)
+            closability = get_closability_info(c)
+            output_data["campaigns"].append(
+                {
+                    "chain_id": chain_id,
+                    "platform": platform,
+                    "campaign_id": c["id"],
+                    "gauge": c["campaign"]["gauge"],
+                    "manager": c["campaign"]["manager"],
+                    "reward_token": c["campaign"]["reward_token"],
+                    "is_closed": c["is_closed"],
+                    "is_whitelist_only": c["is_whitelist_only"],
+                    "remaining_periods": c["remaining_periods"],
+                    "whitelisted_addresses": c["addresses"],
+                    "campaign_details": c["campaign"],
+                    "current_epoch": c["current_epoch"],
+                    "periods": c.get("periods", []),
+                    "closability": closability,
+                }
             )
+
+    # Show summary
+    if total_campaigns == 0:
+        rprint("[yellow]No campaigns found[/yellow]")
+    else:
+        rprint(
+            f"\n[bold green]Total campaigns found: {total_campaigns}[/bold green]"
+        )
 
     # Save to JSON file
     os.makedirs("temp", exist_ok=True)
@@ -314,8 +391,70 @@ async def get_all_active_campaigns(
     with open(filename, "w") as f:
         json.dump(output_data, f, indent=2)
 
-    # Display results
-    rprint(table)
+    # Show detailed period information for active campaigns
+    active_campaigns = [
+        c
+        for c in output_data["campaigns"]
+        if not c["is_closed"] and c["remaining_periods"] > 0
+    ]
+    if active_campaigns:
+        rprint("\n[bold cyan]━━━ Active Campaign Periods ━━━[/bold cyan]")
+        for campaign in active_campaigns[
+            :5
+        ]:  # Show details for first 5 active campaigns
+            rprint(
+                f"\n[cyan]Campaign #{campaign['campaign_id']}[/cyan] - {format_address(campaign['gauge'])}"
+            )
+
+            # Create a periods table
+            period_table = Table(
+                show_header=True, header_style="bold", box=None, padding=(0, 1)
+            )
+            period_table.add_column("Epoch", width=12)
+            period_table.add_column("Date", width=10)
+            period_table.add_column("Reward", width=12, justify="right")
+            period_table.add_column("Per Vote", width=10, justify="right")
+            period_table.add_column("Updated", width=7, justify="center")
+
+            # Add proof column if proof data is available
+            has_proof_data = any(
+                "point_data_inserted" in p for p in campaign["periods"]
+            )
+            if has_proof_data:
+                period_table.add_column("Proof", width=5, justify="center")
+
+            for period in campaign["periods"][-5:]:  # Show last 5 periods
+                epoch_date = datetime.fromtimestamp(
+                    period["timestamp"]
+                ).strftime("%Y-%m-%d")
+                reward = f"{period['reward_per_period'] / 1e18:.2f}"
+                per_vote = (
+                    f"{period['reward_per_vote'] / 1e18:.4f}"
+                    if period["reward_per_vote"] > 0
+                    else "-"
+                )
+                updated = "✓" if period["updated"] else "✗"
+
+                row_data = [
+                    str(period["timestamp"]),
+                    epoch_date,
+                    reward,
+                    per_vote,
+                    updated,
+                ]
+
+                if has_proof_data:
+                    proof_inserted = period.get("point_data_inserted", False)
+                    proof_status = (
+                        "[green]✓[/green]"
+                        if proof_inserted
+                        else "[red]✗[/red]"
+                    )
+                    row_data.append(proof_status)
+
+                period_table.add_row(*row_data)
+
+            rprint(period_table)
 
     # Show summary of closable campaigns
     all_campaigns = output_data["campaigns"]
@@ -340,7 +479,7 @@ async def get_all_active_campaigns(
             rprint("[yellow]   (funds go to fee collector)[/yellow]")
             for c in closable_by_anyone:
                 rprint(
-                    f"   • Campaign #{c['campaign_id']} on chain {c['chain_id']} - {format_address(c['gauge'])}"
+                    f"   • Campaign #{c['campaign_id']} on chain {c['chain_id']} - {format_address(c.get('gauge', c.get('campaign_details', {}).get('gauge', 'Unknown')))}"
                 )
                 rprint(f"     Platform: {format_address(c['platform'])}")
                 rprint(
@@ -357,7 +496,7 @@ async def get_all_active_campaigns(
                     "days_until_anyone_can_close", 0
                 )
                 rprint(
-                    f"   • Campaign #{c['campaign_id']} on chain {c['chain_id']} - {format_address(c['gauge'])}"
+                    f"   • Campaign #{c['campaign_id']} on chain {c['chain_id']} - {format_address(c.get('gauge', c.get('campaign_details', {}).get('gauge', 'Unknown')))}"
                 )
                 if days_until_anyone > 0:
                     rprint(
@@ -384,6 +523,11 @@ def main():
     parser.add_argument(
         "--protocol", type=str, help="Protocol name (curve, balancer)"
     )
+    parser.add_argument(
+        "--check-proofs",
+        action="store_true",
+        help="Check proof insertion status for each period (slower but more detailed)",
+    )
 
     args = parser.parse_args()
 
@@ -406,6 +550,7 @@ def main():
                 chain_id=args.chain_id,
                 platform=args.platform,
                 protocol=args.protocol,
+                check_proofs=args.check_proofs,
             )
         )
 

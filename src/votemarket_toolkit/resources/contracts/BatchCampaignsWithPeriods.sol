@@ -149,23 +149,28 @@ contract BatchCampaignDataWithPeriods {
                 checkedEpoch -= votemarket.EPOCH_LENGTH();
             }
 
-            // Fetch all periods for the campaign
+            // Fetch periods for the campaign (only the actual campaign periods)
             uint256 epochLength = votemarket.EPOCH_LENGTH();
-            uint256 lastPeriodEpoch = c.isClosed ? c.campaign.endTimestamp : currentEpoch;
             
-            // Calculate total number of periods to fetch
-            uint256 totalPeriods = (lastPeriodEpoch - c.campaign.startTimestamp) / epochLength + 1;
-            
-            // Initialize periods array
-            c.periods = new PeriodData[](totalPeriods);
-            
-            // Fetch period data for each epoch from start to last
-            for (uint256 j = 0; j < totalPeriods; j++) {
-                uint256 periodEpoch = c.campaign.startTimestamp + (j * epochLength);
-                c.periods[j] = PeriodData({
-                    epoch: periodEpoch,
-                    period: votemarket.getPeriodPerCampaign(campaignId, periodEpoch)
-                });
+            // Handle campaigns that haven't started yet (future campaigns)
+            if (c.campaign.startTimestamp > currentEpoch) {
+                // No periods to fetch for future campaigns
+                c.periods = new PeriodData[](0);
+            } else {
+                // Use the campaign's numberOfPeriods to determine how many to fetch
+                uint256 periodsToFetch = c.campaign.numberOfPeriods;
+                
+                // Initialize periods array with exact number of campaign periods
+                c.periods = new PeriodData[](periodsToFetch);
+                
+                // Fetch period data for each campaign period
+                for (uint256 j = 0; j < periodsToFetch; j++) {
+                    uint256 periodEpoch = c.campaign.startTimestamp + (j * epochLength);
+                    c.periods[j] = PeriodData({
+                        epoch: periodEpoch,
+                        period: votemarket.getPeriodPerCampaign(campaignId, periodEpoch)
+                    });
+                }
             }
 
             returnData[i] = c;

@@ -1,160 +1,244 @@
 """
-Simplified registry for all VoteMarket addresses and configuration.
-Single source of truth for the entire toolkit.
+Registry for VoteMarket addresses and configuration.
+Fetches data from the offchain-registry: https://github.com/stake-dao/offchain-registry
 """
 
+import json
+import os
 from typing import Dict, List, Optional
+import httpx
+
+
+class Registry:
+    """Registry that fetches data from the offchain-registry."""
+
+    REGISTRY_URL = "https://raw.githubusercontent.com/stake-dao/offchain-registry/refs/heads/main/data/address-book/address-book.json"
+    CACHE_FILE = "temp/address-book-cache.json"
+
+    # Chain ID mapping
+    CHAIN_NAMES = {
+        1: "ethereum",
+        10: "optimism",
+        137: "polygon",
+        8453: "base",
+        42161: "arbitrum",
+    }
+
+    def __init__(self):
+        self._data = None
+        self._platforms = {}
+        self._controllers = {}
+        self._load_data()
+
+    def _load_data(self):
+        """Load registry data from cache or fetch from GitHub."""
+        # Try to load from cache first
+        if os.path.exists(self.CACHE_FILE):
+            try:
+                with open(self.CACHE_FILE, "r") as f:
+                    self._data = json.load(f)
+                    self._parse_data()
+                    return
+            except:
+                pass
+
+        # Fetch from GitHub
+        try:
+            response = httpx.get(self.REGISTRY_URL, timeout=10)
+            response.raise_for_status()
+            self._data = response.json()
+
+            # Save to cache
+            os.makedirs("temp", exist_ok=True)
+            with open(self.CACHE_FILE, "w") as f:
+                json.dump(self._data, f, indent=2)
+
+            self._parse_data()
+
+        except Exception as e:
+            print(f"Warning: Could not fetch registry: {str(e)[:100]}")
+
+    def _parse_data(self):
+        """Parse platforms and controllers from the registry data."""
+        if not self._data:
+            return
+
+        # Parse platforms
+        self._parse_platforms()
+
+        # Add known historical platforms
+        self._add_historical_platforms()
+
+        # Parse gauge controllers
+        self._parse_controllers()
+
+    def _parse_platforms(self):
+        """Parse VoteMarket platforms from registry."""
+        self._platforms = {}
+
+        for protocol_name in ["curve", "balancer", "fxn", "pendle", "frax"]:
+            if protocol_name not in self._data:
+                continue
+
+            protocol_data = self._data[protocol_name]
+
+            # Check each chain
+            for chain_id, chain_name in self.CHAIN_NAMES.items():
+                if chain_name not in protocol_data:
+                    continue
+
+                chain_data = protocol_data[chain_name]
+
+                # Look for votemarket platforms
+                if "votemarket" in chain_data:
+                    vm_data = chain_data["votemarket"]
+
+                    if isinstance(vm_data, dict):
+                        # Current V2 platform
+                        if "PLATFORM" in vm_data:
+                            self._add_platform(
+                                protocol_name,
+                                chain_id,
+                                vm_data["PLATFORM"],
+                                "v2",
+                            )
+                        # V1 platform (might be labeled as PLATFORM_V1)
+                        if "PLATFORM_V1" in vm_data:
+                            self._add_platform(
+                                protocol_name,
+                                chain_id,
+                                vm_data["PLATFORM_V1"],
+                                "v1",
+                            )
+
+    def _add_platform(
+        self, protocol: str, chain_id: int, address: str, version: str
+    ):
+        """Add a platform to the registry."""
+        if protocol not in self._platforms:
+            self._platforms[protocol] = {}
+        if version not in self._platforms[protocol]:
+            self._platforms[protocol][version] = {}
+        self._platforms[protocol][version][chain_id] = address
+
+    def _add_historical_platforms(self):
+        """Add known historical platforms that might not be in the registry."""
+        # First Curve V2 platform on Arbitrum (before the current one)
+        # This was the first V2 deployment on L2s
+        first_v2_address = "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"
+
+        # Add as v2_legacy for Curve on all L2 chains
+        for chain_id in [
+            42161,
+            10,
+            8453,
+            137,
+        ]:  # Arbitrum, Optimism, Base, Polygon
+            self._add_platform(
+                "curve", chain_id, first_v2_address, "v2_legacy"
+            )
+
+    def _parse_controllers(self):
+        """Parse gauge controllers from registry."""
+        self._controllers = {}
+
+        if not self._data:
+            return
+
+        # Map of protocol to controller location in registry
+        controller_paths = {
+            "curve": ["curve", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+            "balancer": [
+                "balancer",
+                "ethereum",
+                "protocol",
+                "GAUGE_CONTROLLER",
+            ],
+            "frax": ["frax", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+            "fxn": ["fxn", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+            "pendle": ["pendle", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+        }
+
+        for protocol, path in controller_paths.items():
+            try:
+                data = self._data
+                for key in path:
+                    data = data[key]
+                self._controllers[protocol] = data
+            except (KeyError, TypeError):
+                pass
+
+    def refresh(self):
+        """Force refresh from GitHub."""
+        if os.path.exists(self.CACHE_FILE):
+            os.remove(self.CACHE_FILE)
+        self._load_data()
 
 
 # =============================================================================
-# VOTEMARKET PLATFORM ADDRESSES
+# SINGLETON INSTANCE
 # =============================================================================
 
-VOTEMARKET_PLATFORMS = {
-    "curve": {
-        "v1": {
-            42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Arbitrum
-            10: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Optimism
-            8453: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Base
-            137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",  # Polygon
-        },
-        "v2": {
-            42161: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",  # Arbitrum
-            10: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",  # Optimism
-            8453: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",  # Base
-            137: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",  # Polygon
-        },
-    },
-    "balancer": {
-        "v1": {
-            42161: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",  # Arbitrum
-            10: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",  # Optimism
-            8453: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",  # Base
-            137: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",  # Polygon
-        },
-    },
-    "fxn": {
-        "v1": {
-            42161: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",  # Arbitrum
-            10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",  # Optimism
-            8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",  # Base
-            137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",  # Polygon
-        },
-    },
-    "pendle": {
-        "v1": {
-            42161: "0x105694FC5204787eD571842671d1262A54a8135B",  # Arbitrum
-            10: "0x105694FC5204787eD571842671d1262A54a8135B",  # Optimism
-            8453: "0x105694FC5204787eD571842671d1262A54a8135B",  # Base
-            137: "0x105694FC5204787eD571842671d1262A54a8135B",  # Polygon
-        },
-    },
-}
+_registry = None
+
+
+def _get_registry():
+    """Get or create the registry instance."""
+    global _registry
+    if _registry is None:
+        _registry = Registry()
+    return _registry
 
 
 # =============================================================================
-# GAUGE CONTROLLERS (Mainnet only)
-# =============================================================================
-
-GAUGE_CONTROLLERS = {
-    "curve": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
-    "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
-    "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
-    "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
-    "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0",
-}
-
-
-# =============================================================================
-# GAUGE CONFIGURATION
-# =============================================================================
-
-VOTE_EVENT_HASHES = {
-    "pendle": "0xc71e393f1527f71ce01b78ea87c9bd4fca84f1482359ce7ac9b73f358c61b1e1",
-    "default": "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91",
-}
-
-GAUGE_SLOTS = {
-    "curve": {
-        "point_weights": 12,
-        "last_user_vote": 11,
-        "vote_user_slope": 9,
-    },
-    "balancer": {
-        "point_weights": 1000000008,
-        "last_user_vote": 1000000007,
-        "vote_user_slope": 1000000005,
-    },
-    "frax": {
-        "point_weights": 1000000011,
-        "last_user_vote": 1000000010,
-        "vote_user_slope": 1000000008,
-    },
-    "fxn": {
-        "point_weights": 1000000011,
-        "last_user_vote": 1000000010,
-        "vote_user_slope": 1000000008,
-    },
-    "pendle": {
-        "point_weights": 161,
-        "vote_user_slope": 162,
-    },
-}
-
-CREATION_BLOCKS = {
-    "curve": 10647875,
-    "balancer": 14457014,
-    "frax": 14052749,
-    "fxn": 18156185,
-    "pendle": 16032096,
-}
-
-VE_ADDRESSES = {
-    "pendle": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210",
-}
-
-
-# =============================================================================
-# SIMPLE ACCESS FUNCTIONS
+# PUBLIC API FUNCTIONS
 # =============================================================================
 
 
 def get_platform(
     protocol: str, chain_id: int, version: str = "v1"
 ) -> Optional[str]:
-    """Get VoteMarket platform address."""
-    return (
-        VOTEMARKET_PLATFORMS.get(protocol, {}).get(version, {}).get(chain_id)
-    )
+    """Get a specific VoteMarket platform address."""
+    registry = _get_registry()
+
+    protocol_lower = protocol.lower()
+    if protocol_lower in registry._platforms:
+        if version in registry._platforms[protocol_lower]:
+            return registry._platforms[protocol_lower][version].get(chain_id)
+    return None
 
 
-def get_all_platforms(protocol: str) -> List[Dict[str, any]]:
-    """Get all platforms for a protocol across all chains and versions."""
-    platforms = []
-    protocol_data = VOTEMARKET_PLATFORMS.get(protocol, {})
+def get_all_platforms(protocol: str) -> List[Dict]:
+    """Get all platforms for a protocol across all chains."""
+    registry = _get_registry()
 
-    for version, chains in protocol_data.items():
-        for chain_id, address in chains.items():
-            platforms.append(
-                {
-                    "protocol": protocol,
-                    "chain_id": chain_id,
-                    "address": address,
-                    "version": version,
-                }
-            )
+    result = []
+    protocol_lower = protocol.lower()
 
-    return platforms
+    if protocol_lower in registry._platforms:
+        for version, chains in registry._platforms[protocol_lower].items():
+            for chain_id, address in chains.items():
+                result.append(
+                    {
+                        "protocol": protocol_lower,
+                        "chain_id": chain_id,
+                        "address": address,
+                        "version": version,
+                    }
+                )
+
+    return result
 
 
-def get_platforms_for_chain(chain_id: int) -> List[Dict[str, any]]:
+def get_platforms_for_chain(chain_id: int) -> List[Dict]:
     """Get all platforms on a specific chain."""
-    platforms = []
+    registry = _get_registry()
 
-    for protocol, versions in VOTEMARKET_PLATFORMS.items():
+    result = []
+    for protocol, versions in registry._platforms.items():
         for version, chains in versions.items():
             if chain_id in chains:
-                platforms.append(
+                result.append(
                     {
                         "protocol": protocol,
                         "chain_id": chain_id,
@@ -163,44 +247,116 @@ def get_platforms_for_chain(chain_id: int) -> List[Dict[str, any]]:
                     }
                 )
 
-    return platforms
+    return result
 
 
 def get_gauge_controller(protocol: str) -> Optional[str]:
     """Get gauge controller address for a protocol."""
-    return GAUGE_CONTROLLERS.get(protocol)
-
-
-def get_vote_event_hash(protocol: str) -> str:
-    """Get vote event hash for a protocol."""
-    return VOTE_EVENT_HASHES.get(protocol, VOTE_EVENT_HASHES["default"])
+    registry = _get_registry()
+    return registry._controllers.get(protocol.lower())
 
 
 def get_gauge_slots(protocol: str) -> Optional[Dict[str, int]]:
     """Get gauge storage slots for a protocol."""
-    return GAUGE_SLOTS.get(protocol)
+    # These slots are constants - could be moved to registry in future
+    slots = {
+        "curve": {
+            "point_weights": 12,
+            "last_user_vote": 11,
+            "vote_user_slope": 9,
+        },
+        "balancer": {
+            "point_weights": 1000000008,
+            "last_user_vote": 1000000007,
+            "vote_user_slope": 1000000005,
+        },
+        "frax": {
+            "point_weights": 1000000011,
+            "last_user_vote": 1000000010,
+            "vote_user_slope": 1000000008,
+        },
+        "fxn": {
+            "point_weights": 1000000011,
+            "last_user_vote": 1000000010,
+            "vote_user_slope": 1000000008,
+        },
+        "pendle": {
+            "point_weights": 161,
+            "vote_user_slope": 162,
+        },
+    }
+    return slots.get(protocol.lower())
+
+
+def refresh_registry():
+    """Force refresh the registry from GitHub."""
+    registry = _get_registry()
+    registry.refresh()
+
+
+# =============================================================================
+# STATIC CONFIGURATION (protocol-specific constants)
+# =============================================================================
+
+
+def get_vote_event_hash(protocol: str) -> str:
+    """Get vote event hash for a protocol."""
+    # Pendle uses a different event signature
+    if protocol.lower() == "pendle":
+        # VoteForGaugeWeight(address indexed user, address indexed pool, uint256 weight, VoteResult vote)
+        return "0xc71e393f1527f71ce01b78ea87c9bd4fca84f1482359ce7ac9b73f358c61b1e1"
+    else:
+        # VoteForGauge(uint256 time, address user, address gauge_addr, uint256 weight)
+        return "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
 
 
 def get_creation_block(protocol: str) -> Optional[int]:
-    """Get creation block for a protocol."""
-    return CREATION_BLOCKS.get(protocol)
+    """Get creation block for a protocol gauge controller."""
+    # These are the deployment blocks of gauge controllers on mainnet
+    # Could be fetched from a more comprehensive registry in future
+    blocks = {
+        "curve": 10647875,  # Curve gauge controller deployment
+        "balancer": 14457014,  # Balancer gauge controller deployment
+        "frax": 14052749,  # Frax gauge controller deployment
+        "fxn": 18156185,  # FXN gauge controller deployment
+        "pendle": 16032096,  # Pendle gauge controller deployment
+    }
+    return blocks.get(protocol.lower())
 
 
 def get_ve_address(protocol: str) -> Optional[str]:
     """Get VE token address for a protocol."""
-    return VE_ADDRESSES.get(protocol)
+    registry = _get_registry()
+
+    # Try to get from registry
+    if registry._data and protocol.lower() in registry._data:
+        try:
+            protocol_data = registry._data[protocol.lower()]
+            if (
+                "ethereum" in protocol_data
+                and "protocol" in protocol_data["ethereum"]
+            ):
+                if "VEPENDLE" in protocol_data["ethereum"]["protocol"]:
+                    return protocol_data["ethereum"]["protocol"]["VEPENDLE"]
+                if (
+                    "VE" + protocol.upper()
+                    in protocol_data["ethereum"]["protocol"]
+                ):
+                    return protocol_data["ethereum"]["protocol"][
+                        "VE" + protocol.upper()
+                    ]
+        except (KeyError, TypeError):
+            pass
+
+    return None
 
 
-# =============================================================================
-# SUPPORTED PROTOCOLS & CHAINS
-# =============================================================================
+def get_supported_protocols() -> List[str]:
+    """Get list of supported protocols."""
+    registry = _get_registry()
+    return list(registry._platforms.keys())
 
-SUPPORTED_PROTOCOLS = list(VOTEMARKET_PLATFORMS.keys())
-SUPPORTED_CHAINS = {
-    1: "ethereum",
-    10: "optimism",
-    56: "bsc",
-    137: "polygon",
-    8453: "base",
-    42161: "arbitrum",
-}
+
+def get_supported_chains() -> Dict[int, str]:
+    """Get supported chains."""
+    return Registry.CHAIN_NAMES.copy()

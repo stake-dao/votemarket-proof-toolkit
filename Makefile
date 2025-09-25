@@ -53,7 +53,8 @@ get-active-campaigns: install
 	$(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
-		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)")
+		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
+		$(if $(CHECK_PROOFS),"--check-proofs")
 
 get-epoch-blocks: install
 	$(PYTHON) src/votemarket_toolkit/commands/get_epoch_blocks.py \
@@ -101,4 +102,8 @@ simulate-ts:
 	--to-address="0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5" \
 	--tokens 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 0x090185f2135308BaD17527004364eBcC2D37e5F6 0x41d5d79431a913c4ae7d69a668ecdfe5ff9dfb68 0x30d20208d987713f46dfd34ef128bb16c404d10f
 
-.PHONY: install-ts simulate-ts
+# Example commands
+get-campaign-example:
+	$(PYTHON) examples/get_campaign_example.py
+
+.PHONY: install-ts simulate-ts get-campaign-example

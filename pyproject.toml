@@ -32,6 +32,3 @@ extend-select = ["I"]
 
 [tool.black]
 line-length = 79
-
-[tool.uv]
-pip.no-binary = ["*"]

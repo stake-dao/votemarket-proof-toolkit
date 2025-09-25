@@ -154,6 +154,89 @@ For detailed information on each component and function, please refer to:
 
 The developer documentation provides detailed examples and best practices for integrating with the protocol, while the source code documentation offers technical details about implementation.
 
+## Installing as External Package
+
+You can install this toolkit directly from GitHub or PyPI:
+
+### From GitHub (latest)
+```bash
+# Using pip
+pip install git+https://github.com/stake-dao/votemarket-proof-toolkit.git
+
+# Using uv (recommended)
+uv pip install git+https://github.com/stake-dao/votemarket-proof-toolkit.git
+```
+
+### From PyPI (when published)
+```bash
+# Using pip
+pip install votemarket-toolkit
+
+# Using uv (recommended)
+uv pip install votemarket-toolkit
+```
+
+### Using in Your Project
+```python
+from votemarket_toolkit.shared import registry
+from votemarket_toolkit.proofs.manager import ProofManager
+from votemarket_toolkit.campaigns.services import CampaignService
+
+# Get platform addresses
+curve_v2 = registry.get_platform("curve", 42161, "v2")
+
+# Generate proofs
+proof_manager = ProofManager()
+# ... use the toolkit
+```
+
+## Building & Publishing (For Maintainers)
+
+### Building the Package with uv
+
+```bash
+# Install build dependencies
+uv pip install build twine
+
+# Build the package (creates dist/ folder with wheel and source)
+uv run python -m build
+
+# Or using uv's built-in build (experimental)
+uv build
+```
+
+### Publishing to PyPI
+
+```bash
+# Test upload to TestPyPI first
+uv run twine upload --repository testpypi dist/*
+
+# Upload to PyPI
+uv run twine upload dist/*
+```
+
+### Publishing Checklist
+
+1. **Update version** in `pyproject.toml`
+2. **Build the package:**
+   ```bash
+   rm -rf dist/  # Clean previous builds
+   uv build      # Build wheel and source distribution
+   ```
+3. **Check the build:**
+   ```bash
+   ls -la dist/  # Should show .whl and .tar.gz files
+   ```
+4. **Upload to PyPI:**
+   ```bash
+   uv run twine upload dist/*
+   ```
+5. **Tag the release:**
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
 ## Usage
 
 See `make help` for available commands or run specific examples:

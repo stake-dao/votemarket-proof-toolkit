@@ -9,6 +9,7 @@ interacting with smart contracts and retrieving blockchain data.
 from typing import Any, Dict, List
 
 from web3 import Web3
+from eth_utils import to_checksum_address
 
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.services.resource_manager import (
@@ -45,10 +46,10 @@ class Web3Service:
         w3 = Web3(Web3.HTTPProvider(rpc_url))
 
         # Add POA middleware for non-mainnet chains
-        #if self.chain_id != 1:
-            #from web3.middleware import geth_poa_middleware
+        # if self.chain_id != 1:
+        # from web3.middleware import geth_poa_middleware
 
-            #w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        # w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         return w3
 
@@ -96,7 +97,7 @@ class Web3Service:
         if key not in self._contract_cache:
             abi = resource_manager.load_abi(abi_name)
             self._contract_cache[key] = self.w3.eth.contract(
-                address=Web3.to_checksum_address(address.lower()), abi=abi
+                address=to_checksum_address(address.lower()), abi=abi
             )
         return self._contract_cache[key]
 

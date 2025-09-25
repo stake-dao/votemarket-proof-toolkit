@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from rich import print as rprint
 from rich.console import Console
 from web3 import Web3
+from eth_utils import to_checksum_address
 
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.etherscan_service import (
@@ -206,10 +207,8 @@ class VotesService:
         try:
             return {
                 "time": int.from_bytes(data[0:32], byteorder="big"),
-                "user": Web3.to_checksum_address("0x" + data[44:64].hex()),
-                "gauge_addr": Web3.to_checksum_address(
-                    "0x" + data[76:96].hex()
-                ),
+                "user": to_checksum_address("0x" + data[44:64].hex()),
+                "gauge_addr": to_checksum_address("0x" + data[76:96].hex()),
                 "weight": int.from_bytes(data[96:128], byteorder="big"),
             }
         except ValueError as e:
@@ -224,8 +223,8 @@ class VotesService:
             weight = int.from_bytes(data[0:32], byteorder="big")
 
             # Decode indexed addresses from topics
-            user = Web3.to_checksum_address("0x" + log["topics"][1][-40:])
-            pool = Web3.to_checksum_address("0x" + log["topics"][2][-40:])
+            user = to_checksum_address("0x" + log["topics"][1][-40:])
+            pool = to_checksum_address("0x" + log["topics"][2][-40:])
 
             return {
                 "time": 0,
