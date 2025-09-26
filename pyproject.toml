@@ -1,7 +1,22 @@
 [project]
 name = "votemarket-toolkit"
-version = "0.1.0"
-description = "VoteMarket Toolkit"
+version = "0.0.2"
+description = "VoteMarket Toolkit - SDK for interacting with VoteMarket campaigns and proofs"
+authors = [{name = "Stake DAO", email = "contact@stakedao.org"}]
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["votemarket", "sdk", "toolkit", "ethereum", "defi", "dao"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 requires-python = ">=3.10"
 dependencies = [
     "python-dotenv>=1.0.1",
@@ -18,12 +33,62 @@ dependencies = [
     "httpx>=0.28.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/stake-dao/votemarket-proof-toolkit"
+Repository = "https://github.com/stake-dao/votemarket-proof-toolkit"
+Issues = "https://github.com/stake-dao/votemarket-proof-toolkit/issues"
+Documentation = "https://github.com/stake-dao/votemarket-proof-toolkit/tree/main/docs"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/votemarket_toolkit"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/votemarket_toolkit",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+exclude = [
+    "**/TODO.txt",
+    "**/external/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+]
+
+[tool.hatch.build]
+include = [
+    "src/votemarket_toolkit/**",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+exclude = [
+    "**/TODO.txt",
+    "**/external/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "docs/**",
+    "examples/**",
+    "assets/**",
+    "*.ts",
+    "*.js",
+    "package.json",
+    "pnpm-lock.yaml",
+    "tsconfig.json",
+    "Makefile",
+    "DEVELOPMENT.md",
+    "PUBLISHING.md",
+    ".env.example",
+    "constraints.txt",
+    "uv.lock",
+    ".uvrc",
+    ".python-version",
+]
 
 [tool.ruff]
 line-length = 79

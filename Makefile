@@ -8,6 +8,7 @@ VENV := .venv
 .PHONY: all install clean test help integration
 .PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
 .PHONY: format lint requirements run-examples
+.PHONY: build deploy clean-build test-build release
 
 # Default target
 all: install
@@ -29,6 +30,33 @@ clean:
 	find . -type d -name '__pycache__' -delete
 	find . -type d -name '.ruff_cache' -delete
 	find . -type d -name '.pytest_cache' -delete
+
+# Building and Publishing
+build:
+	@echo "Building package..."
+	rm -rf dist/ build/ *.egg-info
+	uv build
+	@echo "Build complete. Files in dist/"
+	@ls -la dist/
+
+deploy:
+	@echo "Deploying to PyPI..."
+	uv run twine upload dist/*
+	@echo "Deploy complete!"
+
+clean-build:
+	rm -rf dist/ build/ *.egg-info src/*.egg-info
+
+test-build:
+	@echo "Testing build locally..."
+	uv venv test-env
+	. test-env/bin/activate && uv pip install dist/*.whl
+	. test-env/bin/activate && python -c "from votemarket_toolkit.shared import registry; print('✅ Import successful')"
+	rm -rf test-env
+	@echo "Test successful!"
+
+release: clean-build build
+	@echo "Ready to release. Run 'make deploy' to upload to PyPI"
 
 # Proof generation commands
 user-proof: install

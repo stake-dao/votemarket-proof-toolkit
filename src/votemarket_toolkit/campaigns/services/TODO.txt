@@ -1,0 +1,6 @@
+- User oriented (for a campaign (gauge), periods, state of proofs)
+- VBM helper (Input token, input gauges, will get current price, current $/vote on the round for the others gauges, historical $/vote on that gauge + prev bounties periods , and compute ideal params)
+
+
+
+- Better split of services (comments etc)
