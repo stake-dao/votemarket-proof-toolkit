@@ -1,0 +1,21 @@
+{
+  "name": "votemarket-toolkit-typescript-examples",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript usage examples for VoteMarket toolkit - Reference implementations only",
+  "scripts": {
+    "simulate": "ts-node scripts/estimate-ccip-gas.ts",
+    "build": "tsc",
+    "test": "echo 'These are examples, no tests configured'"
+  },
+  "dependencies": {
+    "ethers": "^5.7.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/yargs": "^17.0.32",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+} 

@@ -4,9 +4,9 @@ from typing import List
 
 from rich import print
 
-# Add the script directory to Python path
-script_dir = str(Path(__file__).parent.parent.parent / "script")
-sys.path.insert(0, script_dir)
+# Add the parent directory to Python path to import votemarket_toolkit
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 
 from eth_abi import encode
 from eth_utils import function_signature_to_4byte_selector, to_checksum_address
@@ -28,12 +28,12 @@ BUNDLER_ADDRESS = "0x67346f8b9B7dDA4639600C190DDaEcDc654359c8"
 # Initialize contracts
 votemarket_contract = w3.eth.contract(
     address=to_checksum_address(VOTEMARKET_ADDRESS),
-    abi=load_json("src/votemarket_toolkit/resources/abi/vm_platform.json"),
+    abi=load_json("votemarket_toolkit/resources/abi/vm_platform.json"),
 )
 
 verifier_contract = w3.eth.contract(
     address=to_checksum_address(VERIFIER_ADDRESS),
-    abi=load_json("src/votemarket_toolkit/resources/abi/verifier.json"),
+    abi=load_json("votemarket_toolkit/resources/abi/verifier.json"),
 )
 
 lens_address = votemarket_contract.functions.ORACLE().call()
@@ -42,13 +42,13 @@ if lens_address == "0x0000000000000000000000000000000000000000":
 
 lens_contract = w3.eth.contract(
     address=to_checksum_address(lens_address),
-    abi=load_json("src/votemarket_toolkit/resources/abi/oracle_lens.json"),
+    abi=load_json("votemarket_toolkit/resources/abi/oracle_lens.json"),
 )
 
 oracle_address = lens_contract.functions.oracle().call()
 oracle_contract = w3.eth.contract(
     address=to_checksum_address(oracle_address),
-    abi=load_json("src/votemarket_toolkit/resources/abi/oracle.json"),
+    abi=load_json("votemarket_toolkit/resources/abi/oracle.json"),
 )
 
 

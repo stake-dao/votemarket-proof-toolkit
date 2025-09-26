@@ -15,12 +15,18 @@ import os
 import json
 import asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path to import votemarket_toolkit
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ),
+)
 
-from src.votemarket_toolkit.campaigns.services.campaign_service import (
+from votemarket_toolkit.campaigns.services.campaign_service import (
     CampaignService,
 )
-from src.votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared import registry
 
 
 async def get_campaign(protocol, campaign_id, platform_address=None):

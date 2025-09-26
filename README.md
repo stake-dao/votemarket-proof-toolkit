@@ -44,6 +44,32 @@ campaigns = campaign_service.get_active_campaigns()
 - ⛓️ **Cross-chain**: Ethereum mainnet and Arbitrum
 - 📝 **Registry System**: Easy access to contract addresses
 
+## Project Structure
+
+```
+votemarket-proof-toolkit/
+├── votemarket_toolkit/        # Python SDK package
+│   ├── campaigns/            # Campaign management
+│   ├── proofs/              # Proof generation
+│   ├── contracts/           # Contract interactions
+│   ├── shared/              # Shared utilities
+│   └── commands/            # CLI commands
+├── examples/                  # Usage examples
+│   ├── python/              # Python usage examples
+│   └── typescript/          # TypeScript reference implementations
+├── docs/                    # Documentation and guides
+└── tests/                   # Test suite
+```
+
+### TypeScript Integration
+
+TypeScript developers can find reference implementations in `examples/typescript/`. These examples demonstrate:
+- CCIP gas estimation in TypeScript
+- Direct contract interaction patterns
+- Web3.js/Ethers.js integration approaches
+
+**Note:** The main SDK is Python-based. TypeScript examples are provided as reference implementations only.
+
 ## Requirements
 
 - Python >=3.10
@@ -62,7 +88,8 @@ ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
 - [GitHub Repository](https://github.com/stake-dao/votemarket-proof-toolkit)
 - [Development Guide](https://github.com/stake-dao/votemarket-proof-toolkit/blob/main/DEVELOPMENT.md)
 - [Full Documentation](https://github.com/stake-dao/votemarket-proof-toolkit/blob/main/docs/README.md)
-- [Examples](https://github.com/stake-dao/votemarket-proof-toolkit/tree/main/examples)
+- [Python Examples](https://github.com/stake-dao/votemarket-proof-toolkit/tree/main/examples/python)
+- [TypeScript Examples](https://github.com/stake-dao/votemarket-proof-toolkit/tree/main/examples/typescript)
 
 ## License
 

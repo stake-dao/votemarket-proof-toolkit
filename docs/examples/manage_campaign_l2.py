@@ -3,8 +3,8 @@ from decimal import Decimal
 from pathlib import Path
 
 # Add the script directory to Python path
-script_dir = str(Path(__file__).parent.parent.parent / "script")
-sys.path.insert(0, script_dir)
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 
 from eth_utils import to_checksum_address
 from shared.utils import load_json

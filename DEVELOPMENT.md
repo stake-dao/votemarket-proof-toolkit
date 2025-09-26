@@ -45,14 +45,18 @@ ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/API_KEY
 
 ```
 votemarket-proof-toolkit/
-├── src/votemarket_toolkit/     # Main package
+├── votemarket_toolkit/         # Main Python package
 │   ├── campaigns/              # Campaign management
 │   ├── proofs/                 # Proof generation
 │   ├── contracts/              # Contract interactions
 │   ├── shared/                 # Shared utilities
 │   └── commands/               # CLI commands
 ├── docs/                       # Documentation
+│   ├── examples/               # Tutorial examples
+│   └── guides/                 # Usage guides
 ├── examples/                   # Usage examples
+│   ├── python/                 # Python SDK examples
+│   └── typescript/             # TypeScript reference implementations
 ├── dist/                       # Build artifacts
 └── tests/                      # Test suite
 ```

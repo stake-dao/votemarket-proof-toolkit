@@ -3,8 +3,8 @@ from decimal import Decimal
 from pathlib import Path
 
 # Add the script directory to Python path
-script_dir = str(Path(__file__).parent.parent.parent / "script")
-sys.path.insert(0, script_dir)
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 
 from eth_utils import to_checksum_address
 from votemarket_toolkit.utils import load_json
@@ -43,7 +43,7 @@ def create_campaign(
     # Initialize contract
     campaign_remote_manager_contract = w3.eth.contract(
         address=to_checksum_address(CAMPAIGN_REMOTE_MANAGER_ADDRESS),
-        abi=load_json("src/votemarket_toolkit/resources/abi/campaign_remote_manager.json"),
+        abi=load_json("votemarket_toolkit/resources/abi/campaign_remote_manager.json"),
     )
 
     # Convert decimal amounts to wei
