@@ -22,7 +22,7 @@ class VoteMarketProofs:
         self.chain_id = chain_id
         if not rpc_url:
             raise ValueError(
-                "ETHEREUM_MAINNET_RPC_URL environment variable is not set"
+                f"RPC URL environment variable for {chain_id} is not set"
             )
         self.web3_service = Web3Service(chain_id, rpc_url)
 

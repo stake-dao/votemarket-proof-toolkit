@@ -12,7 +12,7 @@ This guide covers how to build and publish the `votemarket-toolkit` package.
 ## Package Structure
 
 The package publishes only what's in `src/votemarket_toolkit/`:
-- ✅ `votemarket_toolkit/` module (from src/)
+- ✅ `votemarket_toolkit/` module
 - ❌ `docs/` (not included in package)
 - ❌ `examples/` (not included in package)
 - ❌ `tests/` (not included in package)

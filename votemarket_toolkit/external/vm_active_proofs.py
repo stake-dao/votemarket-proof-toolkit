@@ -9,12 +9,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 
-from votemarket_toolkit.campaigns.services.campaign_service import (
-    CampaignService,
-)
-from votemarket_toolkit.campaigns.services.data_service import (
-    VoteMarketDataService,
-)
+from votemarket_toolkit.campaigns import CampaignService
+from votemarket_toolkit.data import EligibilityService
 from votemarket_toolkit.proofs import VoteMarketProofs
 from votemarket_toolkit.shared.types import AllProtocolsData, ProtocolData
 from votemarket_toolkit.utils import get_rounded_epoch
@@ -28,7 +24,7 @@ console = Console()
 # Initialize services
 campaign_service = CampaignService()
 vm_proofs = VoteMarketProofs(1)
-vm_votes = VoteMarketDataService(1)
+vm_eligibility = EligibilityService(1)
 
 
 def is_campaign_active(campaign: dict) -> bool:
@@ -83,7 +79,7 @@ async def process_gauge(
     console.print(
         f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
     )
-    eligible_users = await vm_votes.get_eligible_users(
+    eligible_users = await vm_eligibility.get_eligible_users(
         protocol, gauge_address, current_epoch, block_number
     )
     console.print(

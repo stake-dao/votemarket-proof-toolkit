@@ -8,9 +8,7 @@ from typing import List
 from rich import print as rprint
 from rich.panel import Panel
 
-from votemarket_toolkit.campaigns.services.data_service import (
-    VoteMarketDataService,
-)
+from votemarket_toolkit.data import OracleService
 from votemarket_toolkit.commands.validation import (
     validate_chain_id,
     validate_eth_address,
@@ -18,10 +16,10 @@ from votemarket_toolkit.commands.validation import (
 
 
 def get_epoch_blocks(chain_id: int, platform: str, epochs: List[int]):
-    data_service = VoteMarketDataService(chain_id)
+    oracle_service = OracleService(chain_id)
     rprint(Panel("Fetching Epoch Blocks", style="bold magenta"))
 
-    blocks = data_service.get_epochs_block(chain_id, platform, epochs)
+    blocks = oracle_service.get_epochs_block(chain_id, platform, epochs)
 
     os.makedirs("temp", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

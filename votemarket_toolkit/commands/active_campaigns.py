@@ -12,9 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from votemarket_toolkit.campaigns.services.campaign_service import (
-    CampaignService,
-)
+from votemarket_toolkit.campaigns import CampaignService
 from votemarket_toolkit.commands.validation import (
     validate_chain_id,
     validate_eth_address,

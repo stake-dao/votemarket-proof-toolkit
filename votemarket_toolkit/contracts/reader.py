@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, TypeVar
 from eth_abi import decode, encode
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.campaigns.types import CampaignData
+from votemarket_toolkit.campaigns.models import CampaignData
 
 T = TypeVar("T")
 

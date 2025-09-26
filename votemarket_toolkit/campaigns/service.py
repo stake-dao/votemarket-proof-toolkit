@@ -25,7 +25,7 @@ from typing import Dict, List, Optional
 
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.campaigns.types import (
+from votemarket_toolkit.campaigns.models import (
     CampaignStatus,
     CampaignStatusInfo,
     Platform,

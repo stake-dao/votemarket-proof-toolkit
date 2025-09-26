@@ -1,5 +1,11 @@
 """Campaign management module for VoteMarket toolkit."""
 
-from .services.campaign_service import CampaignService
+from .service import CampaignService
+from .models import CampaignStatus, CampaignStatusInfo, Platform
 
-__all__ = ["CampaignService"]
+__all__ = [
+    "CampaignService",
+    "CampaignStatus",
+    "CampaignStatusInfo",
+    "Platform",
+]

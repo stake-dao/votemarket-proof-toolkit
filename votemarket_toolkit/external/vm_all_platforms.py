@@ -21,9 +21,7 @@ from dotenv import load_dotenv
 from eth_utils import to_checksum_address
 from rich import print as rprint
 
-from votemarket_toolkit.campaigns.services.campaign_service import (
-    CampaignService,
-)
+from votemarket_toolkit.campaigns import CampaignService
 from votemarket_toolkit.proofs.manager import VoteMarketProofs
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.services.web3_service import Web3Service
