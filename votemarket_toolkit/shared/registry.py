@@ -66,7 +66,9 @@ class Registry:
 
             # Check each chain
             for chain_id, chain_name in self.CHAIN_NAMES.items():
-                if chain_name not in protocol_data or chain_id == 1: # Skip Ethereum mainnet (no V2)
+                if (
+                    chain_name not in protocol_data or chain_id == 1
+                ):  # Skip Ethereum mainnet (no V2)
                     continue
 
                 chain_data = protocol_data[chain_name]
@@ -150,6 +152,7 @@ class Registry:
             except (KeyError, TypeError):
                 pass
 
+
 # =============================================================================
 # SINGLETON INSTANCE
 # =============================================================================
@@ -203,6 +206,19 @@ def get_all_platforms(protocol: str) -> List[Dict]:
                 )
 
     return result
+
+
+def get_chain_for_platform(platform_address: str) -> Optional[int]:
+    """Get chain ID for a given platform address."""
+    registry = _get_registry()
+
+    platform_lower = platform_address.lower()
+    for protocol, versions in registry._platforms.items():
+        for version, chains in versions.items():
+            for chain_id, address in chains.items():
+                if address.lower() == platform_lower:
+                    return chain_id
+    return None
 
 
 def get_platforms_for_chain(chain_id: int) -> List[Dict]:

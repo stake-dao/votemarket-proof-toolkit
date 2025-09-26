@@ -20,6 +20,7 @@ Technical Implementation:
 """
 
 import asyncio
+import asyncio
 import time
 from typing import Dict, List, Optional
 
@@ -486,6 +487,191 @@ class CampaignService:
             print(f"Error fetching campaigns: {error_msg}")
 
             return []
+
+    async def get_user_campaign_proof_status(
+        self,
+        chain_id: int,
+        platform_address: str,
+        campaign: Dict,
+        user_address: str,
+    ) -> Dict:
+        """
+        Get detailed proof insertion status for a specific user in a campaign.
+
+        This method checks if a user has all necessary proofs inserted on the oracle
+        to be able to claim rewards for each period of the campaign.
+
+        For each period, it verifies:
+        1. Block header is set (required for merkle proof verification)
+        2. Point data is inserted (gauge total voting power at that epoch)
+        3. User slope data is inserted (user's specific vote for the gauge)
+
+        Args:
+            chain_id: Chain ID (1 for Ethereum, 42161 for Arbitrum)
+            platform_address: VoteMarket platform contract address
+            campaign: Campaign dictionary with periods and gauge info
+            user_address: User address to check proofs for
+
+        Returns:
+            Dictionary containing:
+                - oracle_address: Address of the oracle contract
+                - gauge: Gauge address for the campaign
+                - user: User address checked
+                - periods: List of period status dictionaries, each with:
+                    - timestamp: Period epoch timestamp
+                    - block_updated: Whether block header is set
+                    - point_data_inserted: Whether gauge point data exists
+                    - user_slope_inserted: Whether user vote data exists
+                    - user_slope_data: Actual slope values (slope, end, lastVote, lastUpdate)
+                    - is_claimable: Overall status if user can claim for this period
+
+        Example:
+            >>> status = await service.get_user_campaign_proof_status(
+            ...     chain_id=1,
+            ...     platform_address="0x...",
+            ...     campaign=campaign_data,
+            ...     user_address="0x..."
+            ... )
+            >>> for period in status["periods"]:
+            >>>     if period["is_claimable"]:
+            >>>         print(f"User can claim for period {period['timestamp']}")
+        """
+        try:
+            web3_service = self.get_web3_service(chain_id)
+            if not web3_service:
+                raise Exception(f"Web3 service not available for chain {chain_id}")
+
+            # Get oracle address from platform
+            platform_contract = web3_service.get_contract(
+                to_checksum_address(platform_address.lower()),
+                "vm_platform",
+            )
+
+            # Get oracle through lens
+            oracle_lens_address = platform_contract.functions.ORACLE().call()
+            oracle_lens_contract = web3_service.get_contract(
+                to_checksum_address(oracle_lens_address),
+                "lens_oracle",
+            )
+            oracle_address = oracle_lens_contract.functions.oracle().call()
+
+            # Get gauge from campaign
+            gauge = campaign["campaign"]["gauge"]
+            
+            # Prepare epochs from campaign periods
+            if not campaign.get("periods"):
+                return {
+                    "oracle_address": oracle_address,
+                    "gauge": gauge,
+                    "user": user_address,
+                    "periods": [],
+                }
+
+            epochs = [p["timestamp"] for p in campaign["periods"]]
+
+            # Load GetInsertedProofs bytecode
+            proof_bytecode = resource_manager.load_bytecode("GetInsertedProofs")
+
+            # Build and execute the proof check transaction
+            tx = self.contract_reader.build_get_inserted_proofs_constructor_tx(
+                {"bytecode": proof_bytecode},
+                oracle_address,
+                gauge,
+                [user_address],  # Check for this specific user
+                epochs,
+            )
+
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, web3_service.w3.eth.call, tx
+            )
+            
+            # Decode the results
+            epoch_results = self.contract_reader.decode_inserted_proofs(result)
+
+            # Get detailed slope data for each period
+            # We need to fetch the actual slope values to show the user
+            oracle_contract = web3_service.get_contract(
+                to_checksum_address(oracle_address),
+                "oracle",
+            )
+
+            # Build comprehensive status for each period
+            period_status = []
+            for period in campaign["periods"]:
+                epoch = period["timestamp"]
+                
+                # Find matching epoch result from GetInsertedProofs
+                epoch_result = next(
+                    (er for er in epoch_results if er["epoch"] == epoch),
+                    None
+                )
+
+                status_entry = {
+                    "timestamp": epoch,
+                    "block_updated": False,
+                    "point_data_inserted": False,
+                    "user_slope_inserted": False,
+                    "user_slope_data": None,
+                    "is_claimable": False,
+                }
+
+                if epoch_result:
+                    # Block header status
+                    status_entry["block_updated"] = epoch_result.get("is_block_updated", False)
+                    
+                    # Point data status (gauge total votes)
+                    point_results = epoch_result.get("point_data_results", [])
+                    if point_results:
+                        status_entry["point_data_inserted"] = point_results[0].get("is_updated", False)
+                    
+                    # User slope data status
+                    slope_results = epoch_result.get("voted_slope_data_results", [])
+                    if slope_results:
+                        # Find the user's specific result
+                        user_result = next(
+                            (sr for sr in slope_results if sr["account"].lower() == user_address.lower()),
+                            None
+                        )
+                        if user_result:
+                            status_entry["user_slope_inserted"] = user_result.get("is_updated", False)
+                            
+                            # Fetch actual slope values if data exists
+                            if status_entry["user_slope_inserted"]:
+                                try:
+                                    slope_data = oracle_contract.functions.votedSlopeByEpoch(
+                                        to_checksum_address(user_address),
+                                        to_checksum_address(gauge),
+                                        epoch
+                                    ).call()
+                                    
+                                    status_entry["user_slope_data"] = {
+                                        "slope": slope_data[0],
+                                        "end": slope_data[1],
+                                        "last_vote": slope_data[2],
+                                        "last_update": slope_data[3],
+                                    }
+                                except Exception:
+                                    # If we can't fetch the actual data, just skip
+                                    pass
+                
+                # Determine if this period is claimable
+                status_entry["is_claimable"] = (
+                    status_entry["block_updated"] and
+                    status_entry["point_data_inserted"] and
+                    status_entry["user_slope_inserted"]
+                )
+                
+                period_status.append(status_entry)
+
+            return {
+                "oracle_address": oracle_address,
+                "gauge": gauge,
+                "user": user_address,
+                "periods": period_status,
+            }
+
+        except Exception as e:
+            raise Exception(f"Error checking user proof status: {str(e)}")
 
 
 # Create global instance

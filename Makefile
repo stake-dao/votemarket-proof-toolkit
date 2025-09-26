@@ -6,7 +6,7 @@ VENV := .venv
 
 # Phony targets declaration
 .PHONY: all install clean test help integration
-.PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
+.PHONY: user-proof gauge-proof block-info user-campaign-status get-active-campaigns get-epoch-blocks
 .PHONY: format lint requirements run-examples
 .PHONY: build deploy clean-build test-build release
 
@@ -77,6 +77,23 @@ gauge-proof: install
 block-info: install
 	$(PYTHON) src/votemarket_toolkit/commands/block_info.py "$(BLOCK_NUMBER)"
 
+user-campaign-status: install
+	$(PYTHON) votemarket_toolkit/commands/user_campaign_status.py \
+		$(if $(CHAIN_ID),--chain-id=$(CHAIN_ID)) \
+		$(if $(PLATFORM),--platform=$(PLATFORM)) \
+		$(if $(CAMPAIGN_ID),--campaign-id=$(CAMPAIGN_ID)) \
+		--user=$(USER_ADDRESS) \
+		$(if $(BRIEF),--brief) \
+		$(if $(FORMAT),--format=$(FORMAT)) \
+		$(if $(INTERACTIVE),--interactive)
+
+list-campaigns: install
+	$(PYTHON) votemarket_toolkit/commands/list_campaigns.py \
+		$(if $(CHAIN_ID),--chain-id=$(CHAIN_ID)) \
+		$(if $(PLATFORM),--platform=$(PLATFORM)) \
+		$(if $(ACTIVE_ONLY),--active-only) \
+		$(if $(FORMAT),--format=$(FORMAT))
+
 get-active-campaigns: install
 	$(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
@@ -95,12 +112,6 @@ index-votes: install
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
 		$(if $(GAUGE_ADDRESS),"--gauge-address=$(GAUGE_ADDRESS)")
 
-vm_pendle_platforms: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_all_platforms.py pendle --epoch 1754524800
-
-vm_pendle_active_proofs: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_active_proofs.py temp/all_platforms.json 1754524800
-
 # Help and examples
 help:
 	$(PYTHON) src/votemarket_toolkit/commands/help.py
@@ -110,7 +121,7 @@ run-example:
 	$(PYTHON) docs/examples/$(EXAMPLE).py
 
 .PHONY: all install-dev clean help run-example
-.PHONY: user-proof gauge-proof block-info get-active-campaigns get-epoch-blocks
+.PHONY: user-proof gauge-proof block-info user-campaign-status get-active-campaigns get-epoch-blocks
 
 simulate:
 	$(PYTHON) src/votemarket_toolkit/scripts/estimate_ccip_gas.py \
