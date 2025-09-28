@@ -1,13 +1,11 @@
 import asyncio
-import httpx
 import os
-
 from typing import Any, Dict, List
 
+import httpx
+from eth_utils import to_checksum_address
 from rich import print as rprint
 from rich.console import Console
-from web3 import Web3
-from eth_utils import to_checksum_address
 
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.etherscan_service import (
@@ -59,7 +57,7 @@ class VotesService:
                 with open(cache_file, "wb") as f:
                     f.write(response.content)
                 rprint(
-                    f"[green]Successfully downloaded votes cache from stake-dao/api[/green]"
+                    "[green]Successfully downloaded votes cache from stake-dao/api[/green]"
                 )
         except Exception as e:
             rprint(f"[red]Failed to fetch remote parquet file: {str(e)}[/red]")

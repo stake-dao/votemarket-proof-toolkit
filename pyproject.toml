@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4"
 dependencies = [
     "python-dotenv>=1.0.1",
     "w3multicall>=0.3.1",
@@ -81,7 +81,6 @@ exclude = [
     ".env.example",
     "constraints.txt",
     "uv.lock",
-    ".uvrc",
     ".python-version",
 ]
 
@@ -89,6 +88,10 @@ exclude = [
 line-length = 79
 target-version = "py310"
 extend-select = ["I"]
+
+[tool.uv]
+managed = true
+python-preference = "only-managed"
 
 [tool.black]
 line-length = 79

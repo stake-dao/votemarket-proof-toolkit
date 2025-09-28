@@ -5,12 +5,12 @@ Provides user-friendly selection prompts for platforms, chains, and campaigns.
 """
 
 import sys
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from rich import print as rprint
 from rich.console import Console
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import IntPrompt, Prompt
 from rich.table import Table
-from eth_utils import to_checksum_address
 
 from votemarket_toolkit.shared import registry
 

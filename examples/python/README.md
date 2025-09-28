@@ -1,55 +1,44 @@
-# Python Examples
+# Python SDK Examples
 
-This directory contains Python examples demonstrating how to use the VoteMarket toolkit SDK.
+Complete examples demonstrating VoteMarket SDK functionality.
 
 ## Available Examples
 
-- **`get_campaign.py`** - Fetch and display campaign data from VoteMarket contracts
-- **`using_registry.py`** - Demonstrate how to use the registry to find platform addresses
+### 1. all_campaigns.py
+Fetch all campaigns with periods and status:
+- Lists campaigns from all protocols (Curve, Balancer, Pancakeswap, Pendle)
+- Shows periods and reward amounts
+- Includes campaign status information
+- Saves everything to `all_campaigns.json`
 
-## Installation
+### 2. check_user_status.py
+Check if a specific user is eligible for campaign rewards:
+- Verifies voting eligibility
+- Shows reward amounts
+- Checks claim status
 
-Make sure the votemarket-toolkit is installed:
-
-```bash
-# From PyPI
-pip install votemarket-toolkit
-
-# Or for development (from repository root)
-pip install -e .
-
-# Or run directly from repository without installation
-cd /path/to/votemarket-proof-toolkit
-PYTHONPATH=. python examples/python/using_registry.py
-```
+### 3. generate_proofs.py
+Generate proofs for campaign claims:
+- Creates user voting proofs
+- Generates gauge weight proofs
+- Saves proofs in JSON format
 
 ## Running Examples
 
-### Get Campaign Data
-
 ```bash
-# Get campaign by ID from any platform
-python get_campaign.py curve 3
+# Setup
+uv sync
 
-# Get campaign from specific platform
-python get_campaign.py curve 3 0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5
+# Run any example
+uv run examples/python/all_campaigns.py
+uv run examples/python/check_user_status.py
+uv run examples/python/generate_proofs.py
 ```
 
-### Use Registry
+## Environment Setup
 
-```bash
-python using_registry.py
+Create `.env` in the project root:
 ```
-
-## Environment Variables
-
-Create a `.env` file in the repository root:
-
-```env
 ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
 ```
-
-## Notes
-
-These examples use the actual VoteMarket SDK (`votemarket_toolkit`) package. For TypeScript integration examples, see `../typescript/`.

@@ -8,8 +8,8 @@ interacting with smart contracts and retrieving blockchain data.
 
 from typing import Any, Dict, List
 
-from web3 import Web3
 from eth_utils import to_checksum_address
+from web3 import Web3
 
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.services.resource_manager import (

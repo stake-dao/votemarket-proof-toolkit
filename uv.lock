@@ -1,18 +1,9 @@
 version = 1
-requires-python = ">=3.10"
+requires-python = ">=3.10, <4"
 resolution-markers = [
-    "python_full_version < '3.11' and implementation_name == 'cpython'",
-    "python_full_version < '3.11' and implementation_name == 'pypy'",
-    "python_full_version < '3.11' and implementation_name != 'cpython' and implementation_name != 'pypy'",
-    "python_full_version == '3.11.*' and implementation_name == 'cpython'",
-    "python_full_version == '3.11.*' and implementation_name == 'pypy'",
-    "python_full_version == '3.11.*' and implementation_name != 'cpython' and implementation_name != 'pypy'",
-    "python_full_version == '3.12.*' and implementation_name == 'cpython'",
-    "python_full_version == '3.12.*' and implementation_name == 'pypy'",
-    "python_full_version == '3.12.*' and implementation_name != 'cpython' and implementation_name != 'pypy'",
-    "python_full_version >= '3.13' and implementation_name == 'cpython'",
-    "python_full_version >= '3.13' and implementation_name == 'pypy'",
-    "python_full_version >= '3.13' and implementation_name != 'cpython' and implementation_name != 'pypy'",
+    "python_full_version < '3.11'",
+    "python_full_version == '3.11.*'",
+    "python_full_version >= '3.12'",
 ]
 
 [[package]]
@@ -517,7 +508,7 @@ name = "cytoolz"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "toolz", marker = "implementation_name == 'cpython'" },
+    { name = "toolz" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e2/4c/ca9b05bdfa28ddbb4a5365c27021a1d4be61db7d8f6b4e5d4e76aa4ba3b7/cytoolz-1.0.0.tar.gz", hash = "sha256:eb453b30182152f9917a5189b7d99046b6ce90cdf8aeb0feff4b2683e600defd", size = 626708 }
 wheels = [

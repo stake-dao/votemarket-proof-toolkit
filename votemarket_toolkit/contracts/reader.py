@@ -1,10 +1,10 @@
 import json
 from typing import Any, Dict, List, Optional, TypeVar
 
-from eth_abi import decode, encode
-from eth_utils import to_checksum_address
+from eth_abi.abi import decode, encode
+from eth_utils.address import to_checksum_address
 
-from votemarket_toolkit.campaigns.models import CampaignData
+# No need to import Campaign model here
 
 T = TypeVar("T")
 
@@ -90,88 +90,7 @@ class ContractReader:
         return default_params
 
     @staticmethod
-    def decode_campaign_data(result: bytes) -> List[CampaignData]:
-        """
-        Specific decoder for campaign data from BatchCampaignData contract
-        """
-        try:
-            # Define the nested struct types
-            campaign_struct = [
-                "uint256",  # chainId
-                "address",  # gauge
-                "address",  # manager
-                "address",  # rewardToken
-                "uint8",  # numberOfPeriods
-                "uint256",  # maxRewardPerVote
-                "uint256",  # totalRewardAmount
-                "uint256",  # totalDistributed
-                "uint256",  # startTimestamp
-                "uint256",  # endTimestamp
-                "address",  # hook
-            ]
-
-            period_struct = [
-                "uint256",  # rewardPerPeriod
-                "uint256",  # rewardPerVote
-                "uint256",  # leftover
-                "bool",  # updated
-            ]
-
-            campaign_data_type = [
-                "uint256",  # id
-                f"({','.join(campaign_struct)})",  # campaign
-                "bool",  # isClosed
-                "bool",  # isWhitelistOnly
-                "address[]",  # addresses
-                f"({','.join(period_struct)})",  # currentPeriod
-                "uint256",  # periodLeft
-            ]
-
-            full_type = f"({','.join(campaign_data_type)})[]"
-
-            if len(result) % 32 != 0:
-                result = result[: -(len(result) % 32)]
-
-            raw_data = decode([full_type], result)[0]
-
-            # Convert to typed dictionary
-            return [
-                CampaignData(
-                    id=data[0],
-                    campaign={
-                        "chain_id": data[1][0],
-                        "gauge": data[1][1],
-                        "manager": data[1][2],
-                        "reward_token": data[1][3],
-                        "number_of_periods": data[1][4],
-                        "max_reward_per_vote": data[1][5],
-                        "total_reward_amount": data[1][6],
-                        "total_distributed": data[1][7],
-                        "start_timestamp": data[1][8],
-                        "end_timestamp": data[1][9],
-                        "hook": data[1][10],
-                    },
-                    is_closed=data[2],
-                    is_whitelist_only=data[3],
-                    addresses=data[4],
-                    current_period={
-                        "reward_per_period": data[5][0],
-                        "reward_per_vote": data[5][1],
-                        "leftover": data[5][2],
-                        "updated": data[5][3],
-                    },
-                    period_left=data[6],
-                )
-                for data in raw_data
-            ]
-
-        except Exception as e:
-            print(f"Error decoding campaign data: {str(e)}")
-            print(f"Raw result (hex): {result.hex()}")
-            raise
-
-    @staticmethod
-    def decode_campaign_data_with_periods(result: bytes) -> List[Dict]:
+    def decode_campaign_data(result: bytes) -> List[Dict]:
         """
         Decoder for campaign data from BatchCampaignsWithPeriods contract
         """

@@ -11,7 +11,7 @@ This guide covers how to build and publish the `votemarket-toolkit` package.
 
 ## Package Structure
 
-The package publishes only what's in `src/votemarket_toolkit/`:
+The package publishes only what's in `votemarket_toolkit/`:
 - ✅ `votemarket_toolkit/` module
 - ❌ `docs/` (not included in package)
 - ❌ `examples/` (not included in package)
@@ -40,7 +40,7 @@ uv build
 uv pip install build
 
 # Build
-uv run python -m build
+uv run -m build
 ```
 
 ## Testing the Build Locally

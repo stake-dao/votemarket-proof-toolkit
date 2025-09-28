@@ -2,9 +2,9 @@
 Type definitions for VoteMarket campaigns.
 """
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, TypedDict
-
+from typing import List, Optional
 
 # =============================================================================
 # ENUMS
@@ -26,41 +26,22 @@ class CampaignStatus(Enum):
 
 
 # =============================================================================
-# STATUS TYPES
+# DATACLASSES
 # =============================================================================
 
 
-class CampaignStatusInfo(TypedDict):
-    """Detailed campaign status information."""
-
-    status: CampaignStatus
-    is_closed: bool
-    can_close: bool
-    who_can_close: str  # "everyone", "manager_only", "no_one"
-    days_until_public_close: Optional[int]  # Days until anyone can close
-    reason: str  # Human readable explanation
-
-
-# =============================================================================
-# PLATFORM TYPES
-# =============================================================================
-
-
-class Platform(TypedDict):
+@dataclass
+class Platform:
     """VoteMarket platform information."""
 
     protocol: str  # "curve", "balancer", "fxn", "pendle"
     chain_id: int  # 1, 42161, 10, 8453, 137
     address: str  # Platform contract address
-    version: str  # "v1", "v2", "v2_legacy"
+    version: str  # "v1", "v2", "v2_old"
 
 
-# =============================================================================
-# PERIOD TYPES
-# =============================================================================
-
-
-class Period(TypedDict):
+@dataclass
+class Period:
     """Campaign period information."""
 
     timestamp: int  # Epoch timestamp
@@ -69,15 +50,11 @@ class Period(TypedDict):
     leftover: int  # Leftover rewards (wei)
     updated: bool  # Whether period has been updated
     point_data_inserted: bool  # Whether proofs have been inserted
-    block_updated: Optional[bool]  # Whether block info has been updated
+    block_updated: Optional[bool] = None  # Whether block info has been updated
 
 
-# =============================================================================
-# CAMPAIGN TYPES
-# =============================================================================
-
-
-class CampaignDetails(TypedDict):
+@dataclass
+class CampaignDetails:
     """Core campaign details from contract."""
 
     chain_id: int  # Chain where gauge is deployed
@@ -93,37 +70,28 @@ class CampaignDetails(TypedDict):
     hook: str  # Hook contract address (if any)
 
 
-class CampaignData(TypedDict):
-    """Raw campaign data from contract with all fields."""
+@dataclass
+class CampaignStatusInfo:
+    """Campaign status information."""
+
+    status: CampaignStatus
+    is_closed: bool
+    can_close: bool
+    who_can_close: str  # "everyone", "manager_only", "no_one"
+    days_until_public_close: Optional[int]  # Days until anyone can close
+    reason: str  # Human readable explanation
+
+
+@dataclass
+class Campaign:
+    """Campaign data from contract."""
 
     id: int  # Campaign ID
     campaign: CampaignDetails  # Core campaign details
     is_closed: bool  # Whether campaign is closed
     is_whitelist_only: bool  # Whether whitelist is enabled
     addresses: List[str]  # Whitelisted addresses (if any)
-    current_epoch: Optional[int]  # Current epoch timestamp
-    remaining_periods: Optional[int]  # Periods remaining
-    periods: Optional[List[Period]]  # All period data
-    status_info: Optional[CampaignStatusInfo]  # Calculated status info
-
-
-# =============================================================================
-# SIMPLIFIED TYPES (for backward compatibility)
-# =============================================================================
-
-
-class Campaign(TypedDict):
-    """Simplified campaign type (deprecated - use CampaignData)."""
-
-    id: int
-    chain_id: int
-    gauge: str
-    manager: str
-    reward_token: str
-    is_closed: bool
-    is_whitelist_only: bool
-    listed_users: List[str]
-    period_left: int
-    details: CampaignDetails
-    periods: List[Period]
-    status_info: Optional[CampaignStatusInfo]
+    current_epoch: Optional[int] = None  # Current epoch timestamp
+    remaining_periods: Optional[int] = None  # Periods remaining
+    periods: Optional[List[Period]] = None  # All period data
+    status_info: Optional[CampaignStatusInfo] = None  # Calculated status info

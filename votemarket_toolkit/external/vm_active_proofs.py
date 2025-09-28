@@ -31,7 +31,7 @@ def is_campaign_active(campaign: dict) -> bool:
     """Check if a campaign is active and should be processed."""
     current_timestamp = int(datetime.now().timestamp())
 
-    # Campaign structure from decode_campaign_data_with_periods
+    # Campaign structure from decode_campaign_data
     return (
         not campaign.get("is_closed", False)
         and campaign["campaign"]["end_timestamp"] > current_timestamp

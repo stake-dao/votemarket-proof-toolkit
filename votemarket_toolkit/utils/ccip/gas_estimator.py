@@ -1,12 +1,13 @@
-import os
-import json
 import argparse
-from web3 import Web3
-from eth_abi import encode
-from eth_utils import to_checksum_address
-from dotenv import load_dotenv
-from typing import List, Tuple, Dict
+import json
 import logging
+import os
+from typing import Dict, List, Tuple
+
+from dotenv import load_dotenv
+from eth_abi.abi import encode
+from eth_utils.address import to_checksum_address
+from web3 import Web3
 
 load_dotenv()
 

@@ -3,9 +3,8 @@ Registry for VoteMarket addresses and configuration.
 Fetches data from the offchain-registry: https://github.com/stake-dao/offchain-registry
 """
 
-import json
-import os
 from typing import Dict, List, Optional
+
 import httpx
 
 
@@ -111,16 +110,14 @@ class Registry:
         # This was the first V2 deployment on L2s
         first_v2_address = "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"
 
-        # Add as v2_legacy for Curve on all L2 chains
+        # Add as v2_old for Curve on all L2 chains
         for chain_id in [
             42161,
             10,
             8453,
             137,
         ]:  # Arbitrum, Optimism, Base, Polygon
-            self._add_platform(
-                "curve", chain_id, first_v2_address, "v2_legacy"
-            )
+            self._add_platform("curve", chain_id, first_v2_address, "v2_old")
 
     def _parse_controllers(self):
         """Parse gauge controllers from registry."""

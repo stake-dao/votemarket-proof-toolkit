@@ -20,13 +20,13 @@ Technical Implementation:
 """
 
 import asyncio
-import asyncio
 import time
 from typing import Dict, List, Optional
 
-from eth_utils import to_checksum_address
+from eth_utils.address import to_checksum_address
 
 from votemarket_toolkit.campaigns.models import (
+    Campaign,
     CampaignStatus,
     CampaignStatusInfo,
     Platform,
@@ -110,14 +110,14 @@ class CampaignService:
 
         # If already closed
         if campaign.get("is_closed", False):
-            return {
-                "status": CampaignStatus.CLOSED,
-                "is_closed": True,
-                "can_close": False,
-                "who_can_close": "no_one",
-                "days_until_public_close": None,
-                "reason": "Campaign is already closed",
-            }
+            return CampaignStatusInfo(
+                status=CampaignStatus.CLOSED,
+                is_closed=True,
+                can_close=False,
+                who_can_close="no_one",
+                days_until_public_close=None,
+                reason="Campaign is already closed",
+            )
 
         # Get campaign details
         c = campaign.get("campaign", {})
@@ -134,52 +134,52 @@ class CampaignService:
 
         # If campaign hasn't ended yet or has remaining periods
         if current_timestamp < end_timestamp or remaining_periods > 0:
-            return {
-                "status": CampaignStatus.ACTIVE,
-                "is_closed": False,
-                "can_close": False,
-                "who_can_close": "no_one",
-                "days_until_public_close": None,
-                "reason": f"Campaign is active with {remaining_periods} periods remaining",
-            }
+            return CampaignStatusInfo(
+                status=CampaignStatus.ACTIVE,
+                is_closed=False,
+                can_close=False,
+                who_can_close="no_one",
+                days_until_public_close=None,
+                reason=f"Campaign is active with {remaining_periods} periods remaining",
+            )
 
         # Campaign has ended, check which phase we're in
         if days_since_end < CLAIM_DEADLINE_DAYS:
             # Still in claim period (first 6 months)
             days_until_manager_close = CLAIM_DEADLINE_DAYS - days_since_end
-            return {
-                "status": CampaignStatus.NOT_CLOSABLE,
-                "is_closed": False,
-                "can_close": False,
-                "who_can_close": "no_one",
-                "days_until_public_close": None,
-                "reason": f"In claim period - {int(days_until_manager_close)} days until manager can close",
-            }
+            return CampaignStatusInfo(
+                status=CampaignStatus.NOT_CLOSABLE,
+                is_closed=False,
+                can_close=False,
+                who_can_close="no_one",
+                days_until_public_close=None,
+                reason=f"In claim period - {int(days_until_manager_close)} days until manager can close",
+            )
 
         elif days_since_end < MANAGER_CLOSE_DAYS:
             # In manager-only close window (months 6-7)
             days_since_claim_deadline = days_since_end - CLAIM_DEADLINE_DAYS
             days_until_public = MANAGER_CLOSE_DAYS - days_since_end
-            return {
-                "status": CampaignStatus.CLOSABLE_BY_MANAGER,
-                "is_closed": False,
-                "can_close": True,
-                "who_can_close": "manager_only",
-                "days_until_public_close": int(days_until_public),
-                "reason": f"Manager can close ({int(days_since_claim_deadline)} days past claim deadline, public in {int(days_until_public)} days)",
-            }
+            return CampaignStatusInfo(
+                status=CampaignStatus.CLOSABLE_BY_MANAGER,
+                is_closed=False,
+                can_close=True,
+                who_can_close="manager_only",
+                days_until_public_close=int(days_until_public),
+                reason=f"Manager can close ({int(days_since_claim_deadline)} days past claim deadline, public in {int(days_until_public)} days)",
+            )
 
         else:
             # After 7 months - anyone can close
             days_since_public_close = days_since_end - MANAGER_CLOSE_DAYS
-            return {
-                "status": CampaignStatus.CLOSABLE_BY_EVERYONE,
-                "is_closed": False,
-                "can_close": True,
-                "who_can_close": "everyone",
-                "days_until_public_close": 0,
-                "reason": f"Anyone can close ({int(days_since_public_close)} days past public close date) - funds go to fee collector",
-            }
+            return CampaignStatusInfo(
+                status=CampaignStatus.CLOSABLE_BY_EVERYONE,
+                is_closed=False,
+                can_close=True,
+                who_can_close="everyone",
+                days_until_public_close=0,
+                reason=f"Anyone can close ({int(days_since_public_close)} days past public close date) - funds go to fee collector",
+            )
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
@@ -189,14 +189,15 @@ class CampaignService:
             protocol: Protocol name ("curve", "balancer", "frax", "fxn", "pendle")
 
         Returns:
-            List[Platform]: List of platform configurations including addresses and chain IDs
+            List[Platform]: List of platform objects including addresses and chain IDs
 
         Example:
             >>> platforms = service.get_all_platforms("curve")
             >>> for platform in platforms:
             >>>     print(f"Chain {platform.chain_id}: {platform.address}")
         """
-        return registry.get_all_platforms(protocol)
+        dict_platforms = registry.get_all_platforms(protocol)
+        return [Platform(**p) for p in dict_platforms]
 
     async def get_campaigns(
         self,
@@ -204,8 +205,8 @@ class CampaignService:
         platform_address: str,
         campaign_id: Optional[int] = None,
         check_proofs: bool = False,
-        parallel_requests: int = 5,
-    ) -> List[Dict]:
+        parallel_requests: int = 8,
+    ) -> List[Campaign]:
         """
         Get campaigns with periods and optional proof checking.
 
@@ -214,21 +215,25 @@ class CampaignService:
         2. Uses adaptive parallelism based on total campaign count
         3. Optionally checks proof insertion status via oracle
 
-        Batch Size Strategy:
-        - >200 campaigns: batch_size=1, parallelism=2 (avoid timeouts)
-        - >100 campaigns: batch_size=1, parallelism=3
-        - >50 campaigns: batch_size=2, parallelism=4
-        - <=50 campaigns: batch_size=2, parallelism=5
+        Batch Size Strategy (optimized for reliability):
+        - >400 campaigns: batch_size=5
+        - >200 campaigns: batch_size=8
+        - >100 campaigns: batch_size=10
+        - >50 campaigns: batch_size=15
+        - <=50 campaigns: batch_size=20
+
+        Parallelism is controlled by the parallel_requests parameter (default: 8).
+        Failed batches are automatically retried by splitting them in half.
 
         Args:
             chain_id: Chain ID to query (1 for Ethereum, 42161 for Arbitrum)
             platform_address: VoteMarket platform contract address
             campaign_id: Specific campaign ID to fetch (None fetches all)
             check_proofs: Whether to check proof insertion status (adds oracle queries)
-            parallel_requests: Maximum number of concurrent requests (default 5)
+            parallel_requests: Maximum number of concurrent requests (default 8)
 
         Returns:
-            List[Dict]: List of campaign dictionaries, each containing:
+            List[Campaign]: List of campaign objects, each containing:
                 - campaign: Core campaign data (gauge, manager, rewards, etc.)
                 - periods: List of period data with timestamps and amounts
                 - remaining_periods: Number of undistributed periods
@@ -282,13 +287,16 @@ class CampaignService:
             errors_count = 0
 
             # Helper function for fetching a single batch of campaigns
-            async def fetch_batch(start_idx: int, limit: int) -> List[Dict]:
+            async def fetch_batch(
+                start_idx: int, limit: int, retry_count: int = 0
+            ) -> List[Dict]:
                 """
-                Fetch a batch of campaigns from the blockchain.
+                Fetch a batch of campaigns from the blockchain with retry logic.
 
                 Args:
                     start_idx: Starting campaign ID
                     limit: Number of campaigns to fetch
+                    retry_count: Current retry attempt
 
                 Returns:
                     List of decoded campaign data or empty list on error
@@ -302,17 +310,33 @@ class CampaignService:
                     )
                     # Execute call asynchronously to avoid blocking
                     result = await asyncio.get_event_loop().run_in_executor(
-                        None, web3_service.w3.eth.call, tx
+                        None,
+                        web3_service.w3.eth.call,
+                        tx,  # type: ignore
                     )
                     # Decode the raw result into structured campaign data
                     return (
-                        self.contract_reader.decode_campaign_data_with_periods(
+                        self.contract_reader.decode_campaign_data(
                             result
                         )
                     )
                 except Exception:
-                    errors_count += 1
-                    return []
+                    # If we have retries left and batch size > 1, try splitting the batch
+                    if retry_count < 2 and limit > 1:
+                        # Split batch in half and try again
+                        mid_point = limit // 2
+                        results1 = await fetch_batch(
+                            start_idx, mid_point, retry_count + 1
+                        )
+                        results2 = await fetch_batch(
+                            start_idx + mid_point,
+                            limit - mid_point,
+                            retry_count + 1,
+                        )
+                        return results1 + results2
+                    else:
+                        errors_count += 1
+                        return []
 
             # Create batch tasks
             tasks = []
@@ -322,24 +346,26 @@ class CampaignService:
                 tasks.append(fetch_batch(campaign_id, 1))
                 effective_parallel = 1
             else:
-                # Determine optimal batch size and parallelism based on campaign count
-                # This adaptive strategy prevents RPC timeouts while maximizing throughput
-                if total_campaigns > 200:
-                    # Very large datasets: fetch one at a time with low parallelism
-                    batch_size = 1
-                    effective_parallel = 2
+                # Determine optimal batch size based on campaign count
+                # Conservative strategy to minimize errors while maintaining good performance
+                if total_campaigns > 400:
+                    # Very large datasets: smaller batches
+                    batch_size = 5
+                elif total_campaigns > 200:
+                    # Large datasets: moderate batch size
+                    batch_size = 8
                 elif total_campaigns > 100:
-                    # Large datasets: still one at a time but slightly more parallel
-                    batch_size = 1
-                    effective_parallel = 3
+                    # Medium-large datasets: balanced approach
+                    batch_size = 10
                 elif total_campaigns > 50:
-                    # Medium datasets: fetch 2 at a time with moderate parallelism
-                    batch_size = 2
-                    effective_parallel = 4
+                    # Medium datasets: larger batches
+                    batch_size = 15
                 else:
                     # Small datasets: can be more aggressive
-                    batch_size = 2
-                    effective_parallel = min(parallel_requests, 5)
+                    batch_size = 20
+
+                # Use the provided parallel_requests parameter
+                effective_parallel = parallel_requests
 
                 # Create all batch tasks
                 for start_idx in range(0, total_campaigns, batch_size):
@@ -368,7 +394,7 @@ class CampaignService:
 
                 # Small delay between chunks to avoid rate limiting
                 if i + effective_parallel < len(tasks):
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.15)
 
             # Print summary
             success_count = len(all_campaigns)
@@ -429,7 +455,7 @@ class CampaignService:
                                 epochs,
                             )
 
-                            result = web3_service.w3.eth.call(tx)
+                            result = web3_service.w3.eth.call(tx)  # type: ignore
                             epoch_results = (
                                 self.contract_reader.decode_inserted_proofs(
                                     result
@@ -476,9 +502,16 @@ class CampaignService:
             # Calculate lifecycle status for each campaign
             # This adds detailed status information for UI display and decision making
             for campaign in all_campaigns:
-                campaign["status_info"] = self.calculate_campaign_status(
-                    campaign
-                )
+                status_info = self.calculate_campaign_status(campaign)
+                # Convert dataclass to dictionary for consistency
+                campaign["status_info"] = {
+                    "status": status_info.status,
+                    "is_closed": status_info.is_closed,
+                    "can_close": status_info.can_close,
+                    "who_can_close": status_info.who_can_close,
+                    "days_until_public_close": status_info.days_until_public_close,
+                    "reason": status_info.reason,
+                }
 
             return all_campaigns
 
@@ -539,7 +572,9 @@ class CampaignService:
         try:
             web3_service = self.get_web3_service(chain_id)
             if not web3_service:
-                raise Exception(f"Web3 service not available for chain {chain_id}")
+                raise Exception(
+                    f"Web3 service not available for chain {chain_id}"
+                )
 
             # Get oracle address from platform
             platform_contract = web3_service.get_contract(
@@ -557,7 +592,7 @@ class CampaignService:
 
             # Get gauge from campaign
             gauge = campaign["campaign"]["gauge"]
-            
+
             # Prepare epochs from campaign periods
             if not campaign.get("periods"):
                 return {
@@ -570,7 +605,9 @@ class CampaignService:
             epochs = [p["timestamp"] for p in campaign["periods"]]
 
             # Load GetInsertedProofs bytecode
-            proof_bytecode = resource_manager.load_bytecode("GetInsertedProofs")
+            proof_bytecode = resource_manager.load_bytecode(
+                "GetInsertedProofs"
+            )
 
             # Build and execute the proof check transaction
             tx = self.contract_reader.build_get_inserted_proofs_constructor_tx(
@@ -582,9 +619,11 @@ class CampaignService:
             )
 
             result = await asyncio.get_event_loop().run_in_executor(
-                None, web3_service.w3.eth.call, tx
+                None,
+                web3_service.w3.eth.call,
+                tx,  # type: ignore
             )
-            
+
             # Decode the results
             epoch_results = self.contract_reader.decode_inserted_proofs(result)
 
@@ -599,11 +638,10 @@ class CampaignService:
             period_status = []
             for period in campaign["periods"]:
                 epoch = period["timestamp"]
-                
+
                 # Find matching epoch result from GetInsertedProofs
                 epoch_result = next(
-                    (er for er in epoch_results if er["epoch"] == epoch),
-                    None
+                    (er for er in epoch_results if er["epoch"] == epoch), None
                 )
 
                 status_entry = {
@@ -617,33 +655,46 @@ class CampaignService:
 
                 if epoch_result:
                     # Block header status
-                    status_entry["block_updated"] = epoch_result.get("is_block_updated", False)
-                    
+                    status_entry["block_updated"] = epoch_result.get(
+                        "is_block_updated", False
+                    )
+
                     # Point data status (gauge total votes)
                     point_results = epoch_result.get("point_data_results", [])
                     if point_results:
-                        status_entry["point_data_inserted"] = point_results[0].get("is_updated", False)
-                    
+                        status_entry["point_data_inserted"] = point_results[
+                            0
+                        ].get("is_updated", False)
+
                     # User slope data status
-                    slope_results = epoch_result.get("voted_slope_data_results", [])
+                    slope_results = epoch_result.get(
+                        "voted_slope_data_results", []
+                    )
                     if slope_results:
                         # Find the user's specific result
                         user_result = next(
-                            (sr for sr in slope_results if sr["account"].lower() == user_address.lower()),
-                            None
+                            (
+                                sr
+                                for sr in slope_results
+                                if sr["account"].lower()
+                                == user_address.lower()
+                            ),
+                            None,
                         )
                         if user_result:
-                            status_entry["user_slope_inserted"] = user_result.get("is_updated", False)
-                            
+                            status_entry["user_slope_inserted"] = (
+                                user_result.get("is_updated", False)
+                            )
+
                             # Fetch actual slope values if data exists
                             if status_entry["user_slope_inserted"]:
                                 try:
                                     slope_data = oracle_contract.functions.votedSlopeByEpoch(
                                         to_checksum_address(user_address),
                                         to_checksum_address(gauge),
-                                        epoch
+                                        epoch,
                                     ).call()
-                                    
+
                                     status_entry["user_slope_data"] = {
                                         "slope": slope_data[0],
                                         "end": slope_data[1],
@@ -653,14 +704,14 @@ class CampaignService:
                                 except Exception:
                                     # If we can't fetch the actual data, just skip
                                     pass
-                
+
                 # Determine if this period is claimable
                 status_entry["is_claimable"] = (
-                    status_entry["block_updated"] and
-                    status_entry["point_data_inserted"] and
-                    status_entry["user_slope_inserted"]
+                    status_entry["block_updated"]
+                    and status_entry["point_data_inserted"]
+                    and status_entry["user_slope_inserted"]
                 )
-                
+
                 period_status.append(status_entry)
 
             return {

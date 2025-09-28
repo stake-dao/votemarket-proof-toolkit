@@ -8,11 +8,11 @@ from typing import List
 from rich import print as rprint
 from rich.panel import Panel
 
-from votemarket_toolkit.data import OracleService
 from votemarket_toolkit.commands.validation import (
     validate_chain_id,
     validate_eth_address,
 )
+from votemarket_toolkit.data import OracleService
 
 
 def get_epoch_blocks(chain_id: int, platform: str, epochs: List[int]):

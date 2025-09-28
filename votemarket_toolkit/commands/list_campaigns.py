@@ -8,7 +8,6 @@ to find campaign IDs and see their status at a glance.
 import asyncio
 import json
 import sys
-from typing import Optional
 
 from eth_utils import to_checksum_address
 from rich import print as rprint
@@ -17,7 +16,7 @@ from rich.table import Table
 
 from votemarket_toolkit.campaigns.service import campaign_service
 from votemarket_toolkit.shared import registry
-from votemarket_toolkit.utils.interactive import select_platform, select_chain
+from votemarket_toolkit.utils.interactive import select_chain, select_platform
 
 
 def format_address(addr: str) -> str:
@@ -54,7 +53,7 @@ async def list_campaigns(
 
     try:
         # Fetch all campaigns
-        rprint(f"[cyan]Fetching campaigns from platform...[/cyan]")
+        rprint("[cyan]Fetching campaigns from platform...[/cyan]")
 
         campaigns = await campaign_service.get_campaigns(
             chain_id=chain_id,
@@ -89,9 +88,11 @@ async def list_campaigns(
                         "start": c["campaign"]["start_timestamp"],
                         "end": c["campaign"]["end_timestamp"],
                         "is_closed": c.get("is_closed", False),
-                        "status": c["status_info"]["status"].value
-                        if "status_info" in c
-                        else "unknown",
+                        "status": (
+                            c["status_info"]["status"].value
+                            if "status_info" in c
+                            else "unknown"
+                        ),
                     }
                 )
             print(json.dumps(output, indent=2))
@@ -162,7 +163,7 @@ async def list_campaigns(
                 and c.get("status_info", {}).get("can_close", False)
             )
 
-            rprint(f"\n[cyan]Summary:[/cyan]")
+            rprint("\n[cyan]Summary:[/cyan]")
             rprint(f"  • Active: {active_count}")
             rprint(f"  • Closed: {closed_count}")
             if closable_count > 0:
@@ -225,7 +226,7 @@ def main():
             chain_id = registry.get_chain_for_platform(platform_address)
             if not chain_id:
                 rprint(
-                    f"[yellow]Unknown platform address. Please select a chain:[/yellow]"
+                    "[yellow]Unknown platform address. Please select a chain:[/yellow]"
                 )
                 chain_id = select_chain()
             chain_names = {

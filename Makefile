@@ -5,7 +5,7 @@ PYTHON := uv run
 VENV := .venv
 
 # Phony targets declaration
-.PHONY: all install clean test help integration
+.PHONY: all install clean test integration
 .PHONY: user-proof gauge-proof block-info user-campaign-status get-active-campaigns get-epoch-blocks
 .PHONY: format lint requirements run-examples
 .PHONY: build deploy clean-build test-build release
@@ -19,7 +19,7 @@ install-dev:
 
 # Format and lint all Python files using black and ruff
 format:
-	$(eval TARGET := $(if $(FILE),$(FILE),src/))
+	$(eval TARGET := $(if $(FILE),$(FILE),votemarket_toolkit/))
 	uv run black $(TARGET)
 	uv run ruff check --fix $(TARGET)
 	uv run ruff format $(TARGET)
@@ -60,14 +60,14 @@ release: clean-build build
 
 # Proof generation commands
 user-proof: install
-	$(PYTHON) src/votemarket_toolkit/commands/user_proof.py \
+	$(PYTHON) votemarket_toolkit/commands/user_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(USER_ADDRESS)" \
 		"$(BLOCK_NUMBER)"
 
 gauge-proof: install
-	$(PYTHON) src/votemarket_toolkit/commands/gauge_proof.py \
+	$(PYTHON) votemarket_toolkit/commands/gauge_proof.py \
 		"$(PROTOCOL)" \
 		"$(GAUGE_ADDRESS)" \
 		"$(CURRENT_EPOCH)" \
@@ -75,7 +75,7 @@ gauge-proof: install
 
 # Information retrieval commands
 block-info: install
-	$(PYTHON) src/votemarket_toolkit/commands/block_info.py "$(BLOCK_NUMBER)"
+	$(PYTHON) votemarket_toolkit/commands/block_info.py "$(BLOCK_NUMBER)"
 
 user-campaign-status: install
 	$(PYTHON) votemarket_toolkit/commands/user_campaign_status.py \
@@ -95,36 +95,30 @@ list-campaigns: install
 		$(if $(FORMAT),--format=$(FORMAT))
 
 get-active-campaigns: install
-	$(PYTHON) src/votemarket_toolkit/commands/active_campaigns.py \
+	$(PYTHON) votemarket_toolkit/commands/active_campaigns.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
 		$(if $(CHECK_PROOFS),"--check-proofs")
 
 get-epoch-blocks: install
-	$(PYTHON) src/votemarket_toolkit/commands/get_epoch_blocks.py \
+	$(PYTHON) votemarket_toolkit/commands/get_epoch_blocks.py \
 		$(if $(CHAIN_ID),"--chain-id=$(CHAIN_ID)") \
 		$(if $(PLATFORM),"--platform=$(PLATFORM)") \
 		$(if $(EPOCHS),"--epochs=$(EPOCHS)")
 
 index-votes: install
-	$(PYTHON) src/votemarket_toolkit/commands/index_votes.py \
+	$(PYTHON) votemarket_toolkit/commands/index_votes.py \
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
 		$(if $(GAUGE_ADDRESS),"--gauge-address=$(GAUGE_ADDRESS)")
 
-# Help and examples
-help:
-	$(PYTHON) src/votemarket_toolkit/commands/help.py
 
-run-example:
-	$(PYTHON) src/votemarket_toolkit/commands/help.py $(EXAMPLE)
-	$(PYTHON) docs/examples/$(EXAMPLE).py
 
-.PHONY: all install-dev clean help run-example
+.PHONY: all install-dev clean
 .PHONY: user-proof gauge-proof block-info user-campaign-status get-active-campaigns get-epoch-blocks
 
 simulate:
-	$(PYTHON) src/votemarket_toolkit/scripts/estimate_ccip_gas.py \
+	$(PYTHON) votemarket_toolkit/utils/ccip/gas_estimator.py \
 	--adapter 0xbF0000F5C600B1a84FE08F8d0013002ebC0064fe \
 	--laposte 0xF0000058000021003E4754dCA700C766DE7601C2 \
 	--to-address 0xADfBFd06633eB92fc9b58b3152Fe92B0A24eB1FF \
@@ -135,7 +129,7 @@ install-ts:
 	npm install
 
 simulate-ts:
-	npx ts-node src/scripts/estimate-ccip-gas.ts \
+	cd examples/typescript && npm run simulate -- \
 	--adapter="0xbF0000F5C600B1a84FE08F8d0013002ebC0064fe" \
 	--laposte="0xF0000058000021003E4754dCA700C766DE7601C2" \
 	--to-address="0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5" \

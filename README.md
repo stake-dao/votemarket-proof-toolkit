@@ -6,96 +6,100 @@
 [![Python](https://img.shields.io/pypi/pyversions/votemarket-toolkit.svg)](https://pypi.org/project/votemarket-toolkit/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Installation
+## Setup
 
 ```bash
-pip install votemarket-toolkit
+# Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Setup project
+git clone https://github.com/stake-dao/votemarket-proof-toolkit
+cd votemarket-proof-toolkit
+./setup.sh
+```
+
+## Usage
+
+```bash
+# SDK Examples (see examples/python/)
+uv run examples/python/list_all_campaigns.py
+uv run examples/python/check_user_status.py
+
+# CLI Commands
+uv run -m votemarket_toolkit.commands.list_campaigns
+uv run -m votemarket_toolkit.commands.user_campaign_status --user 0x...
 ```
 
 ## Quick Start
 
-### 🎯 Interactive Mode (New!)
-
-Commands now support **interactive selection** - no need to memorize addresses!
-
 ```bash
-# Interactive platform and campaign selection
-make user-campaign-status USER_ADDRESS=0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6
+# 1. Setup (installs UV, Python, and dependencies)
+git clone https://github.com/stake-dao/votemarket-proof-toolkit
+cd votemarket-proof-toolkit
+./setup.sh
 
-# Browse all available platforms interactively
-make list-campaigns
+# 2. Run examples
+uv run examples/python/get_campaign.py curve 97
 ```
 
-### CLI Commands (Direct Mode)
+
+
+### Commands 
 
 ```bash
-# Check if a user can claim rewards from a campaign
-make user-campaign-status \
-  PLATFORM=0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5 \
-  CAMPAIGN_ID=97 \
-  USER_ADDRESS=0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6
+# Check if user can claim rewards
+uv run -m votemarket_toolkit.commands.user_campaign_status \
+  --platform 0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5 \
+  --campaign-id 97 \
+  --user 0x52f541764E6e90eeBc5c21Ff570De0e2D63766B6
 
-# List all campaigns on a platform
-make list-campaigns PLATFORM=0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5
+# List campaigns on a platform
+uv run -m votemarket_toolkit.commands.list_campaigns --platform 0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5
 ```
 
 See [Commands Documentation](votemarket_toolkit/commands/README.md) for all available commands.
 
-### Python SDK
+### As Python SDK
 
 ```python
-from votemarket_toolkit.campaigns.service import campaign_service
+from votemarket_toolkit.campaigns.service import CampaignService
 from votemarket_toolkit.shared import registry
 
-# Get platform addresses
+# Get platform address
 curve_platform = registry.get_platform("curve", chain_id=42161)
 
-# Check campaign status
-campaigns = await campaign_service.get_campaigns(
+# Get campaign
+service = CampaignService()
+campaigns = await service.get_campaigns(
     chain_id=42161,
     platform_address=curve_platform,
     campaign_id=97
 )
 ```
 
-## Features
-
-- 🎯 **Interactive Selection**: Browse and select platforms/campaigns without memorizing addresses
-- 🔐 **Proof Generation**: User and gauge proofs for reward claims
-- 📊 **Campaign Management**: Query and analyze VoteMarket campaigns
-- 🔍 **Proof Status Checking**: Verify if users can claim rewards
-- 🔄 **Multi-protocol Support**: Curve, Balancer, Frax, FXN, Pendle
-- ⛓️ **Multi-chain**: Ethereum, Arbitrum, Optimism, Polygon, Base
-- 📝 **Multiple Output Formats**: Table, JSON, CSV
-
-## Project Structure
-
-```
-votemarket-proof-toolkit/
-├── votemarket_toolkit/       # Python SDK package
-│   ├── campaigns/           # Campaign management
-│   ├── proofs/             # Proof generation
-│   ├── contracts/          # Contract interactions
-│   ├── shared/             # Shared utilities & registry
-│   └── commands/           # CLI commands (see README)
-├── examples/               # Usage examples
-│   ├── python/            # Python examples
-│   └── typescript/        # TypeScript reference
-├── docs/                  # Documentation
-└── tests/                 # Test suite
-```
-
-## Requirements
-
-- Python >=3.10
-- Web3 RPC endpoint (Alchemy, Infura, etc.)
-
 ## Configuration
 
-Create a `.env` file:
-```env
+Add RPC endpoints to `.env`:
+```
 ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+```
+
+## Commands
+
+```bash
+# Add dependencies
+uv add package-name
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run black .
+uv run ruff check --fix .
+
+# Build package
+uv build
 ```
 
 ## Documentation

@@ -5,11 +5,10 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rich import print as rprint
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
 from votemarket_toolkit.campaigns import CampaignService

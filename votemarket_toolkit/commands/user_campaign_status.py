@@ -8,9 +8,9 @@ on the oracle for a specific VoteMarket campaign, enabling them to claim rewards
 import asyncio
 import json
 import sys
-from typing import Optional, List, Dict
+from typing import List
 
-from eth_utils import to_checksum_address
+from eth_utils.address import to_checksum_address
 from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
@@ -18,11 +18,10 @@ from rich.table import Table
 
 from votemarket_toolkit.campaigns.service import campaign_service
 from votemarket_toolkit.shared import registry
-from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils.interactive import (
-    select_platform,
-    select_chain,
     select_campaign,
+    select_chain,
+    select_platform,
 )
 
 
@@ -106,7 +105,8 @@ async def check_user_campaign_status(
                         rprint(
                             f"[yellow]This platform has campaigns 0-{total_campaigns-1}[/yellow]"
                         )
-                except:
+                except Exception:
+                    # Failed to get total campaigns, just show the basic error
                     if output_format == "json":
                         all_results.append(
                             {"error": f"Campaign #{campaign_id} not found"}
@@ -195,7 +195,7 @@ async def check_user_campaign_status(
                 # Full table output (default)
                 # Display campaign info
                 campaign_info = campaign["campaign"]
-                rprint(f"\n[cyan]Campaign Information:[/cyan]")
+                rprint("\n[cyan]Campaign Information:[/cyan]")
                 rprint(f"  • Gauge: {format_address(campaign_info['gauge'])}")
                 rprint(
                     f"  • Manager: {format_address(campaign_info['manager'])}"
@@ -295,7 +295,7 @@ async def check_user_campaign_status(
                 console.print(table)
 
                 # Summary
-                rprint(f"\n[cyan]Summary:[/cyan]")
+                rprint("\n[cyan]Summary:[/cyan]")
                 rprint(f"  • Total Periods: {total_periods}")
                 rprint(f"  • Claimable Periods: {claimable_periods}")
                 rprint(
@@ -406,7 +406,7 @@ def main():
             chain_id = registry.get_chain_for_platform(platform_address)
             if not chain_id:
                 rprint(
-                    f"[yellow]Unknown platform address. Please select a chain:[/yellow]"
+                    "[yellow]Unknown platform address. Please select a chain:[/yellow]"
                 )
                 chain_id = select_chain()
             elif args.format == "table" and not args.brief:
@@ -440,7 +440,7 @@ def main():
             ]
         except ValueError:
             rprint(
-                f"[red]Error:[/red] Invalid campaign ID format. Use numbers separated by commas."
+                "[red]Error:[/red] Invalid campaign ID format. Use numbers separated by commas."
             )
             sys.exit(1)
 

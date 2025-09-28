@@ -6,7 +6,6 @@ from typing import Dict, TypedDict
 
 from votemarket_toolkit.proofs.types import BlockInfo
 
-
 # =============================================================================
 # USER TYPES
 # =============================================================================

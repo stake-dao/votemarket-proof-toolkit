@@ -6,8 +6,8 @@ from votemarket_toolkit.proofs.generators.gauge_proof import (
 )
 from votemarket_toolkit.proofs.generators.user_proof import generate_user_proof
 from votemarket_toolkit.proofs.types import BlockInfo, GaugeProof, UserProof
-from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.exceptions import VoteMarketProofsException
 from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils import get_rounded_epoch
