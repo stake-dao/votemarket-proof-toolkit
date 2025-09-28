@@ -315,11 +315,7 @@ class CampaignService:
                         tx,  # type: ignore
                     )
                     # Decode the raw result into structured campaign data
-                    return (
-                        self.contract_reader.decode_campaign_data(
-                            result
-                        )
-                    )
+                    return self.contract_reader.decode_campaign_data(result)
                 except Exception:
                     # If we have retries left and batch size > 1, try splitting the batch
                     if retry_count < 2 and limit > 1:
