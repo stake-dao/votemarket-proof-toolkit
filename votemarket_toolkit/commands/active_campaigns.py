@@ -18,6 +18,11 @@ from votemarket_toolkit.commands.validation import (
     validate_protocol,
 )
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.utils.pricing import (
+    get_erc20_price_in_usd,
+    calculate_usd_per_vote,
+    format_usd_value,
+)
 
 console = Console()
 
@@ -227,22 +232,56 @@ async def get_all_active_campaigns(
     # Prepare data for JSON output
     output_data = {
         "timestamp": int(datetime.now().timestamp()),
+        "date": datetime.now().isoformat(),
         "query": {
             "chain_id": chain_id,
             "platform": platform,
             "protocol": protocol,
         },
         "campaigns": [],
+        "summary": {
+            "total_campaigns": 0,
+            "active_campaigns": 0,
+            "closed_campaigns": 0,
+            "closable_by_anyone": 0,
+            "closable_by_manager": 0,
+            "total_rewards_allocated": 0,
+            "total_rewards_distributed": 0,
+            "campaigns_with_rewards": 0,
+            "highest_avg_reward_per_vote": 0,
+            "highest_avg_reward_campaign_id": None,
+        },
     }
 
     # Process results by platform
     total_campaigns = 0
     platforms_with_campaigns = []
 
+    # Collect unique reward tokens for price fetching
+    token_price_cache = {}
+
     for (chain_id, platform), campaigns in zip(platforms_to_query, results):
         if campaigns:
             total_campaigns += len(campaigns)
             platforms_with_campaigns.append((chain_id, platform, campaigns))
+
+            # Collect unique tokens for this chain
+            unique_tokens = set()
+            for c in campaigns:
+                reward_token = c["campaign"].get("reward_token")
+                if reward_token:
+                    unique_tokens.add(reward_token.lower())
+
+            # Fetch prices for all tokens on this chain
+            if unique_tokens:
+                print(
+                    f"Fetching token prices for {len(unique_tokens)} tokens on chain {chain_id}..."
+                )
+                for token in unique_tokens:
+                    cache_key = f"{chain_id}:{token.lower()}"
+                    if cache_key not in token_price_cache:
+                        price = get_erc20_price_in_usd(token, chain_id)
+                        token_price_cache[cache_key] = price
 
     # Display results split by platform
     for chain_id, platform, campaigns in platforms_with_campaigns:
@@ -329,6 +368,92 @@ async def get_all_active_campaigns(
                 closable_display,
             )
 
+            # Get token price for USD calculations
+            reward_token = c["campaign"].get("reward_token", "").lower()
+            cache_key = f"{chain_id}:{reward_token}"
+            token_price_usd = token_price_cache.get(cache_key, 0.0)
+
+            # Process periods to include reward per vote details with USD values
+            periods_with_rewards = []
+            for idx, period in enumerate(c.get("periods", [])):
+                period_data = {
+                    "period_number": idx + 1,
+                    "timestamp": period["timestamp"],
+                    "date": datetime.fromtimestamp(
+                        period["timestamp"]
+                    ).strftime("%Y-%m-%d %H:%M"),
+                    "reward_per_period": period["reward_per_period"],
+                    "reward_per_period_ether": period["reward_per_period"]
+                    / 1e18,
+                    "reward_per_vote": period["reward_per_vote"],
+                    "reward_per_vote_ether": period["reward_per_vote"] / 1e18,
+                    "leftover": period["leftover"],
+                    "leftover_ether": period["leftover"] / 1e18,
+                    "updated": period["updated"],
+                    "point_data_inserted": period.get(
+                        "point_data_inserted", False
+                    ),
+                    "block_updated": period.get("block_updated", False),
+                }
+
+                # Calculate USD values
+                if token_price_usd > 0:
+                    period_data["reward_per_vote_usd"] = (
+                        calculate_usd_per_vote(
+                            period["reward_per_vote"], token_price_usd, 18
+                        )
+                    )
+                    period_data["reward_per_period_usd"] = (
+                        period["reward_per_period"] / 1e18
+                    ) * token_price_usd
+                else:
+                    period_data["reward_per_vote_usd"] = 0.0
+                    period_data["reward_per_period_usd"] = 0.0
+
+                # Calculate distributed amount if period is updated
+                if period["updated"]:
+                    distributed = (
+                        period["reward_per_period"] - period["leftover"]
+                    )
+                    period_data["distributed"] = distributed
+                    period_data["distributed_ether"] = distributed / 1e18
+                    if token_price_usd > 0:
+                        period_data["distributed_usd"] = (
+                            distributed / 1e18
+                        ) * token_price_usd
+                    else:
+                        period_data["distributed_usd"] = 0.0
+                else:
+                    period_data["distributed"] = 0
+                    period_data["distributed_ether"] = 0
+                    period_data["distributed_usd"] = 0.0
+
+                periods_with_rewards.append(period_data)
+
+            # Calculate average reward per vote for non-zero periods
+            non_zero_rewards = [
+                p["reward_per_vote"]
+                for p in periods_with_rewards
+                if p["reward_per_vote"] > 0
+            ]
+            avg_reward_per_vote = (
+                sum(non_zero_rewards) / len(non_zero_rewards)
+                if non_zero_rewards
+                else 0
+            )
+
+            # Calculate average USD per vote
+            non_zero_usd_rewards = [
+                p["reward_per_vote_usd"]
+                for p in periods_with_rewards
+                if p.get("reward_per_vote_usd", 0) > 0
+            ]
+            avg_reward_per_vote_usd = (
+                sum(non_zero_usd_rewards) / len(non_zero_usd_rewards)
+                if non_zero_usd_rewards
+                else 0
+            )
+
             # Add to output data with all periods info
             output_data["campaigns"].append(
                 {
@@ -338,15 +463,45 @@ async def get_all_active_campaigns(
                     "gauge": c["campaign"]["gauge"],
                     "manager": c["campaign"]["manager"],
                     "reward_token": c["campaign"]["reward_token"],
+                    "reward_token_price_usd": token_price_usd,
                     "is_closed": c["is_closed"],
                     "is_whitelist_only": c["is_whitelist_only"],
                     "remaining_periods": c["remaining_periods"],
                     "whitelisted_addresses": c["addresses"],
                     "campaign_details": c["campaign"],
                     "current_epoch": c["current_epoch"],
-                    "periods": c.get(
-                        "periods", []
-                    ),  # Include all periods with their details
+                    "total_reward_amount": c["campaign"][
+                        "total_reward_amount"
+                    ],
+                    "total_reward_amount_ether": c["campaign"][
+                        "total_reward_amount"
+                    ]
+                    / 1e18,
+                    "total_reward_amount_usd": (
+                        c["campaign"]["total_reward_amount"] / 1e18
+                    )
+                    * token_price_usd
+                    if token_price_usd > 0
+                    else 0.0,
+                    "max_reward_per_vote": c["campaign"][
+                        "max_reward_per_vote"
+                    ],
+                    "max_reward_per_vote_ether": c["campaign"][
+                        "max_reward_per_vote"
+                    ]
+                    / 1e18,
+                    "max_reward_per_vote_usd": calculate_usd_per_vote(
+                        c["campaign"]["max_reward_per_vote"],
+                        token_price_usd,
+                        18,
+                    )
+                    if token_price_usd > 0
+                    else 0.0,
+                    "average_reward_per_vote": avg_reward_per_vote,
+                    "average_reward_per_vote_ether": avg_reward_per_vote
+                    / 1e18,
+                    "average_reward_per_vote_usd": avg_reward_per_vote_usd,
+                    "periods": periods_with_rewards,
                     "closability": closability,
                 }
             )
@@ -361,6 +516,93 @@ async def get_all_active_campaigns(
         for c in campaigns[10:]:
             status = get_campaign_status(c)
             closability = get_closability_info(c)
+
+            # Get token price for USD calculations
+            reward_token = c["campaign"].get("reward_token", "").lower()
+            cache_key = f"{chain_id}:{reward_token}"
+            token_price_usd = token_price_cache.get(cache_key, 0.0)
+
+            # Process periods to include reward per vote details with USD values
+            periods_with_rewards = []
+            for idx, period in enumerate(c.get("periods", [])):
+                period_data = {
+                    "period_number": idx + 1,
+                    "timestamp": period["timestamp"],
+                    "date": datetime.fromtimestamp(
+                        period["timestamp"]
+                    ).strftime("%Y-%m-%d %H:%M"),
+                    "reward_per_period": period["reward_per_period"],
+                    "reward_per_period_ether": period["reward_per_period"]
+                    / 1e18,
+                    "reward_per_vote": period["reward_per_vote"],
+                    "reward_per_vote_ether": period["reward_per_vote"] / 1e18,
+                    "leftover": period["leftover"],
+                    "leftover_ether": period["leftover"] / 1e18,
+                    "updated": period["updated"],
+                    "point_data_inserted": period.get(
+                        "point_data_inserted", False
+                    ),
+                    "block_updated": period.get("block_updated", False),
+                }
+
+                # Calculate USD values
+                if token_price_usd > 0:
+                    period_data["reward_per_vote_usd"] = (
+                        calculate_usd_per_vote(
+                            period["reward_per_vote"], token_price_usd, 18
+                        )
+                    )
+                    period_data["reward_per_period_usd"] = (
+                        period["reward_per_period"] / 1e18
+                    ) * token_price_usd
+                else:
+                    period_data["reward_per_vote_usd"] = 0.0
+                    period_data["reward_per_period_usd"] = 0.0
+
+                # Calculate distributed amount if period is updated
+                if period["updated"]:
+                    distributed = (
+                        period["reward_per_period"] - period["leftover"]
+                    )
+                    period_data["distributed"] = distributed
+                    period_data["distributed_ether"] = distributed / 1e18
+                    if token_price_usd > 0:
+                        period_data["distributed_usd"] = (
+                            distributed / 1e18
+                        ) * token_price_usd
+                    else:
+                        period_data["distributed_usd"] = 0.0
+                else:
+                    period_data["distributed"] = 0
+                    period_data["distributed_ether"] = 0
+                    period_data["distributed_usd"] = 0.0
+
+                periods_with_rewards.append(period_data)
+
+            # Calculate average reward per vote for non-zero periods
+            non_zero_rewards = [
+                p["reward_per_vote"]
+                for p in periods_with_rewards
+                if p["reward_per_vote"] > 0
+            ]
+            avg_reward_per_vote = (
+                sum(non_zero_rewards) / len(non_zero_rewards)
+                if non_zero_rewards
+                else 0
+            )
+
+            # Calculate average USD per vote
+            non_zero_usd_rewards = [
+                p["reward_per_vote_usd"]
+                for p in periods_with_rewards
+                if p.get("reward_per_vote_usd", 0) > 0
+            ]
+            avg_reward_per_vote_usd = (
+                sum(non_zero_usd_rewards) / len(non_zero_usd_rewards)
+                if non_zero_usd_rewards
+                else 0
+            )
+
             output_data["campaigns"].append(
                 {
                     "chain_id": chain_id,
@@ -369,13 +611,45 @@ async def get_all_active_campaigns(
                     "gauge": c["campaign"]["gauge"],
                     "manager": c["campaign"]["manager"],
                     "reward_token": c["campaign"]["reward_token"],
+                    "reward_token_price_usd": token_price_usd,
                     "is_closed": c["is_closed"],
                     "is_whitelist_only": c["is_whitelist_only"],
                     "remaining_periods": c["remaining_periods"],
                     "whitelisted_addresses": c["addresses"],
                     "campaign_details": c["campaign"],
                     "current_epoch": c["current_epoch"],
-                    "periods": c.get("periods", []),
+                    "total_reward_amount": c["campaign"][
+                        "total_reward_amount"
+                    ],
+                    "total_reward_amount_ether": c["campaign"][
+                        "total_reward_amount"
+                    ]
+                    / 1e18,
+                    "total_reward_amount_usd": (
+                        c["campaign"]["total_reward_amount"] / 1e18
+                    )
+                    * token_price_usd
+                    if token_price_usd > 0
+                    else 0.0,
+                    "max_reward_per_vote": c["campaign"][
+                        "max_reward_per_vote"
+                    ],
+                    "max_reward_per_vote_ether": c["campaign"][
+                        "max_reward_per_vote"
+                    ]
+                    / 1e18,
+                    "max_reward_per_vote_usd": calculate_usd_per_vote(
+                        c["campaign"]["max_reward_per_vote"],
+                        token_price_usd,
+                        18,
+                    )
+                    if token_price_usd > 0
+                    else 0.0,
+                    "average_reward_per_vote": avg_reward_per_vote,
+                    "average_reward_per_vote_ether": avg_reward_per_vote
+                    / 1e18,
+                    "average_reward_per_vote_usd": avg_reward_per_vote_usd,
+                    "periods": periods_with_rewards,
                     "closability": closability,
                 }
             )
@@ -388,10 +662,74 @@ async def get_all_active_campaigns(
             f"\n[bold green]Total campaigns found: {total_campaigns}[/bold green]"
         )
 
-    # Save to JSON file
-    os.makedirs("temp", exist_ok=True)
+    # Calculate summary statistics
+    if output_data["campaigns"]:
+        output_data["summary"]["total_campaigns"] = len(
+            output_data["campaigns"]
+        )
+        output_data["summary"]["active_campaigns"] = sum(
+            1 for c in output_data["campaigns"] if not c["is_closed"]
+        )
+        output_data["summary"]["closed_campaigns"] = sum(
+            1 for c in output_data["campaigns"] if c["is_closed"]
+        )
+        output_data["summary"]["closable_by_anyone"] = sum(
+            1
+            for c in output_data["campaigns"]
+            if c["closability"]["can_be_closed_by"] == "Anyone"
+        )
+        output_data["summary"]["closable_by_manager"] = sum(
+            1
+            for c in output_data["campaigns"]
+            if c["closability"]["can_be_closed_by"] == "Manager Only"
+        )
+        output_data["summary"]["total_rewards_allocated"] = sum(
+            c["total_reward_amount_ether"] for c in output_data["campaigns"]
+        )
+
+        # Calculate total distributed
+        total_distributed = 0
+        for campaign in output_data["campaigns"]:
+            for period in campaign["periods"]:
+                if period["updated"]:
+                    total_distributed += period.get("distributed_ether", 0)
+        output_data["summary"]["total_rewards_distributed"] = total_distributed
+
+        # Find campaign with highest average reward per vote
+        campaigns_with_rewards = [
+            c
+            for c in output_data["campaigns"]
+            if c["average_reward_per_vote"] > 0
+        ]
+        output_data["summary"]["campaigns_with_rewards"] = len(
+            campaigns_with_rewards
+        )
+
+        if campaigns_with_rewards:
+            best_campaign = max(
+                campaigns_with_rewards,
+                key=lambda x: x["average_reward_per_vote"],
+            )
+            output_data["summary"]["highest_avg_reward_per_vote"] = (
+                best_campaign["average_reward_per_vote_ether"]
+            )
+            output_data["summary"]["highest_avg_reward_campaign_id"] = (
+                best_campaign["campaign_id"]
+            )
+
+    # Save to JSON file in output directory
+    os.makedirs("output", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"temp/active_campaigns_{timestamp}.json"
+
+    # Create filename with protocol/chain info if available
+    if protocol and chain_id:
+        filename = f"output/active_campaigns_{protocol}_chain{chain_id}_{timestamp}.json"
+    elif protocol:
+        filename = f"output/active_campaigns_{protocol}_{timestamp}.json"
+    elif chain_id:
+        filename = f"output/active_campaigns_chain{chain_id}_{timestamp}.json"
+    else:
+        filename = f"output/active_campaigns_{timestamp}.json"
 
     with open(filename, "w") as f:
         json.dump(output_data, f, indent=2)
@@ -419,6 +757,7 @@ async def get_all_active_campaigns(
             period_table.add_column("Date", width=10)
             period_table.add_column("Reward", width=12, justify="right")
             period_table.add_column("Per Vote", width=10, justify="right")
+            period_table.add_column("$/Vote", width=12, justify="right")
             period_table.add_column("Updated", width=7, justify="center")
 
             # Add proof column if proof data is available
@@ -432,19 +771,38 @@ async def get_all_active_campaigns(
                 epoch_date = datetime.fromtimestamp(
                     period["timestamp"]
                 ).strftime("%Y-%m-%d")
-                reward = f"{period['reward_per_period'] / 1e18:.2f}"
-                per_vote = (
-                    f"{period['reward_per_vote'] / 1e18:.4f}"
-                    if period["reward_per_vote"] > 0
-                    else "-"
+                reward = f"{period.get('reward_per_period_ether', period.get('reward_per_period', 0) / 1e18):.2f}"
+
+                # Format reward per vote with better precision
+                rpv = period.get(
+                    "reward_per_vote_ether",
+                    period.get("reward_per_vote", 0) / 1e18,
                 )
-                updated = "✓" if period["updated"] else "✗"
+                if rpv > 0:
+                    if rpv < 0.0001:
+                        per_vote = f"{rpv:.8f}"
+                    elif rpv < 0.01:
+                        per_vote = f"{rpv:.6f}"
+                    else:
+                        per_vote = f"{rpv:.4f}"
+                else:
+                    per_vote = "-"
+
+                # Format USD per vote
+                usd_per_vote = period.get("reward_per_vote_usd", 0.0)
+                if usd_per_vote > 0:
+                    usd_display = format_usd_value(usd_per_vote)
+                else:
+                    usd_display = "-"
+
+                updated = "✓" if period.get("updated", False) else "✗"
 
                 row_data = [
                     str(period["timestamp"]),
                     epoch_date,
                     reward,
                     per_vote,
+                    usd_display,
                     updated,
                 ]
 
@@ -509,6 +867,50 @@ async def get_all_active_campaigns(
                     )
 
     rprint(f"\n[cyan]Campaign data saved to:[/cyan] {filename}")
+
+    # Show summary of saved data
+    if output_data["summary"]["total_campaigns"] > 0:
+        rprint("\n[bold green]📊 Data Summary:[/bold green]")
+        rprint(
+            f"  • Total campaigns: {output_data['summary']['total_campaigns']}"
+        )
+        rprint(
+            f"  • Total rewards allocated: {output_data['summary']['total_rewards_allocated']:.2f} ETH"
+        )
+        rprint(
+            f"  • Total rewards distributed: {output_data['summary']['total_rewards_distributed']:.2f} ETH"
+        )
+
+        if output_data["summary"]["highest_avg_reward_campaign_id"]:
+            rprint(
+                f"  • Best avg reward/vote: Campaign #{output_data['summary']['highest_avg_reward_campaign_id']} "
+            )
+            rprint(
+                f"    ({output_data['summary']['highest_avg_reward_per_vote']:.6f} tokens/vote)"
+            )
+
+        # Check if we have USD data
+        campaigns_with_usd = [
+            c
+            for c in output_data["campaigns"]
+            if c.get("reward_token_price_usd", 0) > 0
+        ]
+        if campaigns_with_usd:
+            best_usd_campaign = max(
+                campaigns_with_usd,
+                key=lambda x: x.get("average_reward_per_vote_usd", 0),
+            )
+            if best_usd_campaign.get("average_reward_per_vote_usd", 0) > 0:
+                rprint(
+                    f"  • Best USD reward/vote: Campaign #{best_usd_campaign['campaign_id']}"
+                )
+                rprint(
+                    f"    ({format_usd_value(best_usd_campaign['average_reward_per_vote_usd'])} per vote)"
+                )
+
+        rprint(
+            "\n[dim]Note: All period data including reward_per_vote and USD values is saved in the JSON file[/dim]"
+        )
 
 
 def main():

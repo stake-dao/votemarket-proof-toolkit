@@ -93,6 +93,18 @@ class GlobalConstants:
         56: os.getenv("BSC_MAINNET_RPC_URL") or None,
     }
 
+    chains_ids_to_name = {
+        1: "ethereum",
+        42161: "arbitrum",
+        10: "optimism",
+        8453: "base",
+        56: "bsc",
+        137: "polygon",
+        146: "sonic",
+        252: "fraxtal",
+    }
+
+
     @staticmethod
     def get_rpc_url(chain_id: int) -> str:
         """Get RPC URL for specified chain"""

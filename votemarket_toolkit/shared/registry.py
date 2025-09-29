@@ -287,6 +287,11 @@ def refresh_registry():
 # =============================================================================
 
 
+def get_token_factory_address() -> str:
+    """Get LaPoste TokenFactory address (same for all chains)."""
+    return "0x96006425Da428E45c282008b00004a00002B345e"
+
+
 def get_vote_event_hash(protocol: str) -> str:
     """Get vote event hash for a protocol."""
     # Pendle uses a different event signature

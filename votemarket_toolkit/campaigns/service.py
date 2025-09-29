@@ -6,6 +6,7 @@ This service handles:
 2. Calculating campaign lifecycle status (active/closable/closed)
 3. Checking proof insertion status for rewards claiming
 4. Parallel batch fetching for performance optimization
+5. LaPoste token wrapping/unwrapping detection
 
 Campaign Lifecycle Phases:
 - Active: Campaign is running or has remaining periods
@@ -17,6 +18,7 @@ Technical Implementation:
 - Uses bytecode deployment for efficient batch data fetching
 - Implements adaptive parallelism based on campaign count
 - Supports proof status checking via oracle contracts
+- Handles LaPoste wrapped tokens and their native counterparts
 """
 
 import asyncio
@@ -25,6 +27,7 @@ from typing import Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 
+from dataclasses import asdict
 from votemarket_toolkit.campaigns.models import (
     Campaign,
     CampaignStatus,
@@ -37,6 +40,7 @@ from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
+from votemarket_toolkit.shared.services.laposte_service import laposte_service
 
 
 class CampaignService:
@@ -499,23 +503,133 @@ class CampaignService:
             # This adds detailed status information for UI display and decision making
             for campaign in all_campaigns:
                 status_info = self.calculate_campaign_status(campaign)
-                # Convert dataclass to dictionary for consistency
-                campaign["status_info"] = {
-                    "status": status_info.status,
-                    "is_closed": status_info.is_closed,
-                    "can_close": status_info.can_close,
-                    "who_can_close": status_info.who_can_close,
-                    "days_until_public_close": status_info.days_until_public_close,
-                    "reason": status_info.reason,
-                }
+                # Convert dataclass to dictionary and handle the enum
+                status_dict = asdict(status_info)
+                # Convert the status enum to its string value
+                status_dict["status"] = status_info.status.value
+                campaign["status_info"] = status_dict
+
+            # Fetch token information (both native and receipt tokens)
+            await self._enrich_token_information(all_campaigns, chain_id)
 
             return all_campaigns
 
         except Exception as e:
-            error_msg = str(e)
-            print(f"Error fetching campaigns: {error_msg}")
-
+            print(f"Error getting campaigns: {str(e)}")
             return []
+
+    async def _enrich_token_information(
+        self, campaigns: List[Campaign], chain_id: int
+    ) -> None:
+        """
+        Enrich campaigns with token information including LaPoste wrapped tokens.
+
+        For each campaign, this method:
+        1. Gets the receipt reward token (what's stored on-chain)
+        2. Checks if it's a LaPoste wrapped token
+        3. If wrapped, fetches the native token information
+        4. Adds both receiptRewardToken and rewardToken to campaign data
+
+        Args:
+            campaigns: List of campaigns to enrich
+            chain_id: Chain ID
+        """
+        if not campaigns:
+            return
+
+        # Collect unique reward tokens
+        unique_tokens = list(
+            set(
+                c["campaign"]["reward_token"]
+                for c in campaigns
+                if c.get("campaign", {}).get("reward_token")
+            )
+        )
+
+        if not unique_tokens:
+            return
+
+        try:
+            # Get native tokens for all wrapped tokens
+            native_tokens = await laposte_service.get_native_tokens(
+                chain_id, unique_tokens
+            )
+
+            # Create mapping of wrapped to native
+            token_mapping = dict(zip(unique_tokens, native_tokens))
+
+            # Fetch token information for receipt tokens (on current chain)
+            token_info_cache = {}
+
+            for token in unique_tokens:
+                if token:
+                    info = await laposte_service.get_token_info(
+                        chain_id,
+                        token,
+                        is_native=False,
+                        original_chain_id=chain_id,
+                    )
+                    token_info_cache[token.lower()] = info
+
+            # Fetch native token information (might be on mainnet)
+            for i, native_token in enumerate(native_tokens):
+                if (
+                    native_token
+                    and native_token.lower() != unique_tokens[i].lower()
+                ):
+                    # It's a different token (wrapped), fetch from mainnet
+                    info = await laposte_service.get_token_info(
+                        chain_id,
+                        native_token,
+                        is_native=True,
+                        original_chain_id=chain_id,
+                    )
+                    token_info_cache[native_token.lower()] = info
+
+            # Enrich each campaign
+            for campaign in campaigns:
+                reward_token = campaign["campaign"].get("reward_token")
+                if not reward_token:
+                    continue
+
+                reward_token_lower = reward_token.lower()
+                native_token = token_mapping.get(reward_token, reward_token)
+                native_token_lower = (
+                    native_token.lower()
+                    if native_token
+                    else reward_token_lower
+                )
+
+                # Get receipt token info (the wrapped/LaPoste token on-chain)
+                receipt_info = token_info_cache.get(
+                    reward_token_lower,
+                    {
+                        "name": "Unknown",
+                        "symbol": "???",
+                        "address": reward_token,
+                        "decimals": 18,
+                        "chainId": chain_id,
+                        "price": 0.0,
+                    },
+                )
+
+                # Get native token info
+                if native_token_lower != reward_token_lower:
+                    # It's wrapped, get the native token info
+                    native_info = token_info_cache.get(
+                        native_token_lower, receipt_info
+                    )
+                else:
+                    # Not wrapped, both are the same
+                    native_info = receipt_info
+
+                campaign["receipt_reward_token"] = receipt_info
+                campaign["reward_token"] = native_info
+
+        except Exception as e:
+            print(
+                f"Warning: Could not enrich token information: {str(e)[:100]}"
+            )
 
     async def get_user_campaign_proof_status(
         self,
