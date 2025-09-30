@@ -19,7 +19,7 @@ from votemarket_toolkit.commands.validation import (
 )
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.pricing import (
-    get_erc20_price_in_usd,
+    get_erc20_prices_in_usd,
     calculate_usd_per_vote,
     format_usd_value,
 )
@@ -277,11 +277,19 @@ async def get_all_active_campaigns(
                 print(
                     f"Fetching token prices for {len(unique_tokens)} tokens on chain {chain_id}..."
                 )
-                for token in unique_tokens:
+                # Prepare batch request: list of (token_address, amount)
+                # Using 1e18 as dummy amount since we only need unit price
+                token_list = [(token, 10**18) for token in unique_tokens]
+                prices_result = get_erc20_prices_in_usd(
+                    chain_id, token_list, timestamp=None
+                )
+
+                # Store prices in cache (prices_result returns list of (formatted_str, float))
+                for token, (_, price_float) in zip(unique_tokens, prices_result):
                     cache_key = f"{chain_id}:{token.lower()}"
                     if cache_key not in token_price_cache:
-                        price = get_erc20_price_in_usd(token, chain_id)
-                        token_price_cache[cache_key] = price
+                        # The price_float is for 1 token (since we passed 10**18 wei)
+                        token_price_cache[cache_key] = price_float
 
     # Display results split by platform
     for chain_id, platform, campaigns in platforms_with_campaigns:
