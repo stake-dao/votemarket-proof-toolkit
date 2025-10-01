@@ -19,9 +19,9 @@ from votemarket_toolkit.commands.validation import (
 )
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.pricing import (
-    get_erc20_prices_in_usd,
     calculate_usd_per_vote,
     format_usd_value,
+    get_erc20_prices_in_usd,
 )
 
 console = Console()
@@ -285,7 +285,9 @@ async def get_all_active_campaigns(
                 )
 
                 # Store prices in cache (prices_result returns list of (formatted_str, float))
-                for token, (_, price_float) in zip(unique_tokens, prices_result):
+                for token, (_, price_float) in zip(
+                    unique_tokens, prices_result
+                ):
                     cache_key = f"{chain_id}:{token.lower()}"
                     if cache_key not in token_price_cache:
                         # The price_float is for 1 token (since we passed 10**18 wei)
@@ -486,11 +488,11 @@ async def get_all_active_campaigns(
                     ]
                     / 1e18,
                     "total_reward_amount_usd": (
-                        c["campaign"]["total_reward_amount"] / 1e18
-                    )
-                    * token_price_usd
-                    if token_price_usd > 0
-                    else 0.0,
+                        (c["campaign"]["total_reward_amount"] / 1e18)
+                        * token_price_usd
+                        if token_price_usd > 0
+                        else 0.0
+                    ),
                     "max_reward_per_vote": c["campaign"][
                         "max_reward_per_vote"
                     ],
@@ -498,13 +500,15 @@ async def get_all_active_campaigns(
                         "max_reward_per_vote"
                     ]
                     / 1e18,
-                    "max_reward_per_vote_usd": calculate_usd_per_vote(
-                        c["campaign"]["max_reward_per_vote"],
-                        token_price_usd,
-                        18,
-                    )
-                    if token_price_usd > 0
-                    else 0.0,
+                    "max_reward_per_vote_usd": (
+                        calculate_usd_per_vote(
+                            c["campaign"]["max_reward_per_vote"],
+                            token_price_usd,
+                            18,
+                        )
+                        if token_price_usd > 0
+                        else 0.0
+                    ),
                     "average_reward_per_vote": avg_reward_per_vote,
                     "average_reward_per_vote_ether": avg_reward_per_vote
                     / 1e18,
@@ -634,11 +638,11 @@ async def get_all_active_campaigns(
                     ]
                     / 1e18,
                     "total_reward_amount_usd": (
-                        c["campaign"]["total_reward_amount"] / 1e18
-                    )
-                    * token_price_usd
-                    if token_price_usd > 0
-                    else 0.0,
+                        (c["campaign"]["total_reward_amount"] / 1e18)
+                        * token_price_usd
+                        if token_price_usd > 0
+                        else 0.0
+                    ),
                     "max_reward_per_vote": c["campaign"][
                         "max_reward_per_vote"
                     ],
@@ -646,13 +650,15 @@ async def get_all_active_campaigns(
                         "max_reward_per_vote"
                     ]
                     / 1e18,
-                    "max_reward_per_vote_usd": calculate_usd_per_vote(
-                        c["campaign"]["max_reward_per_vote"],
-                        token_price_usd,
-                        18,
-                    )
-                    if token_price_usd > 0
-                    else 0.0,
+                    "max_reward_per_vote_usd": (
+                        calculate_usd_per_vote(
+                            c["campaign"]["max_reward_per_vote"],
+                            token_price_usd,
+                            18,
+                        )
+                        if token_price_usd > 0
+                        else 0.0
+                    ),
                     "average_reward_per_vote": avg_reward_per_vote,
                     "average_reward_per_vote_ether": avg_reward_per_vote
                     / 1e18,

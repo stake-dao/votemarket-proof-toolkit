@@ -3,9 +3,10 @@ Pricing utilities for fetching ERC20 token prices.
 """
 
 import time
-from typing import Dict, List, Optional, Tuple
-from eth_utils.address import to_checksum_address
+from typing import List, Optional, Tuple
+
 import requests
+from eth_utils.address import to_checksum_address
 
 try:
     from votemarket_toolkit.shared.constants import GlobalConstants
@@ -24,7 +25,6 @@ except ImportError:
 # Price cache to avoid repeated API calls
 _price_cache = {}
 _cache_ttl = 300  # 5 minutes TTL
-
 
 
 def calculate_usd_per_vote(
@@ -144,17 +144,18 @@ def get_erc20_prices_in_usd(
     if len(all_params) > 2000:
         # Split into smaller batches
         batch_size = 25
+        batch_results_all = []
         for i in range(0, len(uncached_tokens), batch_size):
             batch = uncached_tokens[i : i + batch_size]
-            batch_results = get_batch_erc20_prices_in_usd(
-                chain_id, batch, timestamp
-            )
-            # Fill in the results
-            result_idx = 0
-            for j, r in enumerate(results):
-                if r is None and result_idx < len(batch_results):
-                    results[j] = batch_results[result_idx]
-                    result_idx += 1
+            batch_results = get_erc20_prices_in_usd(chain_id, batch, timestamp)
+            batch_results_all.extend(batch_results)
+
+        # Fill in the None placeholders with batch results
+        batch_idx = 0
+        for i, r in enumerate(results):
+            if r is None:
+                results[i] = batch_results_all[batch_idx]
+                batch_idx += 1
         return results
 
     # Determine API endpoint
@@ -166,60 +167,46 @@ def get_erc20_prices_in_usd(
     else:
         all_uris = f"https://coins.llama.fi/prices/current/{all_params}"
 
-    failed_tokens = []
-
     try:
-        # Make request without rate limiter (not imported)
         response = requests.get(all_uris, timeout=30)
         response.raise_for_status()
         all_prices = response.json()
 
-        # Process each token
-        result_idx = 0
+        if "coins" not in all_prices or not all_prices["coins"]:
+            # API returned no data
+            for i in range(len(results)):
+                if results[i] is None:
+                    results[i] = ("0.00", 0)
+            return results
+
+        prices = all_prices["coins"]
+
+        # Process each uncached token
         for i, (token_address, unformatted_amount) in enumerate(token_amounts):
             if results[i] is not None:
-                continue  # Already cached
+                continue
 
             token_address = to_checksum_address(token_address.lower())
             token_key = f"{network}:{token_address}"
+            price_info = prices.get(token_key)
 
-            if (
-                "error" in all_prices
-                or "coins" not in all_prices
-                or len(all_prices["coins"]) == 0
-            ):
-                results[i] = ("0.00", 0)
+            if price_info:
+                decimals = int(price_info["decimals"])
+                amount = int(unformatted_amount)
+                token_price = float(price_info["price"])
+                price = token_price * (amount / 10**decimals)
+                results[i] = ("{:,.2f}".format(price), price)
+
+                # Cache the result
+                cache_key = f"{network}:{token_address}:{timestamp or 'current'}"
+                _price_cache[cache_key] = (token_price, current_time, decimals)
             else:
-                prices = all_prices["coins"]
-                price_info = prices.get(token_key)
-                if price_info:
-                    decimals = int(price_info["decimals"])
-                    amount = int(unformatted_amount)
-                    token_price = float(price_info["price"])
-                    price = token_price * (amount / 10**decimals)
-                    results[i] = ("{:,.2f}".format(price), price)
-                    # Cache the price
-                    cache_key = (
-                        f"{network}:{token_address}:{timestamp or 'current'}"
-                    )
-                    _price_cache[cache_key] = (
-                        token_price,
-                        current_time,
-                        decimals,
-                    )
-                else:
-                    # Mark as failed for potential GeckoTerminal lookup
-                    failed_tokens.append(
-                        (i, token_address, unformatted_amount)
-                    )
-                    results[i] = ("0.00", 0)
+                results[i] = ("0.00", 0)
 
     except requests.RequestException as e:
-        print(f"Error fetching batch prices from Defillama: {e}")
-        # Mark all uncached tokens as failed
-        for i, (token_address, unformatted_amount) in enumerate(token_amounts):
+        print(f"Error fetching prices from DefiLlama: {e}")
+        for i in range(len(results)):
             if results[i] is None:
-                failed_tokens.append((i, token_address, unformatted_amount))
                 results[i] = ("0.00", 0)
 
     return results

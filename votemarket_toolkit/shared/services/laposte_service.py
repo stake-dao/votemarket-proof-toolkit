@@ -1,12 +1,14 @@
 """Service for handling LaPoste wrapped tokens and their native counterparts."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
+
 from eth_utils import to_checksum_address
+
+from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
-from votemarket_toolkit.shared import registry
 
 
 class LaPosteService:
@@ -70,7 +72,7 @@ class LaPosteService:
                 native if native != "0x" + "0" * 40 else wrapped
                 for native, wrapped in zip(native_tokens, wrapped_tokens)
             ]
-        except Exception as e:
+        except Exception:
             # If TokenFactory doesn't exist or fails, assume tokens are not wrapped
             # This is common on chains without LaPoste
             return wrapped_tokens
@@ -82,8 +84,8 @@ class LaPosteService:
         is_native: bool = False,
         original_chain_id: int = None,
     ) -> Dict:
-        # TODO : Use RPC call batch to fetch token infos
-    
+        # Fetch token info for all reward tokens
+
         """
         Get token information including metadata and price.
 

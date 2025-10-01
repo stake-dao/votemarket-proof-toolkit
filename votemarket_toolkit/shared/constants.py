@@ -104,7 +104,6 @@ class GlobalConstants:
         252: "fraxtal",
     }
 
-
     @staticmethod
     def get_rpc_url(chain_id: int) -> str:
         """Get RPC URL for specified chain"""

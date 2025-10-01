@@ -1634,10 +1634,9 @@ wheels = [
 
 [[package]]
 name = "votemarket-toolkit"
-version = "0.0.2"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "black" },
     { name = "cmake" },
     { name = "eth-utils" },
     { name = "fastparquet" },
@@ -1646,14 +1645,19 @@ dependencies = [
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "rich" },
-    { name = "ruff" },
     { name = "w3multicall" },
     { name = "web3" },
 ]
 
+[package.optional-dependencies]
+dev = [
+    { name = "black" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
-    { name = "black", specifier = ">=24.1.0" },
+    { name = "black", marker = "extra == 'dev'", specifier = ">=24.1.0" },
     { name = "cmake", specifier = ">=3.30.5" },
     { name = "eth-utils", specifier = ">=5.1.0" },
     { name = "fastparquet", specifier = ">=2024.5.0" },
@@ -1662,7 +1666,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=17.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "rich", specifier = ">=13.7.0" },
-    { name = "ruff", specifier = ">=0.7.4" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.4" },
     { name = "w3multicall", specifier = ">=0.3.1" },
     { name = "web3", specifier = ">=7.12.0" },
 ]

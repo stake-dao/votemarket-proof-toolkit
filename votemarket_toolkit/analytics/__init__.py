@@ -1,22 +1,20 @@
 """Analytics module for VoteMarket toolkit."""
 
 from .models import (
-    RoundMetadata,
     GaugeAnalytics,
-    RoundAnalytics,
-    GaugeRoundData,
     GaugeHistory,
+    GaugeRoundData,
+    RoundAnalytics,
+    RoundMetadata,
     VoteBreakdown,
 )
-from .service import AnalyticsService, get_analytics_service
 from .optimizer import (
     CampaignOptimizer,
-    get_campaign_optimizer,
     OptimalCampaignResult,
-    CampaignParameters,
-    MarketPositioning,
     PeerFilters,
+    get_campaign_optimizer,
 )
+from .service import AnalyticsService, get_analytics_service
 
 __all__ = [
     "AnalyticsService",
@@ -24,8 +22,6 @@ __all__ = [
     "CampaignOptimizer",
     "get_campaign_optimizer",
     "OptimalCampaignResult",
-    "CampaignParameters",
-    "MarketPositioning",
     "PeerFilters",
     "RoundMetadata",
     "GaugeAnalytics",

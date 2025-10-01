@@ -6,9 +6,9 @@ from votemarket_toolkit.utils.blockchain import (
 )
 from votemarket_toolkit.utils.file_utils import load_json
 from votemarket_toolkit.utils.pricing import (
-    get_erc20_prices_in_usd,
     calculate_usd_per_vote,
     format_usd_value,
+    get_erc20_prices_in_usd,
 )
 
 __all__ = [

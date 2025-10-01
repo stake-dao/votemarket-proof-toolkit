@@ -4,7 +4,7 @@ Type definitions for VoteMarket campaigns.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 # =============================================================================
 # ENUMS

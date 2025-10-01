@@ -82,8 +82,8 @@ async def process_protocol(
     protocol_data: ProtocolData = {"platforms": {}}
 
     for platform in platforms:
-        chain_id = platform["chain_id"]
-        platform_address = platform["address"]
+        chain_id = platform.chain_id
+        platform_address = platform.address
 
         rprint(f"Processing platform: {platform_address} on chain {chain_id}")
 

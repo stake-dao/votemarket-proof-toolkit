@@ -23,6 +23,24 @@ Generate proofs for campaign claims:
 - Generates gauge weight proofs
 - Saves proofs in JSON format
 
+### 4. compute_campaign.py
+**Optimize campaign parameters based on market data:**
+- Analyzes your gauge's historical performance (EMA smoothed)
+- Compares to current market rates (robust statistics)
+- Calculates optimal `max_reward_per_vote`
+- Shows budget analysis (are you over/under-budgeted?)
+- Provides market positioning vs peers
+
+**Example output:**
+```
+Budget Analysis:
+  • Your budget: 30,000 tokens
+  • Tokens needed: 9,062 tokens to achieve $0.001185/vote
+  • ⚠ Over-budgeted by 70%
+
+  💡 You can reduce budget to 9,062 tokens to save 20,938 tokens
+```
+
 ## Running Examples
 
 ```bash

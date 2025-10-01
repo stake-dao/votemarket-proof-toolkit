@@ -23,11 +23,11 @@ Technical Implementation:
 
 import asyncio
 import time
+from dataclasses import asdict
 from typing import Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 
-from dataclasses import asdict
 from votemarket_toolkit.campaigns.models import (
     Campaign,
     CampaignStatus,
@@ -36,11 +36,11 @@ from votemarket_toolkit.campaigns.models import (
 )
 from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.services.laposte_service import laposte_service
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
-from votemarket_toolkit.shared.services.laposte_service import laposte_service
 
 
 class CampaignService:

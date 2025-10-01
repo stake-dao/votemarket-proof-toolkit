@@ -15,25 +15,24 @@ Raw Base URL: https://raw.githubusercontent.com/stake-dao/votemarket-analytics/r
 Available Protocols:
 - curve
 - balancer
-- pancakeswap
 - pendle
 """
 
-import httpx
 import time
 from typing import Dict, List, Optional
+
+import httpx
 from eth_utils import to_checksum_address
 
 from votemarket_toolkit.analytics.models import (
-    RoundMetadata,
     GaugeAnalytics,
-    RoundAnalytics,
-    GaugeRoundData,
     GaugeHistory,
+    GaugeRoundData,
+    RoundAnalytics,
+    RoundMetadata,
     VoteBreakdown,
 )
 from votemarket_toolkit.campaigns.service import CampaignService
-from votemarket_toolkit.campaigns.models import CampaignStatus
 from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
 
 
@@ -170,9 +169,7 @@ class AnalyticsService:
             gauge_analytics.append(
                 GaugeAnalytics(
                     gauge=to_checksum_address(analytic_data["gauge"]),
-                    non_blacklisted_votes=analytic_data[
-                        "nonBlacklistedVotes"
-                    ],
+                    non_blacklisted_votes=analytic_data["nonBlacklistedVotes"],
                     total_deposited=analytic_data["totalDeposited"],
                     dollar_per_vote=analytic_data["dollarPerVote"],
                     incentive_directed=analytic_data["incentiveDirected"],
@@ -188,9 +185,7 @@ class AnalyticsService:
         return RoundAnalytics(
             round_id=round_id,
             total_deposited_usd=data["totalDepositedUSD"],
-            global_average_dollar_per_vote=data[
-                "globalAverageDollarPerVote"
-            ],
+            global_average_dollar_per_vote=data["globalAverageDollarPerVote"],
             global_average_efficiency=data["globalAverageEfficiency"],
             analytics=gauge_analytics,
         )
@@ -446,7 +441,9 @@ class AnalyticsService:
         elif chain_id:
             # All platforms on specific chain
             all_platforms = campaign_service.get_all_platforms(protocol)
-            chain_platforms = [p for p in all_platforms if p.chain_id == chain_id]
+            chain_platforms = [
+                p for p in all_platforms if p.chain_id == chain_id
+            ]
             if not chain_platforms:
                 raise ValueError(
                     f"No platform found for protocol {protocol} on chain {chain_id}"
@@ -471,27 +468,37 @@ class AnalyticsService:
             version_priority = {"v2": 3, "v2_old": 2, "v1": 1}
             for cid, chain_platforms in by_chain.items():
                 chain_platforms.sort(
-                    key=lambda p: version_priority.get(p.version, 0), reverse=True
+                    key=lambda p: version_priority.get(p.version, 0),
+                    reverse=True,
                 )
                 platforms_to_query.append((cid, chain_platforms[0].address))
 
         # Fetch campaigns from all platforms concurrently
         async def fetch_platform_campaigns(chain_id: int, platform: str):
             try:
-                return (chain_id, platform, await campaign_service.get_campaigns(
-                    chain_id=chain_id,
-                    platform_address=platform,
-                    check_proofs=False,
-                ))
+                return (
+                    chain_id,
+                    platform,
+                    await campaign_service.get_campaigns(
+                        chain_id=chain_id,
+                        platform_address=platform,
+                        check_proofs=False,
+                    ),
+                )
             except Exception as e:
-                print(f"Warning: Failed to fetch campaigns for chain {chain_id}: {e}")
+                print(
+                    f"Warning: Failed to fetch campaigns for chain {chain_id}: {e}"
+                )
                 return (chain_id, platform, [])
 
         import asyncio
-        results = await asyncio.gather(*[
-            fetch_platform_campaigns(cid, platform)
-            for cid, platform in platforms_to_query
-        ])
+
+        results = await asyncio.gather(
+            *[
+                fetch_platform_campaigns(cid, platform)
+                for cid, platform in platforms_to_query
+            ]
+        )
 
         # Aggregate all campaigns
         all_campaigns = []
@@ -507,10 +514,14 @@ class AnalyticsService:
 
             # Also check timestamp-based status
             current_timestamp = int(time.time())
-            end_timestamp = campaign.get("campaign", {}).get("end_timestamp", 0)
+            end_timestamp = campaign.get("campaign", {}).get(
+                "end_timestamp", 0
+            )
 
             # Active if: not closed AND (has remaining periods OR hasn't ended yet)
-            if not is_closed and (remaining_periods > 0 or end_timestamp >= current_timestamp):
+            if not is_closed and (
+                remaining_periods > 0 or end_timestamp >= current_timestamp
+            ):
                 active_campaigns.append((cid, platform, campaign))
 
         if not active_campaigns:
@@ -547,11 +558,15 @@ class AnalyticsService:
                     prices_result = get_erc20_prices_in_usd(
                         cid, token_list, timestamp=None
                     )
-                    for token, (_, price_float) in zip(unique_tokens, prices_result):
+                    for token, (_, price_float) in zip(
+                        unique_tokens, prices_result
+                    ):
                         cache_key = f"{cid}:{token.lower()}"
                         token_price_cache[cache_key] = price_float
                 except Exception as e:
-                    print(f"Warning: Failed to fetch prices for chain {cid}: {e}")
+                    print(
+                        f"Warning: Failed to fetch prices for chain {cid}: {e}"
+                    )
 
         # Calculate $/vote for each campaign
         campaign_data = []
@@ -624,9 +639,7 @@ class AnalyticsService:
         )
 
         sorted_dpv = sorted(dollar_per_vote_list)
-        median_dpv = (
-            sorted_dpv[len(sorted_dpv) // 2] if sorted_dpv else 0.0
-        )
+        median_dpv = sorted_dpv[len(sorted_dpv) // 2] if sorted_dpv else 0.0
         min_dpv = min(dollar_per_vote_list) if dollar_per_vote_list else 0.0
         max_dpv = max(dollar_per_vote_list) if dollar_per_vote_list else 0.0
 
@@ -687,9 +700,7 @@ class AnalyticsService:
         chain_ids = [cid for cid, _ in platforms_to_query]
 
         # Calculate percentiles for strategy recommendations
-        percentile_25 = (
-            sorted_dpv[len(sorted_dpv) // 4] if sorted_dpv else 0.0
-        )
+        percentile_25 = sorted_dpv[len(sorted_dpv) // 4] if sorted_dpv else 0.0
         percentile_75 = (
             sorted_dpv[3 * len(sorted_dpv) // 4] if sorted_dpv else 0.0
         )

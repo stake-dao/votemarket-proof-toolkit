@@ -5,7 +5,6 @@ Type definitions for VoteMarket analytics data.
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-
 # =============================================================================
 # DATACLASSES
 # =============================================================================
@@ -93,9 +92,7 @@ class GaugeHistory:
 
     def get_recent_rounds(self, n: int = 5) -> List[GaugeRoundData]:
         """Get the N most recent rounds."""
-        return sorted(self.history, key=lambda x: x.round_id, reverse=True)[
-            :n
-        ]
+        return sorted(self.history, key=lambda x: x.round_id, reverse=True)[:n]
 
     def calculate_average_dollar_per_vote(self, n_rounds: int = 3) -> float:
         """
@@ -134,9 +131,7 @@ class GaugeHistory:
             return 0.0
 
         valid_rounds = [
-            r.analytic.efficiency
-            for r in recent
-            if r.analytic.efficiency > 0
+            r.analytic.efficiency for r in recent if r.analytic.efficiency > 0
         ]
 
         return sum(valid_rounds) / len(valid_rounds) if valid_rounds else 0.0
@@ -159,6 +154,4 @@ class GaugeHistory:
         Returns:
             Dict mapping round_id to total deposited
         """
-        return {
-            r.round_id: r.analytic.total_deposited for r in self.history
-        }
+        return {r.round_id: r.analytic.total_deposited for r in self.history}
