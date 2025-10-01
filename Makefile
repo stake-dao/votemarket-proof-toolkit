@@ -41,7 +41,12 @@ build:
 
 deploy:
 	@echo "Deploying to PyPI..."
-	uv run twine upload dist/*
+	@if [ -z "$$UV_PUBLISH_TOKEN" ]; then \
+		echo "Error: UV_PUBLISH_TOKEN not set. Get token from https://pypi.org/manage/account/token/"; \
+		echo "Then run: export UV_PUBLISH_TOKEN=pypi-your-token"; \
+		exit 1; \
+	fi
+	uv publish --token $$UV_PUBLISH_TOKEN
 	@echo "Deploy complete!"
 
 clean-build:
