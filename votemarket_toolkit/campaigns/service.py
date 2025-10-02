@@ -22,18 +22,11 @@ Technical Implementation:
 """
 
 import asyncio
-import time
-from dataclasses import asdict
 from typing import Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 
-from votemarket_toolkit.campaigns.models import (
-    Campaign,
-    CampaignStatus,
-    CampaignStatusInfo,
-    Platform,
-)
+from votemarket_toolkit.campaigns.models import Campaign, Platform
 from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.laposte_service import laposte_service
@@ -76,114 +69,6 @@ class CampaignService:
         if chain_id not in self.web3_services:
             self.web3_services[chain_id] = Web3Service.get_instance(chain_id)
         return self.web3_services[chain_id]
-
-    def calculate_campaign_status(
-        self, campaign: Dict, current_timestamp: Optional[int] = None
-    ) -> CampaignStatusInfo:
-        """
-        Calculate detailed campaign status based on VoteMarket V2 lifecycle rules.
-
-        VoteMarket V2 campaigns have specific time-based closing windows:
-        1. First 6 months after end: Users can claim rewards (NOT_CLOSABLE)
-        2. Months 6-7 after end: Manager can close, funds return to manager (CLOSABLE_BY_MANAGER)
-        3. After 7 months: Anyone can close, funds go to fee collector (CLOSABLE_BY_EVERYONE)
-
-        Args:
-            campaign: Campaign data dictionary containing:
-                - is_closed: Boolean indicating if campaign is already closed
-                - campaign: Dict with campaign details including end_timestamp
-                - remaining_periods: Number of periods still to be distributed
-            current_timestamp: Current timestamp in seconds (defaults to now)
-
-        Returns:
-            CampaignStatusInfo: Dictionary containing:
-                - status: CampaignStatus enum value
-                - is_closed: Boolean indicating if closed
-                - can_close: Boolean indicating if closable now
-                - who_can_close: "no_one", "manager_only", or "everyone"
-                - days_until_public_close: Days until anyone can close (or None)
-                - reason: Human-readable explanation of status
-
-        Example:
-            >>> status = service.calculate_campaign_status(campaign_data)
-            >>> if status["can_close"]:
-            >>>     print(f"Campaign can be closed by: {status['who_can_close']}")
-        """
-        if current_timestamp is None:
-            current_timestamp = int(time.time())
-
-        # If already closed
-        if campaign.get("is_closed", False):
-            return CampaignStatusInfo(
-                status=CampaignStatus.CLOSED,
-                is_closed=True,
-                can_close=False,
-                who_can_close="no_one",
-                days_until_public_close=None,
-                reason="Campaign is already closed",
-            )
-
-        # Get campaign details
-        c = campaign.get("campaign", {})
-        end_timestamp = c.get("end_timestamp", 0)
-        remaining_periods = campaign.get("remaining_periods", 0)
-
-        # Calculate time since end
-        seconds_since_end = current_timestamp - end_timestamp
-        days_since_end = seconds_since_end / 86400  # Convert to days
-
-        # VoteMarket V2 thresholds
-        CLAIM_DEADLINE_DAYS = 180  # 6 months = ~180 days
-        MANAGER_CLOSE_DAYS = 210  # 7 months = ~210 days
-
-        # If campaign hasn't ended yet or has remaining periods
-        if current_timestamp < end_timestamp or remaining_periods > 0:
-            return CampaignStatusInfo(
-                status=CampaignStatus.ACTIVE,
-                is_closed=False,
-                can_close=False,
-                who_can_close="no_one",
-                days_until_public_close=None,
-                reason=f"Campaign is active with {remaining_periods} periods remaining",
-            )
-
-        # Campaign has ended, check which phase we're in
-        if days_since_end < CLAIM_DEADLINE_DAYS:
-            # Still in claim period (first 6 months)
-            days_until_manager_close = CLAIM_DEADLINE_DAYS - days_since_end
-            return CampaignStatusInfo(
-                status=CampaignStatus.NOT_CLOSABLE,
-                is_closed=False,
-                can_close=False,
-                who_can_close="no_one",
-                days_until_public_close=None,
-                reason=f"In claim period - {int(days_until_manager_close)} days until manager can close",
-            )
-
-        elif days_since_end < MANAGER_CLOSE_DAYS:
-            # In manager-only close window (months 6-7)
-            days_since_claim_deadline = days_since_end - CLAIM_DEADLINE_DAYS
-            days_until_public = MANAGER_CLOSE_DAYS - days_since_end
-            return CampaignStatusInfo(
-                status=CampaignStatus.CLOSABLE_BY_MANAGER,
-                is_closed=False,
-                can_close=True,
-                who_can_close="manager_only",
-                days_until_public_close=int(days_until_public),
-                reason=f"Manager can close ({int(days_since_claim_deadline)} days past claim deadline, public in {int(days_until_public)} days)",
-            )
-
-        else:
-            # After 7 months - anyone can close
-            days_since_public_close = days_since_end - MANAGER_CLOSE_DAYS
-            return CampaignStatusInfo(
-                status=CampaignStatus.CLOSABLE_BY_EVERYONE,
-                is_closed=False,
-                can_close=True,
-                who_can_close="everyone",
-                days_until_public_close=0,
-                reason=f"Anyone can close ({int(days_since_public_close)} days past public close date) - funds go to fee collector",
-            )
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
@@ -498,16 +383,6 @@ class CampaignService:
 
                 except Exception as e:
                     print(f"Warning: Could not check proofs: {str(e)[:100]}")
-
-            # Calculate lifecycle status for each campaign
-            # This adds detailed status information for UI display and decision making
-            for campaign in all_campaigns:
-                status_info = self.calculate_campaign_status(campaign)
-                # Convert dataclass to dictionary and handle the enum
-                status_dict = asdict(status_info)
-                # Convert the status enum to its string value
-                status_dict["status"] = status_info.status.value
-                campaign["status_info"] = status_dict
 
             # Fetch token information (both native and receipt tokens)
             await self._enrich_token_information(all_campaigns, chain_id)

@@ -4,7 +4,7 @@ from votemarket_toolkit.utils.blockchain import (
     get_rounded_epoch,
     pad_address,
 )
-from votemarket_toolkit.utils.file_utils import load_json
+from votemarket_toolkit.utils.formatters import load_json
 from votemarket_toolkit.utils.pricing import (
     calculate_usd_per_vote,
     format_usd_value,

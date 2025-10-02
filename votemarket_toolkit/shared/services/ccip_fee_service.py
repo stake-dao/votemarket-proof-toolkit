@@ -6,7 +6,7 @@ from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
-from votemarket_toolkit.utils.file_utils import load_json
+from votemarket_toolkit.utils.formatters import load_json
 
 CCIP_ADAPTER_ADDRESS = "0x4200740090f72e89302f001da5860000007d7ea7"
 

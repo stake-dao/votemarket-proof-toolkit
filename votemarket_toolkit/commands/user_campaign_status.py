@@ -5,19 +5,20 @@ This command allows users to verify if their proofs have been properly inserted
 on the oracle for a specific VoteMarket campaign, enabling them to claim rewards.
 """
 
+import argparse
 import asyncio
 import json
 import sys
-from typing import List
+from typing import Dict, List
 
 from eth_utils.address import to_checksum_address
 from rich import print as rprint
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from votemarket_toolkit.campaigns.service import campaign_service
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.utils.formatters import console, format_address, format_timestamp
 from votemarket_toolkit.utils.interactive import (
     select_campaign,
     select_chain,
@@ -25,19 +26,61 @@ from votemarket_toolkit.utils.interactive import (
 )
 
 
-def format_address(addr: str) -> str:
-    """Format address as 0x...abcd"""
-    if not addr:
-        return "N/A"
-    return f"{addr[:6]}...{addr[-4:]}"
+def _create_period_status_table(periods: List[Dict], show_header: bool = True) -> Table:
+    """Create a Rich table for period status display."""
+    table = Table(
+        title="User Proof Status by Period" if show_header else None,
+        show_header=True,
+        header_style="bold",
+    )
+    table.add_column("Period", style="cyan", width=8)
+    table.add_column("Epoch", style="yellow", width=11)
+    table.add_column("Date", style="white", width=16)
+    table.add_column("Block", style="yellow", width=10)
+    table.add_column("Point Data", style="green", width=12)
+    table.add_column("User Slope", style="blue", width=12)
+    table.add_column("Slope Value", style="white", width=15)
+    table.add_column("Last Vote", style="white", width=16)
+    table.add_column("Claimable", style="magenta", width=10)
 
+    # Add data rows
+    for idx, period_status in enumerate(periods):
+        period_num = f"#{idx + 1}"
+        epoch_timestamp = str(period_status["timestamp"])
+        date = format_timestamp(period_status["timestamp"])
 
-def format_epoch_timestamp(timestamp: int) -> str:
-    """Format epoch timestamp to readable date"""
-    from datetime import datetime
+        # Status indicators
+        block_status = "✓" if period_status.get("block_updated") else "✗"
+        point_status = "✓" if period_status.get("point_data_inserted") else "✗"
+        user_slope_status = "✓" if period_status.get("user_slope_inserted") else "✗"
 
-    dt = datetime.fromtimestamp(timestamp)
-    return dt.strftime("%Y-%m-%d %H:%M")
+        # Slope details
+        slope_value = "N/A"
+        last_vote = "N/A"
+        if period_status.get("user_slope_data"):
+            slope_data = period_status["user_slope_data"]
+            if slope_data.get("slope", 0) > 0:
+                slope_value = f"{slope_data['slope']:,.0f}"
+            if slope_data.get("last_vote"):
+                last_vote = format_timestamp(slope_data["last_vote"])
+
+        # Overall claimability
+        claimable = "Yes" if period_status.get("is_claimable") else "No"
+        claimable_style = "green" if claimable == "Yes" else "red"
+
+        table.add_row(
+            period_num,
+            epoch_timestamp,
+            date,
+            block_status,
+            point_status,
+            user_slope_status,
+            slope_value,
+            last_vote,
+            f"[{claimable_style}]{claimable}[/{claimable_style}]",
+        )
+
+    return table
 
 
 async def check_user_campaign_status(
@@ -56,10 +99,9 @@ async def check_user_campaign_status(
         platform_address: VoteMarket platform contract address
         campaign_ids: List of Campaign IDs to check
         user_address: User address to check proofs for
-        output_format: Output format (table, json, csv)
+        output_format: Output format (table, json)
         brief: Show brief output only
     """
-    console = Console()
     all_results = []
 
     for campaign_id in campaign_ids:
@@ -77,7 +119,7 @@ async def check_user_campaign_status(
                 chain_id=chain_id,
                 platform_address=platform_address,
                 campaign_id=campaign_id,
-                check_proofs=False,
+                check_proofs=True,
             )
 
             if not campaigns:
@@ -88,9 +130,7 @@ async def check_user_campaign_status(
                         to_checksum_address(platform_address.lower()),
                         "vm_platform",
                     )
-                    total_campaigns = (
-                        platform_contract.functions.campaignCount().call()
-                    )
+                    total_campaigns = platform_contract.functions.campaignCount().call()
 
                     if output_format == "json":
                         result = {
@@ -99,9 +139,7 @@ async def check_user_campaign_status(
                         }
                         all_results.append(result)
                     else:
-                        rprint(
-                            f"[red]Error:[/red] Campaign #{campaign_id} not found"
-                        )
+                        rprint(f"[red]Error:[/red] Campaign #{campaign_id} not found")
                         rprint(
                             f"[yellow]This platform has campaigns 0-{total_campaigns-1}[/yellow]"
                         )
@@ -112,21 +150,17 @@ async def check_user_campaign_status(
                             {"error": f"Campaign #{campaign_id} not found"}
                         )
                     else:
-                        rprint(
-                            f"[red]Error:[/red] Campaign #{campaign_id} not found"
-                        )
+                        rprint(f"[red]Error:[/red] Campaign #{campaign_id} not found")
                 continue
 
             campaign = campaigns[0]
 
             # Get user proof status
-            proof_status = (
-                await campaign_service.get_user_campaign_proof_status(
-                    chain_id=chain_id,
-                    platform_address=platform_address,
-                    campaign=campaign,
-                    user_address=user_address,
-                )
+            proof_status = await campaign_service.get_user_campaign_proof_status(
+                chain_id=chain_id,
+                platform_address=platform_address,
+                campaign=campaign,
+                user_address=user_address,
             )
 
             # Calculate summary
@@ -162,58 +196,21 @@ async def check_user_campaign_status(
                 }
                 all_results.append(result)
 
-            elif output_format == "csv":
-                # CSV output
-                if len(all_results) == 0:
-                    # Print header
-                    print(
-                        "campaign_id,period_num,epoch_timestamp,date,block_updated,point_data,user_slope,slope_value,claimable"
-                    )
-
-                for idx, period_status in enumerate(proof_status["periods"]):
-                    date = format_epoch_timestamp(period_status["timestamp"])
-                    slope_value = ""
-                    if (
-                        period_status.get("user_slope_data")
-                        and period_status["user_slope_data"].get("slope", 0)
-                        > 0
-                    ):
-                        slope_value = str(
-                            period_status["user_slope_data"]["slope"]
-                        )
-
-                    print(
-                        f"{campaign_id},{idx+1},{period_status['timestamp']},{date},"
-                        f"{period_status.get('block_updated', False)},"
-                        f"{period_status.get('point_data_inserted', False)},"
-                        f"{period_status.get('user_slope_inserted', False)},"
-                        f"{slope_value},"
-                        f"{period_status.get('is_claimable', False)}"
-                    )
-
             else:
                 # Full table output (default)
                 # Display campaign info
                 campaign_info = campaign["campaign"]
                 rprint("\n[cyan]Campaign Information:[/cyan]")
-                rprint(f"  • Gauge: {format_address(campaign_info['gauge'])}")
-                rprint(
-                    f"  • Manager: {format_address(campaign_info['manager'])}"
-                )
-                rprint(
-                    f"  • Reward Token: {format_address(campaign_info['reward_token'])}"
-                )
-                rprint(
-                    f"  • Total Periods: {campaign_info['number_of_periods']}"
-                )
+                rprint(f"  • Gauge: {campaign_info['gauge']}")
+                rprint(f"  • Manager: {campaign_info['manager']}")
+                rprint(f"  • Reward Token: {campaign_info['reward_token']}")
+                rprint(f"  • Total Periods: {campaign_info['number_of_periods']}")
                 rprint(
                     f"  • Status: {'Closed' if campaign['is_closed'] else 'Active'}"
                 )
 
                 if not campaign.get("periods"):
-                    rprint(
-                        "[yellow]No periods found for this campaign[/yellow]"
-                    )
+                    rprint("[yellow]No periods found for this campaign[/yellow]")
                     continue
 
                 rprint(
@@ -224,72 +221,7 @@ async def check_user_campaign_status(
                 )
 
                 # Create detailed status table
-                table = Table(
-                    title="User Proof Status by Period",
-                    show_header=True,
-                    header_style="bold",
-                )
-                table.add_column("Period", style="cyan", width=8)
-                table.add_column("Epoch", style="yellow", width=11)
-                table.add_column("Date", style="white", width=16)
-                table.add_column("Block", style="yellow", width=10)
-                table.add_column("Point Data", style="green", width=12)
-                table.add_column("User Slope", style="blue", width=12)
-                table.add_column("Slope Value", style="white", width=15)
-                table.add_column("Last Vote", style="white", width=16)
-                table.add_column("Claimable", style="magenta", width=10)
-
-                # Add data rows
-                for idx, period_status in enumerate(proof_status["periods"]):
-                    period_num = f"#{idx + 1}"
-                    # Show epoch timestamp
-                    epoch_timestamp = str(period_status["timestamp"])
-                    date = format_epoch_timestamp(period_status["timestamp"])
-
-                    # Status indicators
-                    block_status = (
-                        "✓" if period_status.get("block_updated") else "✗"
-                    )
-                    point_status = (
-                        "✓"
-                        if period_status.get("point_data_inserted")
-                        else "✗"
-                    )
-                    user_slope_status = (
-                        "✓"
-                        if period_status.get("user_slope_inserted")
-                        else "✗"
-                    )
-
-                    # Slope details
-                    slope_value = "N/A"
-                    last_vote = "N/A"
-                    if period_status.get("user_slope_data"):
-                        slope_data = period_status["user_slope_data"]
-                        if slope_data.get("slope", 0) > 0:
-                            slope_value = f"{slope_data['slope']:,.0f}"
-                        if slope_data.get("last_vote"):
-                            last_vote = format_epoch_timestamp(
-                                slope_data["last_vote"]
-                            )
-
-                    # Overall claimability
-                    claimable = (
-                        "Yes" if period_status.get("is_claimable") else "No"
-                    )
-                    claimable_style = "green" if claimable == "Yes" else "red"
-
-                    table.add_row(
-                        period_num,
-                        epoch_timestamp,
-                        date,
-                        block_status,
-                        point_status,
-                        user_slope_status,
-                        slope_value,
-                        last_vote,
-                        f"[{claimable_style}]{claimable}[/{claimable_style}]",
-                    )
+                table = _create_period_status_table(proof_status["periods"])
 
                 # Display the table
                 console.print(table)
@@ -298,9 +230,7 @@ async def check_user_campaign_status(
                 rprint("\n[cyan]Summary:[/cyan]")
                 rprint(f"  • Total Periods: {total_periods}")
                 rprint(f"  • Claimable Periods: {claimable_periods}")
-                rprint(
-                    f"  • Missing Proofs: {total_periods - claimable_periods}"
-                )
+                rprint(f"  • Missing Proofs: {total_periods - claimable_periods}")
 
                 if claimable_periods == total_periods:
                     rprint(
@@ -322,13 +252,9 @@ async def check_user_campaign_status(
 
         except Exception as e:
             if output_format == "json":
-                all_results.append(
-                    {"campaign_id": campaign_id, "error": str(e)}
-                )
+                all_results.append({"campaign_id": campaign_id, "error": str(e)})
             else:
-                rprint(
-                    f"[red]Error checking campaign #{campaign_id}:[/red] {str(e)}"
-                )
+                rprint(f"[red]Error checking campaign #{campaign_id}:[/red] {str(e)}")
 
     # Output JSON if requested
     if output_format == "json":
@@ -337,8 +263,6 @@ async def check_user_campaign_status(
 
 def main():
     """Main entry point for the command."""
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Check proof insertion status for a user in VoteMarket campaigns"
     )
@@ -369,7 +293,7 @@ def main():
     parser.add_argument(
         "--format",
         type=str,
-        choices=["table", "json", "csv"],
+        choices=["table", "json"],
         default="table",
         help="Output format (default: table)",
     )
@@ -435,9 +359,7 @@ def main():
     else:
         # Parse campaign IDs (support comma-separated list)
         try:
-            campaign_ids = [
-                int(cid.strip()) for cid in args.campaign_id.split(",")
-            ]
+            campaign_ids = [int(cid.strip()) for cid in args.campaign_id.split(",")]
         except ValueError:
             rprint(
                 "[red]Error:[/red] Invalid campaign ID format. Use numbers separated by commas."

@@ -1,61 +1,49 @@
-import json
-import os
+import argparse
 import sys
 
-from rich import print as rprint
 from rich.panel import Panel
 
+from votemarket_toolkit.commands.helpers import handle_command_error
 from votemarket_toolkit.proofs.manager import VoteMarketProofs
+from votemarket_toolkit.utils.formatters import console, save_json_output
 
 
 def get_block_info(block_number: int):
     vm = VoteMarketProofs(1)
-    rprint(Panel("Fetching Block Info", style="bold magenta"))
+    console.print(Panel("Fetching Block Info", style="bold magenta"))
 
     info = vm.get_block_info(block_number)
 
-    os.makedirs("temp", exist_ok=True)
-    output_file = f"temp/block_info_{block_number}.json"
+    filename = f"block_info_{block_number}.json"
+    save_json_output(info, filename)
 
-    with open(output_file, "w") as f:
-        json.dump(info, f, indent=2)
-
-    rprint("[cyan]Block Info saved to:[/cyan] " + output_file)
-    rprint("[cyan]Block Info:[/cyan]")
-    rprint(f'Block Number: {info["block_number"]}')
-    rprint(f'Block Hash: {info["block_hash"]}')
-    rprint(f'Block Timestamp: {info["block_timestamp"]}')
-    rprint("[cyan]RLP Block Header:[/cyan]")
-    rprint(f'[green]{info["rlp_block_header"]}[/green]')
-
-
-def show_usage():
-    rprint("[red]Error:[/red] Missing or invalid block number")
-    rprint("\n[cyan]Required arguments:[/cyan]")
-    rprint("- BLOCK_NUMBER: Positive integer representing the block number")
-    rprint("\n[cyan]Example usage:[/cyan]")
-    rprint("make block-info BLOCK_NUMBER=21203532")
+    console.print("[cyan]Block Info:[/cyan]")
+    console.print(f'Block Number: {info["block_number"]}')
+    console.print(f'Block Hash: {info["block_hash"]}')
+    console.print(f'Block Timestamp: {info["block_timestamp"]}')
+    console.print("[cyan]RLP Block Header:[/cyan]")
+    console.print(f'[green]{info["rlp_block_header"]}[/green]')
 
 
 def main():
-    if len(sys.argv) != 2:
-        show_usage()
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Get block information")
+    parser.add_argument(
+        "--block-number",
+        type=int,
+        required=True,
+        help="Positive integer representing the block number",
+    )
+
+    args = parser.parse_args()
 
     try:
-        block_number = int(sys.argv[1])
-        if block_number <= 0:
+        if args.block_number <= 0:
             raise ValueError("Block number must be a positive integer")
 
-        get_block_info(block_number)
+        get_block_info(args.block_number)
 
-    except ValueError as e:
-        rprint(f"[red]Error:[/red] {str(e)}")
-        show_usage()
-        sys.exit(1)
-    except Exception as e:
-        rprint(f"[red]Unexpected error:[/red] {str(e)}")
-        sys.exit(1)
+    except (ValueError, Exception) as e:
+        handle_command_error(e)
 
 
 if __name__ == "__main__":

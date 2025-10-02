@@ -1,52 +1,45 @@
 import argparse
-import json
-import os
 import sys
-from datetime import datetime
 from typing import List
 
-from rich import print as rprint
 from rich.panel import Panel
 
+from votemarket_toolkit.commands.helpers import handle_command_error
 from votemarket_toolkit.commands.validation import (
     validate_chain_id,
     validate_eth_address,
 )
 from votemarket_toolkit.data import OracleService
+from votemarket_toolkit.utils.formatters import (
+    console,
+    generate_timestamped_filename,
+    save_json_output,
+)
 
 
 def get_epoch_blocks(chain_id: int, platform: str, epochs: List[int]):
     oracle_service = OracleService(chain_id)
-    rprint(Panel("Fetching Epoch Blocks", style="bold magenta"))
+    console.print(Panel("Fetching Epoch Blocks", style="bold magenta"))
 
     blocks = oracle_service.get_epochs_block(chain_id, platform, epochs)
 
-    os.makedirs("temp", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"temp/epoch_blocks_{timestamp}.json"
+    output_data = {
+        "chain_id": chain_id,
+        "platform": platform,
+        "epochs": epochs,
+        "blocks": blocks,
+    }
 
-    with open(filename, "w") as f:
-        json.dump(
-            {
-                "chain_id": chain_id,
-                "platform": platform,
-                "epochs": epochs,
-                "blocks": blocks,
-            },
-            f,
-            indent=2,
-        )
+    filename = generate_timestamped_filename("epoch_blocks")
+    save_json_output(output_data, filename)
 
-    rprint("[cyan]Epoch Blocks:[/cyan]")
+    console.print("[cyan]Epoch Blocks:[/cyan]")
     for epoch, block in blocks.items():
-        rprint(f"Epoch {epoch}: Block {block}")
-    rprint(f"\n[cyan]Data saved to:[/cyan] {filename}")
+        console.print(f"Epoch {epoch}: Block {block}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Get epoch blocks for a platform"
-    )
+    parser = argparse.ArgumentParser(description="Get epoch blocks for a platform")
     parser.add_argument(
         "--chain-id",
         type=int,
@@ -87,12 +80,8 @@ def main():
 
         get_epoch_blocks(args.chain_id, platform, epochs)
 
-    except ValueError as e:
-        rprint(f"[red]Error:[/red] {str(e)}")
-        sys.exit(1)
-    except Exception as e:
-        rprint(f"[red]Unexpected error:[/red] {str(e)}")
-        sys.exit(1)
+    except (ValueError, Exception) as e:
+        handle_command_error(e)
 
 
 if __name__ == "__main__":
