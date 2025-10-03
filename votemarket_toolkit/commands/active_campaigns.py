@@ -546,15 +546,15 @@ async def get_all_active_campaigns(
                     campaigns_missing_proofs += 1
 
         output_data["summary"]["total_periods_checked"] = total_periods
-        output_data["summary"][
-            "total_periods_with_proofs"
-        ] = periods_with_proofs
-        output_data["summary"][
-            "campaigns_with_all_proofs"
-        ] = campaigns_with_all_proofs
-        output_data["summary"][
-            "campaigns_missing_proofs"
-        ] = campaigns_missing_proofs
+        output_data["summary"]["total_periods_with_proofs"] = (
+            periods_with_proofs
+        )
+        output_data["summary"]["campaigns_with_all_proofs"] = (
+            campaigns_with_all_proofs
+        )
+        output_data["summary"]["campaigns_missing_proofs"] = (
+            campaigns_missing_proofs
+        )
 
         # Find campaign with highest average reward per vote
         campaigns_with_rewards = [
@@ -598,7 +598,7 @@ async def get_all_active_campaigns(
     else:
         filename = generate_timestamped_filename("active_campaigns")
 
-    filepath = save_json_output(output_data, filename)
+    save_json_output(output_data, filename)
 
     # Show closability summary
     all_campaigns = output_data["campaigns"]

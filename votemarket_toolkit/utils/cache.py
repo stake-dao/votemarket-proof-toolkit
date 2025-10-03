@@ -261,9 +261,7 @@ async def _clear_function_cache(
     func_name: str, prefix: Optional[str] = None
 ) -> None:
     """Clear all cache entries for a specific function."""
-    prefix_pattern = f"{prefix}:{func_name}" if prefix else func_name
-
-    # Clear files matching the pattern
+    # With file-based cache and hashed keys, we clear all cache entries
     async with _global_cache._lock:
         # Since we hash the keys, we can't directly match patterns
         # So we'll clear all cache for now (limitation of file-based cache)
