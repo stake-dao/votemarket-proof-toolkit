@@ -1,1 +1,0 @@
-- Fetch token infos via RPC call (contract)

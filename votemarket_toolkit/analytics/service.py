@@ -47,6 +47,14 @@ class AnalyticsService:
 
     BASE_URL = "https://raw.githubusercontent.com/stake-dao/votemarket-analytics/refs/heads/main/analytics/votemarket-analytics"
 
+    # Active platforms based on campaign activity analysis
+    ACTIVE_PLATFORMS = [
+        # Arbitrum has the most activity with both v2 and v2_old having campaigns
+        {"chain_id": 42161, "versions": ["v2", "v2_old"]},
+        # Base has significant activity with v2_old platform
+        {"chain_id": 8453, "versions": ["v2_old"]},
+    ]
+
     def __init__(self):
         """Initialize the analytics service with caching."""
         self._cache: Dict[str, Any] = {}
@@ -448,6 +456,7 @@ class AnalyticsService:
         protocol: str,
         chain_id: Optional[int] = None,
         platform_address: Optional[str] = None,
+        active_only: bool = False,
     ) -> Dict:
         """
         Get current market snapshot of all active campaigns with live $/vote data.
@@ -459,6 +468,7 @@ class AnalyticsService:
             protocol: Protocol name (curve, balancer, etc.)
             chain_id: Chain ID to query (optional, queries ALL chains if None)
             platform_address: Specific platform address (optional, uses latest if None)
+            active_only: If True, only fetch from known active platforms to reduce API calls
 
         Returns:
             Dict with market statistics:
@@ -544,22 +554,53 @@ class AnalyticsService:
             platforms_to_query.append((chain_id, chain_platforms[0].address))
         else:
             # ALL platforms across ALL chains
-            all_platforms = campaign_service.get_all_platforms(protocol)
-            # Group by chain and take latest version per chain
-            by_chain = {}
-            for p in all_platforms:
-                if p.chain_id not in by_chain:
-                    by_chain[p.chain_id] = []
-                by_chain[p.chain_id].append(p)
+            if active_only:
+                # Use predefined active platforms (protocol-agnostic)
+                all_platforms = campaign_service.get_all_platforms(protocol)
 
-            # Take latest version per chain
-            version_priority = {"v2": 3, "v2_old": 2, "v1": 1}
-            for cid, chain_platforms in by_chain.items():
-                chain_platforms.sort(
-                    key=lambda p: version_priority.get(p.version, 0),
-                    reverse=True,
-                )
-                platforms_to_query.append((cid, chain_platforms[0].address))
+                for config in self.ACTIVE_PLATFORMS:
+                    cid = config["chain_id"]
+                    versions_to_fetch = config["versions"]
+
+                    # Get platforms for this chain
+                    chain_platforms = [
+                        p for p in all_platforms if p.chain_id == cid
+                    ]
+
+                    # Add each requested version
+                    for version in versions_to_fetch:
+                        version_platform = next(
+                            (
+                                p
+                                for p in chain_platforms
+                                if p.version == version
+                            ),
+                            None,
+                        )
+                        if version_platform:
+                            platforms_to_query.append(
+                                (cid, version_platform.address)
+                            )
+            else:
+                # Original behavior: fetch from all chains, latest version only
+                all_platforms = campaign_service.get_all_platforms(protocol)
+                # Group by chain and take latest version per chain
+                by_chain = {}
+                for p in all_platforms:
+                    if p.chain_id not in by_chain:
+                        by_chain[p.chain_id] = []
+                    by_chain[p.chain_id].append(p)
+
+                # Take latest version per chain
+                version_priority = {"v2": 3, "v2_old": 2, "v1": 1}
+                for cid, chain_platforms in by_chain.items():
+                    chain_platforms.sort(
+                        key=lambda p: version_priority.get(p.version, 0),
+                        reverse=True,
+                    )
+                    platforms_to_query.append(
+                        (cid, chain_platforms[0].address)
+                    )
 
         # Show summary of what will be fetched
         if len(platforms_to_query) > 1:

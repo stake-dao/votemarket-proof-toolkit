@@ -127,8 +127,13 @@ class CampaignOptimizer:
         history_task = asyncio.create_task(
             self.analytics.fetch_gauge_history(protocol, gauge)
         )
+        # Only fetch from active platforms (Arbitrum and Base) by default
         market_task = asyncio.create_task(
-            self.analytics.get_current_market_snapshot(protocol, chain_id=None)
+            self.analytics.get_current_market_snapshot(
+                protocol,
+                chain_id=None,  # Fetch all chains, but use active_only to limit platforms
+                active_only=True,  # Only fetch from active platforms to reduce API calls
+            )
         )
 
         token_price, history, market_snapshot = await asyncio.gather(

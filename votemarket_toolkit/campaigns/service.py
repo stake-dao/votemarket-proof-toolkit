@@ -153,7 +153,8 @@ class CampaignService:
         platform_address: str,
         campaign_id: Optional[int] = None,
         check_proofs: bool = False,
-        parallel_requests: int = 8,
+        parallel_requests: int = 16,
+        manager_address: Optional[str] = None,
     ) -> List[Campaign]:
         """
         Get campaigns with periods and optional proof checking.
@@ -163,14 +164,14 @@ class CampaignService:
         2. Uses adaptive parallelism based on total campaign count
         3. Optionally checks proof insertion status via oracle
 
-        Batch Size Strategy (optimized for reliability):
-        - >400 campaigns: batch_size=5
-        - >200 campaigns: batch_size=8
-        - >100 campaigns: batch_size=10
-        - >50 campaigns: batch_size=15
-        - <=50 campaigns: batch_size=20
+        Batch Size Strategy (conservative for better reliability):
+        - >400 campaigns: batch_size=50
+        - >200 campaigns: batch_size=40
+        - >100 campaigns: batch_size=30
+        - >50 campaigns: batch_size=25
+        - <=50 campaigns: batch_size=20 or less
 
-        Parallelism is controlled by the parallel_requests parameter (default: 8).
+        Parallelism is controlled by the parallel_requests parameter (default: 16).
         Failed batches are automatically retried by splitting them in half.
 
         Args:
@@ -178,7 +179,7 @@ class CampaignService:
             platform_address: VoteMarket platform contract address
             campaign_id: Specific campaign ID to fetch (None fetches all)
             check_proofs: Whether to check proof insertion status (adds oracle queries)
-            parallel_requests: Maximum number of concurrent requests (default 8)
+            parallel_requests: Maximum number of concurrent requests (default 32)
 
         Returns:
             List[Campaign]: List of campaign objects, each containing:
@@ -298,22 +299,22 @@ class CampaignService:
                 effective_parallel = 1
             else:
                 # Determine optimal batch size based on campaign count
-                # Conservative strategy to minimize errors while maintaining good performance
+                # Conservative batch sizes for better reliability
                 if total_campaigns > 400:
-                    # Very large datasets: smaller batches
-                    batch_size = 5
+                    # Very large datasets: fetch 50 at a time
+                    batch_size = 50
                 elif total_campaigns > 200:
-                    # Large datasets: moderate batch size
-                    batch_size = 8
+                    # Large datasets: fetch 40 at a time
+                    batch_size = 40
                 elif total_campaigns > 100:
-                    # Medium-large datasets: balanced approach
-                    batch_size = 10
+                    # Medium-large datasets: fetch 30 at a time
+                    batch_size = 30
                 elif total_campaigns > 50:
-                    # Medium datasets: larger batches
-                    batch_size = 15
+                    # Medium datasets: fetch 25 at a time
+                    batch_size = 25
                 else:
-                    # Small datasets: can be more aggressive
-                    batch_size = 20
+                    # Small datasets: fetch 20 at a time or all if less
+                    batch_size = min(20, total_campaigns)
 
                 # Use the provided parallel_requests parameter
                 effective_parallel = parallel_requests
@@ -353,9 +354,8 @@ class CampaignService:
                     if isinstance(result, list):
                         all_campaigns.extend(result)
 
-                # Small delay between chunks to avoid rate limiting
-                if i + effective_parallel < len(tasks):
-                    await asyncio.sleep(0.15)
+                # Removed delay for better performance
+                # Rate limiting is handled by parallel_requests parameter
 
             # Print summary with platform details
             success_count = len(all_campaigns)
@@ -480,6 +480,104 @@ class CampaignService:
         except Exception as e:
             print(f"Error getting campaigns: {str(e)}")
             return []
+
+    async def get_campaigns_by_manager(
+        self,
+        protocol: str,
+        manager_address: str,
+        active_only: bool = True,
+    ) -> Dict[str, List[Campaign]]:
+        """
+        Get all campaigns managed by a specific address across all platforms.
+
+        This method efficiently fetches campaigns from all platforms of a protocol
+        and filters by manager address. Results are cached for better performance.
+
+        Args:
+            protocol: Protocol name ("curve", "balancer", "frax", "fxn", "pendle")
+            manager_address: Manager wallet address to filter by
+            active_only: Only check active platforms (default: True)
+
+        Returns:
+            Dictionary mapping platform key to list of campaigns managed by the address
+
+        Example:
+            >>> service = CampaignService()
+            >>> results = await service.get_campaigns_by_manager(
+            ...     protocol="curve",
+            ...     manager_address="0x123...",
+            ...     active_only=True
+            ... )
+            >>> for platform, campaigns in results.items():
+            ...     print(f"{platform}: {len(campaigns)} campaigns")
+        """
+        from votemarket_toolkit.shared import registry
+
+        results = {}
+        manager_lower = manager_address.lower()
+
+        # Get all platforms for the protocol
+        platforms = registry.get_all_platforms(protocol)
+
+        # Filter to active platforms if requested
+        if active_only:
+            # Active platforms based on current data
+            active_platforms = {
+                (
+                    42161,
+                    "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+                ),  # Arbitrum v2
+                (
+                    42161,
+                    "0x5e5C0056c6aBa37c49c5DEB0C5550AEc5C14f81e5",
+                ),  # Arbitrum v2_old
+                (8453, "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"),  # Base
+            }
+            platforms = [
+                p
+                for p in platforms
+                if (p["chain_id"], p["address"]) in active_platforms
+            ]
+
+        # Chain names for display
+        chain_names = {
+            1: "Ethereum",
+            10: "Optimism",
+            137: "Polygon",
+            8453: "Base",
+            42161: "Arbitrum",
+        }
+
+        # Fetch from each platform
+        for platform in platforms:
+            chain_id = platform["chain_id"]
+            platform_address = platform["address"]
+            chain_name = chain_names.get(chain_id, f"Chain {chain_id}")
+
+            try:
+                # Fetch all campaigns (will use cache if available)
+                all_campaigns = await self.get_campaigns(
+                    chain_id=chain_id,
+                    platform_address=platform_address,
+                    check_proofs=False,
+                )
+
+                # Filter by manager
+                manager_campaigns = [
+                    c
+                    for c in all_campaigns
+                    if c.get("campaign", {}).get("manager", "").lower()
+                    == manager_lower
+                ]
+
+                if manager_campaigns:
+                    platform_key = f"{chain_name} ({platform_address[:6]}...{platform_address[-4:]})"
+                    results[platform_key] = manager_campaigns
+
+            except Exception as e:
+                print(f"Error fetching from {chain_name}: {str(e)}")
+
+        return results
 
     def _enrich_status_info(self, campaigns: List[Dict]) -> None:
         """

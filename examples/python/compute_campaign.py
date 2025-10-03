@@ -29,7 +29,7 @@ from votemarket_toolkit.analytics import get_campaign_optimizer
 
 async def main():
     protocol = "curve"
-    gauge = "0xB84637aB9Be835580821A67823f414FFd0bbf625"  # SDT/WETH
+    gauge = "0x26F7786de3E6D9Bd37Fcf47BE6F2bC455a21b74A"  # SDCRV/CRV
     reward_token = "0x73968b9a57c6E53d41345FD57a6E6ae27d6CDB2F"  # SDT
     chain_id = 1  # Ethereum mainnet
 
