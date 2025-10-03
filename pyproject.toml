@@ -1,8 +1,8 @@
 [project]
 name = "votemarket-toolkit"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python SDK for VoteMarket - campaign management, proofs, and analytics"
-authors = [{name = "Stake DAO", email = "contact@stakedao.org"}]
+authors = [{name = "Stake DAO", email = "admin@stakedao.org"}]
 readme = "README.md"
 license = {text = "AGPL-3.0"}
 keywords = ["votemarket", "ethereum", "defi", "dao", "voting"]
