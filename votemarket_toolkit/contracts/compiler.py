@@ -39,6 +39,9 @@ def compile_contract(source_path: str) -> dict:
         elif "GetTokensLaPoste" in key:
             contract_id = key
             break
+        elif "GetActiveCampaignIds" in key:
+            contract_id = key
+            break
 
     if not contract_id:
         contract_id = list(compiled.keys())[-1]  # Fallback to last contract

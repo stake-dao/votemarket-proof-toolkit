@@ -623,7 +623,7 @@ class AnalyticsService:
                 return (
                     chain_id,
                     platform,
-                    await campaign_service.get_campaigns(
+                    await campaign_service.get_active_campaigns(
                         chain_id=chain_id,
                         platform_address=platform,
                         check_proofs=False,

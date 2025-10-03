@@ -369,3 +369,93 @@ class ContractReader:
             default_params.update(tx_params)
 
         return default_params
+
+    @staticmethod
+    def build_get_active_campaign_ids_constructor_tx(
+        artifact: Dict,
+        platform_address: str,
+        start_id: int = 0,
+        limit: int = 1000,
+        tx_params: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Build constructor transaction for GetActiveCampaignIds contract.
+
+        Args:
+            artifact: Contract artifact with bytecode
+            platform_address: VoteMarket platform address
+            start_id: Starting campaign ID to check
+            limit: Maximum number of campaigns to check
+            tx_params: Optional transaction parameters
+
+        Returns:
+            Transaction dictionary for eth_call
+        """
+        constructor_types = [
+            "address",  # platform
+            "uint256",  # startId
+            "uint256",  # limit
+        ]
+
+        constructor_args = [
+            platform_address,
+            start_id,
+            limit,
+        ]
+
+        encoded_args = encode(constructor_types, constructor_args)
+        bytecode = (
+            artifact["bytecode"]
+            if isinstance(artifact["bytecode"], str)
+            else artifact.get("bytecode", {}).get("bytecode", "")
+        )
+        data = bytecode + encoded_args.hex()
+
+        default_params = {
+            "from": "0x0000000000000000000000000000000000000000",
+            "data": data,
+            "gas": 5_000_000,  # Higher gas limit for many campaigns
+            "gasPrice": 0,
+        }
+
+        if tx_params:
+            default_params.update(tx_params)
+
+        return default_params
+
+    @staticmethod
+    def decode_active_campaign_ids(result: bytes) -> Dict[str, Any]:
+        """
+        Decode the result from GetActiveCampaignIds contract.
+
+        Args:
+            result: Raw result bytes from eth_call
+
+        Returns:
+            Dictionary containing:
+                - campaign_ids: List of active campaign IDs
+                - total_checked: Number of campaigns checked
+                - total_active: Number of active campaigns found
+        """
+        try:
+            # The contract returns ActiveCampaignBatch struct
+            batch_struct_type = [
+                "uint256[]",  # campaignIds
+                "uint256",  # totalChecked
+                "uint256",  # totalActive
+            ]
+
+            full_type = f"({','.join(batch_struct_type)})"
+
+            # Decode the result
+            decoded = decode([full_type], result)[0]
+
+            return {
+                "campaign_ids": list(decoded[0]),
+                "total_checked": decoded[1],
+                "total_active": decoded[2],
+            }
+
+        except Exception as e:
+            print(f"Error decoding active campaign IDs: {str(e)}")
+            raise

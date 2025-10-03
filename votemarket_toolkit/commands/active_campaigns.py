@@ -28,7 +28,6 @@ from votemarket_toolkit.utils.formatters import (
 from votemarket_toolkit.utils.pricing import (
     calculate_usd_per_vote,
     format_usd_value,
-    get_erc20_prices_in_usd,
 )
 
 
@@ -40,9 +39,16 @@ async def get_active_campaigns_for_platform(
 ) -> List[dict]:
     """Get active campaigns for a specific chain/platform combination."""
     try:
-        campaigns = await campaign_service.get_campaigns(
-            chain_id, platform, campaign_id=campaign_id, check_proofs=True
-        )
+        if campaign_id is not None:
+            # For specific campaign ID, use get_campaigns
+            campaigns = await campaign_service.get_campaigns(
+                chain_id, platform, campaign_id=campaign_id, check_proofs=True
+            )
+        else:
+            # Use optimized get_active_campaigns for better performance
+            campaigns = await campaign_service.get_active_campaigns(
+                chain_id, platform, check_proofs=True
+            )
         return campaigns
     except Exception as e:
         console.print(
@@ -303,7 +309,8 @@ async def get_all_active_campaigns(
     total_campaigns = 0
     platforms_with_campaigns = []
 
-    # Collect unique reward tokens for price fetching
+    # Build token price cache from enriched campaign data
+    # Campaigns already have prices from get_active_campaigns()
     token_price_cache = {}
 
     for (chain_id, platform), campaigns in zip(platforms_to_query, results):
@@ -311,33 +318,17 @@ async def get_all_active_campaigns(
             total_campaigns += len(campaigns)
             platforms_with_campaigns.append((chain_id, platform, campaigns))
 
-            # Collect unique tokens for this chain
-            unique_tokens = set()
+            # Extract prices from enriched campaign data
             for c in campaigns:
-                reward_token = c["campaign"].get("reward_token")
-                if reward_token:
-                    unique_tokens.add(reward_token.lower())
+                reward_token_info = c.get("reward_token", {})
+                reward_token = c["campaign"].get("reward_token", "").lower()
 
-            # Fetch prices for all tokens on this chain
-            if unique_tokens:
-                print(
-                    f"Fetching token prices for {len(unique_tokens)} tokens on chain {chain_id}..."
-                )
-                # Prepare batch request: list of (token_address, amount)
-                # Using 1e18 as dummy amount since we only need unit price
-                token_list = [(token, 10**18) for token in unique_tokens]
-                prices_result = get_erc20_prices_in_usd(
-                    chain_id, token_list, timestamp=None
-                )
-
-                # Store prices in cache (prices_result returns list of (formatted_str, float))
-                for token, (_, price_float) in zip(
-                    unique_tokens, prices_result
-                ):
-                    cache_key = f"{chain_id}:{token.lower()}"
+                if reward_token and reward_token_info:
+                    cache_key = f"{chain_id}:{reward_token}"
+                    # Use the price that was already fetched by the service
+                    price = reward_token_info.get("price", 0.0)
                     if cache_key not in token_price_cache:
-                        # The price_float is for 1 token (since we passed 10**18 wei)
-                        token_price_cache[cache_key] = price_float
+                        token_price_cache[cache_key] = price
 
     # Display results split by platform
     for chain_id, platform, campaigns in platforms_with_campaigns:
