@@ -21,6 +21,7 @@ OUTPUT:
 """
 
 import asyncio
+
 from rich import print as rprint
 
 from votemarket_toolkit.analytics import get_campaign_optimizer
@@ -45,7 +46,9 @@ async def main():
     # max_ppv_usd = 1.0         # Maximum $/vote ceiling
     # efficiency_floor = 1.05   # Require 5% minimum efficiency
 
-    rprint(f"\n[cyan]Computing optimal parameters for gauge {gauge}...[/cyan]\n")
+    rprint(
+        f"\n[cyan]Computing optimal parameters for gauge {gauge}...[/cyan]\n"
+    )
 
     optimizer = get_campaign_optimizer()
 
@@ -63,62 +66,88 @@ async def main():
 
         # ═══ Display Results ═══
         rprint(f"[bold]Token Price:[/bold] ${result.token_price:.4f}")
-        rprint(f"[bold]Your Budget:[/bold] {result.total_budget:,.0f} tokens (${result.total_budget * result.token_price:,.2f})")
+        rprint(
+            f"[bold]Your Budget:[/bold] {result.total_budget:,.0f} tokens (${result.total_budget * result.token_price:,.2f})"
+        )
 
         # Historical performance (smoothed with EMA)
-        rprint(f"\n[yellow]Your Historical Performance:[/yellow]")
-        rprint(f"  • Avg $/vote: ${result.historical_dpv_usd:.6f} (EMA smoothed)")
+        rprint("\n[yellow]Your Historical Performance:[/yellow]")
+        rprint(
+            f"  • Avg $/vote: ${result.historical_dpv_usd:.6f} (EMA smoothed)"
+        )
         rprint(f"  • Avg efficiency: {result.efficiency_expected:.2f}%")
         rprint(f"  • Avg votes: {result.historical_votes:.0f}")
 
         # Market comparison
-        rprint(f"\n[yellow]Market Comparison:[/yellow]")
+        rprint("\n[yellow]Market Comparison:[/yellow]")
         rprint(f"  • Comparable peers (same chain): {result.peer_count}")
-        rprint(f"  • Market target (70th percentile + safety): ${result.market_target_usd:.6f}/vote")
+        rprint(
+            f"  • Market target (70th percentile + safety): ${result.market_target_usd:.6f}/vote"
+        )
         if result.peer_median_usd:
             rprint(f"  • Peer median: ${result.peer_median_usd:.6f}/vote")
 
         # Recommended campaign parameters
-        rprint(f"\n[green]═══ Recommended Campaign Setup ═══[/green]")
+        rprint("\n[green]═══ Recommended Campaign Setup ═══[/green]")
 
-        rprint(f"\n[bold]Max Reward Per Vote:[/bold]")
+        rprint("\n[bold]Max Reward Per Vote:[/bold]")
         rprint(f"  • {result.max_reward_per_vote_tokens:.6f} tokens/vote")
         rprint(f"  • ${result.max_reward_per_vote_usd:.6f}/vote")
 
-        rprint(f"\n[bold]Expected Votes:[/bold] {result.votes_expected:.0f} votes/period")
+        rprint(
+            f"\n[bold]Expected Votes:[/bold] {result.votes_expected:.0f} votes/period"
+        )
 
         # Budget analysis - show what's actually needed
-        rprint(f"\n[bold]Budget Analysis:[/bold]")
+        rprint("\n[bold]Budget Analysis:[/bold]")
         rprint(f"  • Your budget: {result.total_budget:,.0f} tokens")
-        rprint(f"  • Tokens needed: {result.tokens_needed:,.0f} tokens to achieve ${result.max_reward_per_vote_usd:.6f}/vote")
+        rprint(
+            f"  • Tokens needed: {result.tokens_needed:,.0f} tokens to achieve ${result.max_reward_per_vote_usd:.6f}/vote"
+        )
 
         if result.budget_surplus_pct > 0:
             excess = result.total_budget - result.tokens_needed
-            rprint(f"  • [yellow]⚠ Over-budgeted by {result.budget_surplus_pct:.0f}%[/yellow]")
-            rprint(f"  • [dim]Excess: {excess:,.0f} tokens won't be distributed[/dim]")
-            rprint(f"\n  💡 You can reduce budget to {result.tokens_needed:,.0f} tokens to save {excess:,.0f} tokens")
+            rprint(
+                f"  • [yellow]⚠ Over-budgeted by {result.budget_surplus_pct:.0f}%[/yellow]"
+            )
+            rprint(
+                f"  • [dim]Excess: {excess:,.0f} tokens won't be distributed[/dim]"
+            )
+            rprint(
+                f"\n  💡 You can reduce budget to {result.tokens_needed:,.0f} tokens to save {excess:,.0f} tokens"
+            )
         elif result.budget_shortfall_pct > 0:
             shortage = result.tokens_needed - result.total_budget
-            rprint(f"  • [yellow]⚠ Under-budgeted by {result.budget_shortfall_pct:.0f}%[/yellow]")
+            rprint(
+                f"  • [yellow]⚠ Under-budgeted by {result.budget_shortfall_pct:.0f}%[/yellow]"
+            )
             rprint(f"  • [dim]Short: {shortage:,.0f} tokens[/dim]")
-            rprint(f"\n  💡 Increase budget to {result.tokens_needed:,.0f} tokens to achieve market target")
+            rprint(
+                f"\n  💡 Increase budget to {result.tokens_needed:,.0f} tokens to achieve market target"
+            )
         else:
-            rprint(f"  • [green]✓ Budget is perfect for target[/green]")
+            rprint("  • [green]✓ Budget is perfect for target[/green]")
 
-        rprint(f"\n[bold]Campaign Duration:[/bold] {result.duration_weeks} weeks")
+        rprint(
+            f"\n[bold]Campaign Duration:[/bold] {result.duration_weeks} weeks"
+        )
         per_week = result.tokens_needed / result.duration_weeks
         rprint(f"  • Per week: {per_week:,.0f} tokens")
 
         # Market positioning
-        rprint(f"\n[cyan]═══ How You Compare ═══[/cyan]")
+        rprint("\n[cyan]═══ How You Compare ═══[/cyan]")
         chain_name = "Ethereum" if chain_id == 1 else f"Chain {chain_id}"
         rprint(f"{result.peer_count} comparable campaigns on {chain_name}")
 
         if result.pct_above_peer_median is not None:
             if result.pct_above_peer_median > 0:
-                rprint(f"[green]✓ {abs(result.pct_above_peer_median):.1f}% above peer median[/green]")
+                rprint(
+                    f"[green]✓ {abs(result.pct_above_peer_median):.1f}% above peer median[/green]"
+                )
             else:
-                rprint(f"[dim]{abs(result.pct_above_peer_median):.1f}% below peer median[/dim]")
+                rprint(
+                    f"[dim]{abs(result.pct_above_peer_median):.1f}% below peer median[/dim]"
+                )
 
     finally:
         await optimizer.close()

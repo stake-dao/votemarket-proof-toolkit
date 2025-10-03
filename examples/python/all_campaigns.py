@@ -5,6 +5,8 @@ Fetch all campaigns with periods and status.
 
 import asyncio
 import json
+import os
+
 from votemarket_toolkit.campaigns.service import CampaignService
 
 
@@ -46,8 +48,22 @@ async def main():
                         "manager": c["manager"],
                         "reward_token": c["reward_token"],
                         "total_reward_amount": c["total_reward_amount"],
-                        "status": campaign["status_info"]["status"].value,
                         "is_closed": campaign["is_closed"],
+                        "remaining_periods": campaign.get(
+                            "remaining_periods", 0
+                        ),
+                        "status": campaign.get("status_info", {}).get(
+                            "status", "unknown"
+                        ),
+                        "can_close": campaign.get("status_info", {}).get(
+                            "can_close", False
+                        ),
+                        "who_can_close": campaign.get("status_info", {}).get(
+                            "who_can_close", "no_one"
+                        ),
+                        "status_reason": campaign.get("status_info", {}).get(
+                            "reason", ""
+                        ),
                         "periods": [],
                     }
 
@@ -65,6 +81,9 @@ async def main():
                         )
 
                     all_campaigns.append(campaign_data)
+
+    # Create output directory if it doesn't exist
+    os.makedirs("output", exist_ok=True)
 
     # Save to file
     with open("output/all_campaigns.json", "w") as f:

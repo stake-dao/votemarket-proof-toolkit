@@ -18,7 +18,11 @@ from rich.table import Table
 
 from votemarket_toolkit.campaigns.service import campaign_service
 from votemarket_toolkit.shared import registry
-from votemarket_toolkit.utils.formatters import console, format_address, format_timestamp
+from votemarket_toolkit.utils.formatters import (
+    console,
+    format_address,
+    format_timestamp,
+)
 from votemarket_toolkit.utils.interactive import (
     select_campaign,
     select_chain,
@@ -26,7 +30,9 @@ from votemarket_toolkit.utils.interactive import (
 )
 
 
-def _create_period_status_table(periods: List[Dict], show_header: bool = True) -> Table:
+def _create_period_status_table(
+    periods: List[Dict], show_header: bool = True
+) -> Table:
     """Create a Rich table for period status display."""
     table = Table(
         title="User Proof Status by Period" if show_header else None,
@@ -52,7 +58,9 @@ def _create_period_status_table(periods: List[Dict], show_header: bool = True) -
         # Status indicators
         block_status = "✓" if period_status.get("block_updated") else "✗"
         point_status = "✓" if period_status.get("point_data_inserted") else "✗"
-        user_slope_status = "✓" if period_status.get("user_slope_inserted") else "✗"
+        user_slope_status = (
+            "✓" if period_status.get("user_slope_inserted") else "✗"
+        )
 
         # Slope details
         slope_value = "N/A"
@@ -130,7 +138,9 @@ async def check_user_campaign_status(
                         to_checksum_address(platform_address.lower()),
                         "vm_platform",
                     )
-                    total_campaigns = platform_contract.functions.campaignCount().call()
+                    total_campaigns = (
+                        platform_contract.functions.campaignCount().call()
+                    )
 
                     if output_format == "json":
                         result = {
@@ -139,7 +149,9 @@ async def check_user_campaign_status(
                         }
                         all_results.append(result)
                     else:
-                        rprint(f"[red]Error:[/red] Campaign #{campaign_id} not found")
+                        rprint(
+                            f"[red]Error:[/red] Campaign #{campaign_id} not found"
+                        )
                         rprint(
                             f"[yellow]This platform has campaigns 0-{total_campaigns-1}[/yellow]"
                         )
@@ -150,17 +162,21 @@ async def check_user_campaign_status(
                             {"error": f"Campaign #{campaign_id} not found"}
                         )
                     else:
-                        rprint(f"[red]Error:[/red] Campaign #{campaign_id} not found")
+                        rprint(
+                            f"[red]Error:[/red] Campaign #{campaign_id} not found"
+                        )
                 continue
 
             campaign = campaigns[0]
 
             # Get user proof status
-            proof_status = await campaign_service.get_user_campaign_proof_status(
-                chain_id=chain_id,
-                platform_address=platform_address,
-                campaign=campaign,
-                user_address=user_address,
+            proof_status = (
+                await campaign_service.get_user_campaign_proof_status(
+                    chain_id=chain_id,
+                    platform_address=platform_address,
+                    campaign=campaign,
+                    user_address=user_address,
+                )
             )
 
             # Calculate summary
@@ -204,13 +220,17 @@ async def check_user_campaign_status(
                 rprint(f"  • Gauge: {campaign_info['gauge']}")
                 rprint(f"  • Manager: {campaign_info['manager']}")
                 rprint(f"  • Reward Token: {campaign_info['reward_token']}")
-                rprint(f"  • Total Periods: {campaign_info['number_of_periods']}")
+                rprint(
+                    f"  • Total Periods: {campaign_info['number_of_periods']}"
+                )
                 rprint(
                     f"  • Status: {'Closed' if campaign['is_closed'] else 'Active'}"
                 )
 
                 if not campaign.get("periods"):
-                    rprint("[yellow]No periods found for this campaign[/yellow]")
+                    rprint(
+                        "[yellow]No periods found for this campaign[/yellow]"
+                    )
                     continue
 
                 rprint(
@@ -230,7 +250,9 @@ async def check_user_campaign_status(
                 rprint("\n[cyan]Summary:[/cyan]")
                 rprint(f"  • Total Periods: {total_periods}")
                 rprint(f"  • Claimable Periods: {claimable_periods}")
-                rprint(f"  • Missing Proofs: {total_periods - claimable_periods}")
+                rprint(
+                    f"  • Missing Proofs: {total_periods - claimable_periods}"
+                )
 
                 if claimable_periods == total_periods:
                     rprint(
@@ -252,9 +274,13 @@ async def check_user_campaign_status(
 
         except Exception as e:
             if output_format == "json":
-                all_results.append({"campaign_id": campaign_id, "error": str(e)})
+                all_results.append(
+                    {"campaign_id": campaign_id, "error": str(e)}
+                )
             else:
-                rprint(f"[red]Error checking campaign #{campaign_id}:[/red] {str(e)}")
+                rprint(
+                    f"[red]Error checking campaign #{campaign_id}:[/red] {str(e)}"
+                )
 
     # Output JSON if requested
     if output_format == "json":
@@ -359,7 +385,9 @@ def main():
     else:
         # Parse campaign IDs (support comma-separated list)
         try:
-            campaign_ids = [int(cid.strip()) for cid in args.campaign_id.split(",")]
+            campaign_ids = [
+                int(cid.strip()) for cid in args.campaign_id.split(",")
+            ]
         except ValueError:
             rprint(
                 "[red]Error:[/red] Invalid campaign ID format. Use numbers separated by commas."

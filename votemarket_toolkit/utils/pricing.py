@@ -198,7 +198,9 @@ def get_erc20_prices_in_usd(
                 results[i] = ("{:,.2f}".format(price), price)
 
                 # Cache the result
-                cache_key = f"{network}:{token_address}:{timestamp or 'current'}"
+                cache_key = (
+                    f"{network}:{token_address}:{timestamp or 'current'}"
+                )
                 _price_cache[cache_key] = (token_price, current_time, decimals)
             else:
                 results[i] = ("0.00", 0)

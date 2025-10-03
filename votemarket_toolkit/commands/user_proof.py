@@ -1,5 +1,4 @@
 import argparse
-import sys
 
 from rich.panel import Panel
 
@@ -32,11 +31,15 @@ def generate_user_proof(protocol, gauge_address, user_address, block_number):
     save_json_output(output_data, filename)
 
     console.print("[cyan]User Proof:[/cyan]")
-    console.print(f'[green]0x{user_proof["storage_proof"].hex()[:50]}...[/green]')
+    console.print(
+        f'[green]0x{user_proof["storage_proof"].hex()[:50]}...[/green]'
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate user proof for a gauge")
+    parser = argparse.ArgumentParser(
+        description="Generate user proof for a gauge"
+    )
     parser.add_argument(
         "--protocol",
         type=str,
@@ -69,14 +72,18 @@ def main():
         protocol = validate_protocol(args.protocol)
 
         # Validate addresses
-        gauge_address = validate_eth_address(args.gauge_address, "gauge_address")
+        gauge_address = validate_eth_address(
+            args.gauge_address, "gauge_address"
+        )
         user_address = validate_eth_address(args.user_address, "user_address")
 
         # Validate block number
         if args.block_number <= 0:
             raise ValueError("Block number must be a positive integer")
 
-        generate_user_proof(protocol, gauge_address, user_address, args.block_number)
+        generate_user_proof(
+            protocol, gauge_address, user_address, args.block_number
+        )
 
     except (ValueError, Exception) as e:
         handle_command_error(e)

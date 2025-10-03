@@ -1,13 +1,11 @@
 import argparse
 import asyncio
-import json
 import re
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from rich import print as rprint
-from rich.console import Console
 from rich.table import Table
 
 from votemarket_toolkit.campaigns import CampaignService
@@ -32,6 +30,7 @@ from votemarket_toolkit.utils.pricing import (
     format_usd_value,
     get_erc20_prices_in_usd,
 )
+
 
 async def get_active_campaigns_for_platform(
     chain_id: int,
@@ -99,7 +98,9 @@ def _process_campaign_periods(
             period_data["distributed"] = distributed
             period_data["distributed_ether"] = distributed / 1e18
             if token_price_usd > 0:
-                period_data["distributed_usd"] = (distributed / 1e18) * token_price_usd
+                period_data["distributed_usd"] = (
+                    distributed / 1e18
+                ) * token_price_usd
             else:
                 period_data["distributed_usd"] = 0.0
         else:
@@ -111,10 +112,14 @@ def _process_campaign_periods(
 
     # Calculate average reward per vote for non-zero periods
     non_zero_rewards = [
-        p["reward_per_vote"] for p in periods_with_rewards if p["reward_per_vote"] > 0
+        p["reward_per_vote"]
+        for p in periods_with_rewards
+        if p["reward_per_vote"] > 0
     ]
     avg_reward_per_vote = (
-        sum(non_zero_rewards) / len(non_zero_rewards) if non_zero_rewards else 0
+        sum(non_zero_rewards) / len(non_zero_rewards)
+        if non_zero_rewards
+        else 0
     )
 
     # Calculate average USD per vote
@@ -153,10 +158,14 @@ def _build_campaign_output_data(
         "campaign_id": campaign["id"],
         "gauge": campaign["campaign"]["gauge"],
         "manager": campaign["campaign"]["manager"],
-        "reward_token": reward_token_info.get("address", campaign["campaign"]["reward_token"]),
+        "reward_token": reward_token_info.get(
+            "address", campaign["campaign"]["reward_token"]
+        ),
         "reward_token_symbol": reward_token_info.get("symbol", "???"),
         "reward_token_name": reward_token_info.get("name", "Unknown"),
-        "receipt_token": receipt_token_info.get("address", campaign["campaign"]["reward_token"]),
+        "receipt_token": receipt_token_info.get(
+            "address", campaign["campaign"]["reward_token"]
+        ),
         "receipt_token_symbol": receipt_token_info.get("symbol", "???"),
         "reward_token_price_usd": token_price_usd,
         "is_closed": campaign["is_closed"],
@@ -166,15 +175,20 @@ def _build_campaign_output_data(
         "campaign_details": campaign["campaign"],
         "current_epoch": campaign["current_epoch"],
         "total_reward_amount": campaign["campaign"]["total_reward_amount"],
-        "total_reward_amount_ether": campaign["campaign"]["total_reward_amount"]
+        "total_reward_amount_ether": campaign["campaign"][
+            "total_reward_amount"
+        ]
         / 1e18,
         "total_reward_amount_usd": (
-            (campaign["campaign"]["total_reward_amount"] / 1e18) * token_price_usd
+            (campaign["campaign"]["total_reward_amount"] / 1e18)
+            * token_price_usd
             if token_price_usd > 0
             else 0.0
         ),
         "max_reward_per_vote": campaign["campaign"]["max_reward_per_vote"],
-        "max_reward_per_vote_ether": campaign["campaign"]["max_reward_per_vote"]
+        "max_reward_per_vote_ether": campaign["campaign"][
+            "max_reward_per_vote"
+        ]
         / 1e18,
         "max_reward_per_vote_usd": (
             calculate_usd_per_vote(
@@ -222,24 +236,34 @@ async def get_all_active_campaigns(
         # Get platforms for the protocol on a specific chain
         all_platforms = campaign_service.get_all_platforms(protocol)
         # Filter by chain_id
-        filtered_platforms = [p for p in all_platforms if p.chain_id == chain_id]
-        platforms_to_query.extend([(p.chain_id, p.address) for p in filtered_platforms])
+        filtered_platforms = [
+            p for p in all_platforms if p.chain_id == chain_id
+        ]
+        platforms_to_query.extend(
+            [(p.chain_id, p.address) for p in filtered_platforms]
+        )
     elif protocol:
         # Get all platforms for the protocol across all chains
         all_platforms = campaign_service.get_all_platforms(protocol)
-        platforms_to_query.extend([(p.chain_id, p.address) for p in all_platforms])
+        platforms_to_query.extend(
+            [(p.chain_id, p.address) for p in all_platforms]
+        )
     elif chain_id:
         # All platforms on a specific chain
         platforms = registry.get_platforms_for_chain(chain_id)
         for platform in platforms:
             platforms_to_query.append((chain_id, platform["address"]))
     else:
-        console.print("[yellow]Please provide at least a chain-id or protocol[/yellow]")
+        console.print(
+            "[yellow]Please provide at least a chain-id or protocol[/yellow]"
+        )
         return
 
     # Create tasks for all platforms
     tasks = [
-        get_active_campaigns_for_platform(chain_id, platform, campaign_service, campaign_id)
+        get_active_campaigns_for_platform(
+            chain_id, platform, campaign_service, campaign_id
+        )
         for chain_id, platform in platforms_to_query
     ]
 
@@ -307,7 +331,9 @@ async def get_all_active_campaigns(
                 )
 
                 # Store prices in cache (prices_result returns list of (formatted_str, float))
-                for token, (_, price_float) in zip(unique_tokens, prices_result):
+                for token, (_, price_float) in zip(
+                    unique_tokens, prices_result
+                ):
                     cache_key = f"{chain_id}:{token.lower()}"
                     if cache_key not in token_price_cache:
                         # The price_float is for 1 token (since we passed 10**18 wei)
@@ -338,7 +364,9 @@ async def get_all_active_campaigns(
         table.add_column("Closable", width=22)
 
         # Only show first 10 campaigns per platform to avoid clutter
-        campaigns_to_show = campaigns[:10] if len(campaigns) > 10 else campaigns
+        campaigns_to_show = (
+            campaigns[:10] if len(campaigns) > 10 else campaigns
+        )
 
         for c in campaigns_to_show:
             status = get_campaign_status(c)
@@ -348,7 +376,9 @@ async def get_all_active_campaigns(
             total_reward = f"{c['campaign']['total_reward_amount'] / 1e18:.2f}"
 
             # Count updated vs total periods
-            updated_periods = sum(1 for p in c.get("periods", []) if p["updated"])
+            updated_periods = sum(
+                1 for p in c.get("periods", []) if p["updated"]
+            )
             total_periods = len(c.get("periods", []))
             periods_display = f"{updated_periods}/{total_periods}"
 
@@ -356,12 +386,18 @@ async def get_all_active_campaigns(
             if closability["is_closable"]:
                 if closability["can_be_closed_by"] == "Anyone":
                     # Extract days overdue
-                    match = re.search(r"(\d+)d", closability["closability_status"])
+                    match = re.search(
+                        r"(\d+)d", closability["closability_status"]
+                    )
                     days = match.group(1) if match else "?"
-                    closable_display = f"[bold yellow]Anyone ({days}d)[/bold yellow]"
+                    closable_display = (
+                        f"[bold yellow]Anyone ({days}d)[/bold yellow]"
+                    )
                 else:
                     # Manager closable
-                    match = re.search(r"(\d+)d", closability["closability_status"])
+                    match = re.search(
+                        r"(\d+)d", closability["closability_status"]
+                    )
                     days = match.group(1) if match else "?"
                     closable_display = f"[cyan]Manager ({days}d)[/cyan]"
             elif "Active" in closability["closability_status"]:
@@ -373,7 +409,9 @@ async def get_all_active_campaigns(
                 days = match.group(1) if match else "?"
                 closable_display = f"[dim]Claim ({days}d)[/dim]"
             else:
-                closable_display = f"[dim]{closability['closability_status'][:20]}[/dim]"
+                closable_display = (
+                    f"[dim]{closability['closability_status'][:20]}[/dim]"
+                )
 
             # Add to table (without chain_id since it's in the header)
             table.add_row(
@@ -392,9 +430,11 @@ async def get_all_active_campaigns(
             token_price_usd = token_price_cache.get(cache_key, 0.0)
 
             # Process periods and build output data
-            periods_with_rewards, avg_reward_per_vote, avg_reward_per_vote_usd = (
-                _process_campaign_periods(c, chain_id, token_price_usd)
-            )
+            (
+                periods_with_rewards,
+                avg_reward_per_vote,
+                avg_reward_per_vote_usd,
+            ) = _process_campaign_periods(c, chain_id, token_price_usd)
 
             # Add to output data
             output_data["campaigns"].append(
@@ -423,9 +463,11 @@ async def get_all_active_campaigns(
                 cache_key = f"{chain_id}:{reward_token}"
                 token_price_usd = token_price_cache.get(cache_key, 0.0)
 
-                periods_with_rewards, avg_reward_per_vote, avg_reward_per_vote_usd = (
-                    _process_campaign_periods(c, chain_id, token_price_usd)
-                )
+                (
+                    periods_with_rewards,
+                    avg_reward_per_vote,
+                    avg_reward_per_vote_usd,
+                ) = _process_campaign_periods(c, chain_id, token_price_usd)
 
                 output_data["campaigns"].append(
                     _build_campaign_output_data(
@@ -444,11 +486,15 @@ async def get_all_active_campaigns(
     if total_campaigns == 0:
         rprint("[yellow]No campaigns found[/yellow]")
     else:
-        rprint(f"\n[bold green]Total campaigns found: {total_campaigns}[/bold green]")
+        rprint(
+            f"\n[bold green]Total campaigns found: {total_campaigns}[/bold green]"
+        )
 
     # Calculate summary statistics
     if output_data["campaigns"]:
-        output_data["summary"]["total_campaigns"] = len(output_data["campaigns"])
+        output_data["summary"]["total_campaigns"] = len(
+            output_data["campaigns"]
+        )
         output_data["summary"]["active_campaigns"] = sum(
             1 for c in output_data["campaigns"] if not c["is_closed"]
         )
@@ -486,7 +532,9 @@ async def get_all_active_campaigns(
         for campaign in output_data["campaigns"]:
             campaign_periods = len(campaign["periods"])
             campaign_proofs = sum(
-                1 for p in campaign["periods"] if p.get("point_data_inserted", False)
+                1
+                for p in campaign["periods"]
+                if p.get("point_data_inserted", False)
             )
             total_periods += campaign_periods
             periods_with_proofs += campaign_proofs
@@ -498,39 +546,55 @@ async def get_all_active_campaigns(
                     campaigns_missing_proofs += 1
 
         output_data["summary"]["total_periods_checked"] = total_periods
-        output_data["summary"]["total_periods_with_proofs"] = periods_with_proofs
-        output_data["summary"]["campaigns_with_all_proofs"] = campaigns_with_all_proofs
-        output_data["summary"]["campaigns_missing_proofs"] = campaigns_missing_proofs
+        output_data["summary"][
+            "total_periods_with_proofs"
+        ] = periods_with_proofs
+        output_data["summary"][
+            "campaigns_with_all_proofs"
+        ] = campaigns_with_all_proofs
+        output_data["summary"][
+            "campaigns_missing_proofs"
+        ] = campaigns_missing_proofs
 
         # Find campaign with highest average reward per vote
         campaigns_with_rewards = [
-            c for c in output_data["campaigns"] if c["average_reward_per_vote"] > 0
+            c
+            for c in output_data["campaigns"]
+            if c["average_reward_per_vote"] > 0
         ]
-        output_data["summary"]["campaigns_with_rewards"] = len(campaigns_with_rewards)
+        output_data["summary"]["campaigns_with_rewards"] = len(
+            campaigns_with_rewards
+        )
 
         if campaigns_with_rewards:
             best_campaign = max(
                 campaigns_with_rewards,
                 key=lambda x: x["average_reward_per_vote"],
             )
-            output_data["summary"]["highest_avg_reward_per_vote"] = best_campaign[
-                "average_reward_per_vote_ether"
-            ]
-            output_data["summary"]["highest_avg_reward_campaign_id"] = best_campaign[
-                "campaign_id"
-            ]
+            output_data["summary"]["highest_avg_reward_per_vote"] = (
+                best_campaign["average_reward_per_vote_ether"]
+            )
+            output_data["summary"]["highest_avg_reward_campaign_id"] = (
+                best_campaign["campaign_id"]
+            )
 
     # Create filename with protocol/chain info if available
     if campaign_id is not None:
-        filename = generate_timestamped_filename(f"campaign_{campaign_id}_details")
+        filename = generate_timestamped_filename(
+            f"campaign_{campaign_id}_details"
+        )
     elif protocol and chain_id:
         filename = generate_timestamped_filename(
             f"active_campaigns_{protocol}_chain{chain_id}"
         )
     elif protocol:
-        filename = generate_timestamped_filename(f"active_campaigns_{protocol}")
+        filename = generate_timestamped_filename(
+            f"active_campaigns_{protocol}"
+        )
     elif chain_id:
-        filename = generate_timestamped_filename(f"active_campaigns_chain{chain_id}")
+        filename = generate_timestamped_filename(
+            f"active_campaigns_chain{chain_id}"
+        )
     else:
         filename = generate_timestamped_filename("active_campaigns")
 
@@ -539,7 +603,9 @@ async def get_all_active_campaigns(
     # Show closability summary
     all_campaigns = output_data["campaigns"]
     closable_by_anyone = [
-        c for c in all_campaigns if c["closability"]["can_be_closed_by"] == "Anyone"
+        c
+        for c in all_campaigns
+        if c["closability"]["can_be_closed_by"] == "Anyone"
     ]
     closable_by_manager = [
         c
@@ -570,20 +636,28 @@ async def get_all_active_campaigns(
             )
             rprint("[cyan]   (funds return to manager)[/cyan]")
             for c in closable_by_manager:
-                days_until_anyone = c["closability"].get("days_until_anyone_can_close", 0)
+                days_until_anyone = c["closability"].get(
+                    "days_until_anyone_can_close", 0
+                )
                 rprint(
                     f"   • Campaign #{c['campaign_id']} on chain {c['chain_id']} - {format_address(c.get('gauge', c.get('campaign_details', {}).get('gauge', 'Unknown')))}"
                 )
                 if days_until_anyone > 0:
-                    rprint(f"     [dim]{days_until_anyone} days until anyone can close[/dim]")
+                    rprint(
+                        f"     [dim]{days_until_anyone} days until anyone can close[/dim]"
+                    )
 
     # Show summary of saved data
     if output_data["summary"]["total_campaigns"] > 0:
         rprint("\n[bold green]📊 Data Summary:[/bold green]")
-        rprint(f"  • Total campaigns: {output_data['summary']['total_campaigns']}")
+        rprint(
+            f"  • Total campaigns: {output_data['summary']['total_campaigns']}"
+        )
 
         # Check if all campaigns use the same token
-        unique_tokens = set(c["reward_token"] for c in output_data["campaigns"])
+        unique_tokens = set(
+            c["reward_token"] for c in output_data["campaigns"]
+        )
         if len(unique_tokens) == 1:
             # All campaigns use same token - show totals with symbol
             campaign = output_data["campaigns"][0]
@@ -599,12 +673,14 @@ async def get_all_active_campaigns(
         else:
             # Multiple different tokens - don't sum
             rprint(
-                f"  • [dim]Multiple reward tokens across campaigns (see JSON for details)[/dim]"
+                "  • [dim]Multiple reward tokens across campaigns (see JSON for details)[/dim]"
             )
 
         # Display proof statistics
         total_periods = output_data["summary"]["total_periods_checked"]
-        periods_with_proofs = output_data["summary"]["total_periods_with_proofs"]
+        periods_with_proofs = output_data["summary"][
+            "total_periods_with_proofs"
+        ]
         if total_periods > 0:
             proof_percentage = (periods_with_proofs / total_periods) * 100
             rprint(
@@ -620,13 +696,21 @@ async def get_all_active_campaigns(
 
         if output_data["summary"]["highest_avg_reward_campaign_id"]:
             # Find the campaign with highest reward
-            best_campaign_id = output_data["summary"]["highest_avg_reward_campaign_id"]
+            best_campaign_id = output_data["summary"][
+                "highest_avg_reward_campaign_id"
+            ]
             best_campaign = next(
-                (c for c in output_data["campaigns"] if c["campaign_id"] == best_campaign_id),
-                None
+                (
+                    c
+                    for c in output_data["campaigns"]
+                    if c["campaign_id"] == best_campaign_id
+                ),
+                None,
             )
             if best_campaign:
-                token_symbol = best_campaign.get("reward_token_symbol", "tokens")
+                token_symbol = best_campaign.get(
+                    "reward_token_symbol", "tokens"
+                )
                 rprint(
                     f"  • Best avg reward/vote: Campaign #{best_campaign_id}"
                 )
@@ -636,7 +720,9 @@ async def get_all_active_campaigns(
 
         # Check if we have USD data
         campaigns_with_usd = [
-            c for c in output_data["campaigns"] if c.get("reward_token_price_usd", 0) > 0
+            c
+            for c in output_data["campaigns"]
+            if c.get("reward_token_price_usd", 0) > 0
         ]
         if campaigns_with_usd:
             best_usd_campaign = max(
@@ -670,7 +756,9 @@ def main():
         type=str,
         help="Platform address (e.g., 0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5)",
     )
-    parser.add_argument("--protocol", type=str, help="Protocol name (curve, balancer)")
+    parser.add_argument(
+        "--protocol", type=str, help="Protocol name (curve, balancer)"
+    )
     parser.add_argument(
         "--campaign-id",
         type=int,

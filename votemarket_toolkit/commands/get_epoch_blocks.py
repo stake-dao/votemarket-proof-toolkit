@@ -1,5 +1,4 @@
 import argparse
-import sys
 from typing import List
 
 from rich.panel import Panel
@@ -39,7 +38,9 @@ def get_epoch_blocks(chain_id: int, platform: str, epochs: List[int]):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Get epoch blocks for a platform")
+    parser = argparse.ArgumentParser(
+        description="Get epoch blocks for a platform"
+    )
     parser.add_argument(
         "--chain-id",
         type=int,

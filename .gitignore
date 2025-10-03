@@ -21,6 +21,7 @@ env/
 
 # Temporary files
 cache/
+.cache/
 temp/
 node_modules/
 .venv

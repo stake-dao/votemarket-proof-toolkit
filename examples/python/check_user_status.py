@@ -17,7 +17,6 @@ Usage:
 """
 
 import asyncio
-from typing import Optional
 
 # VoteMarket toolkit imports
 from votemarket_toolkit.campaigns.service import CampaignService

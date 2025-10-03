@@ -1,5 +1,4 @@
 import argparse
-import sys
 
 from rich.panel import Panel
 
@@ -25,7 +24,8 @@ def generate_gauge_proof(protocol, gauge_address, current_epoch, block_number):
         "gauge_address": gauge_address,
         "current_epoch": current_epoch,
         "block_number": block_number,
-        "gauge_controller_proof": "0x" + gauge_proof["gauge_controller_proof"].hex(),
+        "gauge_controller_proof": "0x"
+        + gauge_proof["gauge_controller_proof"].hex(),
         "point_data_proof": "0x" + gauge_proof["point_data_proof"].hex(),
     }
 
@@ -37,7 +37,9 @@ def generate_gauge_proof(protocol, gauge_address, current_epoch, block_number):
         f'[green]0x{gauge_proof["gauge_controller_proof"].hex()[:50]}...[/green]'
     )
     console.print("[cyan]Point Data Proof:[/cyan]")
-    console.print(f'[green]0x{gauge_proof["point_data_proof"].hex()[:50]}...[/green]')
+    console.print(
+        f'[green]0x{gauge_proof["point_data_proof"].hex()[:50]}...[/green]'
+    )
 
 
 def main():
@@ -74,7 +76,9 @@ def main():
         protocol = validate_protocol(args.protocol)
 
         # Validate gauge address
-        gauge_address = validate_eth_address(args.gauge_address, "gauge_address")
+        gauge_address = validate_eth_address(
+            args.gauge_address, "gauge_address"
+        )
 
         # Validate numeric inputs
         if args.current_epoch <= 0 or args.block_number <= 0:

@@ -1,4 +1,5 @@
 """Shared formatting and file utilities for commands."""
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -42,7 +43,9 @@ def format_address(address: str, length: int = 10) -> str:
     return f"{address[:6]}...{address[-4:]}"
 
 
-def format_timestamp(timestamp: int, format_str: str = "%Y-%m-%d %H:%M") -> str:
+def format_timestamp(
+    timestamp: int, format_str: str = "%Y-%m-%d %H:%M"
+) -> str:
     """
     Format a Unix timestamp to a readable date string.
 

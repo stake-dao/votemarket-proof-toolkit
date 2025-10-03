@@ -1,4 +1,5 @@
 """Campaign-specific utilities for closability and status calculations."""
+
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
@@ -25,11 +26,15 @@ def calculate_deadlines(end_timestamp: int) -> Dict[str, Any]:
         "claim_deadline": claim_deadline,
         "close_window_end": close_window_end,
         "current_time": current_time,
-        "is_within_close_window": claim_deadline <= current_time < close_window_end,
+        "is_within_close_window": claim_deadline
+        <= current_time
+        < close_window_end,
         "is_after_close_window": current_time >= close_window_end,
         "days_since_end": (current_time - end_date).days,
         "days_since_claim_deadline": (
-            (current_time - claim_deadline).days if current_time >= claim_deadline else 0
+            (current_time - claim_deadline).days
+            if current_time >= claim_deadline
+            else 0
         ),
         "days_until_anyone_can_close": (
             (close_window_end - current_time).days
@@ -71,7 +76,9 @@ def get_closability_info(campaign: dict) -> Dict[str, Any]:
 
     # If within 6 months of end (claim period)
     if deadlines["days_since_end"] < (CLAIM_DEADLINE_MONTHS * 30):
-        days_until_closable = (CLAIM_DEADLINE_MONTHS * 30) - deadlines["days_since_end"]
+        days_until_closable = (CLAIM_DEADLINE_MONTHS * 30) - deadlines[
+            "days_since_end"
+        ]
         closability["closability_status"] = (
             f"Claim Period ({days_until_closable}d until closable)"
         )

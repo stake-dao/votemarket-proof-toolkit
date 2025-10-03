@@ -127,7 +127,9 @@ class VoteMarketProofs:
                 gauge_controller_contract = self.web3_service.get_contract(
                     gauge_controller_address, "pendle_gauge_controller"
                 )
-                active_pools = gauge_controller_contract.functions.getAllActivePools().call()
+                active_pools = (
+                    gauge_controller_contract.functions.getAllActivePools().call()
+                )
 
                 for active_pool in active_pools:
                     if active_pool.lower() == gauge.lower():

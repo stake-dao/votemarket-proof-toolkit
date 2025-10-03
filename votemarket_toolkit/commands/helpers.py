@@ -1,4 +1,5 @@
 """Shared command helpers and utilities."""
+
 import sys
 from typing import Callable
 

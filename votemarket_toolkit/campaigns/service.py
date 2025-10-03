@@ -22,11 +22,17 @@ Technical Implementation:
 """
 
 import asyncio
-from typing import Dict, List, Optional
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 
-from votemarket_toolkit.campaigns.models import Campaign, Platform
+from votemarket_toolkit.campaigns.models import (
+    Campaign,
+    CampaignStatus,
+    Platform,
+)
 from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.laposte_service import laposte_service
@@ -34,6 +40,7 @@ from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
+from votemarket_toolkit.utils.campaign_utils import get_closability_info
 
 
 class CampaignService:
@@ -53,6 +60,9 @@ class CampaignService:
         """Initialize the campaign service with contract reader and service cache."""
         self.contract_reader = ContractReader()
         self.web3_services: Dict[int, Web3Service] = {}
+        # Simple TTL cache (1 hour)
+        self._ttl_cache: Dict[str, tuple] = {}
+        self._ttl = 3600  # 1 hour
 
     def get_web3_service(self, chain_id: int) -> Web3Service:
         """
@@ -69,6 +79,55 @@ class CampaignService:
         if chain_id not in self.web3_services:
             self.web3_services[chain_id] = Web3Service.get_instance(chain_id)
         return self.web3_services[chain_id]
+
+    def _get_cache_path(self, key: str):
+        """Get the file path for a cache key."""
+        import hashlib
+
+        cache_dir = Path(".cache")
+        cache_dir.mkdir(exist_ok=True)
+
+        # Create safe filename from key
+        safe_key = hashlib.sha256(f"campaigns:{key}".encode()).hexdigest()
+        return cache_dir / f"{safe_key}.cache"
+
+    def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
+        """Get value from TTL cache if not expired."""
+        import pickle
+
+        cache_path = self._get_cache_path(key)
+
+        if cache_path.exists():
+            try:
+                with open(cache_path, "rb") as f:
+                    data = pickle.load(f)
+
+                value, expiry = data
+                if time.time() < expiry:
+                    return value
+                else:
+                    # Remove expired file
+                    cache_path.unlink()
+            except Exception:
+                # If file is corrupted, remove it
+                if cache_path.exists():
+                    cache_path.unlink()
+
+        return None
+
+    def _set_ttl_cache(self, key: str, value: Any) -> None:
+        """Set value in TTL cache."""
+        import pickle
+
+        cache_path = self._get_cache_path(key)
+
+        try:
+            with open(cache_path, "wb") as f:
+                pickle.dump((value, time.time() + self._ttl), f)
+        except Exception:
+            # If write fails, try to clean up
+            if cache_path.exists():
+                cache_path.unlink()
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
@@ -142,6 +201,13 @@ class CampaignService:
             >>> for campaign in campaigns:
             >>>     print(f"Campaign {campaign['campaign']['id']}: {campaign['status_info']['status']}")
         """
+        # Check cache for full campaign fetches (not specific IDs or proof checks)
+        if campaign_id is None and not check_proofs:
+            cache_key = f"campaigns:{chain_id}:{platform_address}"
+            cached_result = self._get_ttl_cache_key(cache_key)
+            if cached_result is not None:
+                return cached_result
+
         try:
             web3_service = self.get_web3_service(chain_id)
             if not web3_service:
@@ -261,12 +327,22 @@ class CampaignService:
             all_campaigns = []
             total_batches = len(tasks)
 
-            # Show fetching status
+            # Show fetching status with more details
+            chain_name = {
+                1: "Ethereum",
+                10: "Optimism",
+                137: "Polygon",
+                8453: "Base",
+                42161: "Arbitrum",
+            }.get(chain_id, f"Chain {chain_id}")
+
             if campaign_id is not None:
-                print(f"Fetching campaign #{campaign_id}...")
+                print(f"Fetching campaign #{campaign_id} from {chain_name}...")
             else:
                 print(
-                    f"Fetching {total_campaigns} campaigns in {total_batches} batches (parallelism: {effective_parallel})..."
+                    f"Fetching {total_campaigns} campaigns from {chain_name} "
+                    f"[{platform_address[:6]}...{platform_address[-4:]}] "
+                    f"in {total_batches} batches (parallelism: {effective_parallel})..."
                 )
 
             for i in range(0, len(tasks), effective_parallel):
@@ -281,14 +357,18 @@ class CampaignService:
                 if i + effective_parallel < len(tasks):
                     await asyncio.sleep(0.15)
 
-            # Print summary
+            # Print summary with platform details
             success_count = len(all_campaigns)
             if errors_count > 0:
                 print(
-                    f"✓ Fetched {success_count}/{total_campaigns} campaigns ({errors_count} errors)"
+                    f"✓ Fetched {success_count}/{total_campaigns} campaigns from {chain_name} "
+                    f"[{platform_address[:6]}...{platform_address[-4:]}] ({errors_count} errors)"
                 )
             else:
-                print(f"✓ Successfully fetched all {success_count} campaigns")
+                print(
+                    f"✓ Successfully fetched all {success_count} campaigns from {chain_name} "
+                    f"[{platform_address[:6]}...{platform_address[-4:]}]"
+                )
 
             # Optionally check proof insertion status for reward claiming
             # This verifies if the oracle has received the necessary proofs
@@ -387,11 +467,65 @@ class CampaignService:
             # Fetch token information (both native and receipt tokens)
             await self._enrich_token_information(all_campaigns, chain_id)
 
+            # Calculate status info for each campaign
+            self._enrich_status_info(all_campaigns)
+
+            # Cache the result for full fetches
+            if campaign_id is None and not check_proofs and all_campaigns:
+                cache_key = f"campaigns:{chain_id}:{platform_address}"
+                self._set_ttl_cache(cache_key, all_campaigns)
+
             return all_campaigns
 
         except Exception as e:
             print(f"Error getting campaigns: {str(e)}")
             return []
+
+    def _enrich_status_info(self, campaigns: List[Dict]) -> None:
+        """
+        Add status_info to each campaign with closability information.
+
+        Args:
+            campaigns: List of campaign dictionaries to enrich
+        """
+        current_timestamp = int(time.time())
+
+        for campaign in campaigns:
+            # Get closability info
+            closability = get_closability_info(campaign)
+
+            # Determine status
+            if campaign["is_closed"]:
+                status = CampaignStatus.CLOSED
+            elif campaign.get("remaining_periods", 0) > 0:
+                status = CampaignStatus.ACTIVE
+            elif campaign["campaign"]["end_timestamp"] < current_timestamp:
+                # Check if it's closable
+                if closability["is_closable"]:
+                    if closability["can_be_closed_by"] == "Manager Only":
+                        status = CampaignStatus.CLOSABLE_BY_MANAGER
+                    else:
+                        status = CampaignStatus.CLOSABLE_BY_EVERYONE
+                else:
+                    status = CampaignStatus.NOT_CLOSABLE  # In claim period
+            else:
+                status = CampaignStatus.ACTIVE
+
+            # Build status_info
+            campaign["status_info"] = {
+                "status": status.value,
+                "is_closed": campaign["is_closed"],
+                "can_close": closability["is_closable"],
+                "who_can_close": (
+                    closability.get("can_be_closed_by") or "no_one"
+                )
+                .lower()
+                .replace(" ", "_"),
+                "days_until_public_close": closability.get(
+                    "days_until_anyone_can_close"
+                ),
+                "reason": closability["closability_status"],
+            }
 
     async def _enrich_token_information(
         self, campaigns: List[Campaign], chain_id: int

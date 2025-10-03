@@ -17,8 +17,8 @@ Usage:
 import asyncio
 import json
 import os
-from typing import Optional, Dict
 from datetime import datetime
+from typing import Dict, Optional
 
 from votemarket_toolkit.proofs import VoteMarketProofs
 from votemarket_toolkit.utils import get_rounded_epoch
@@ -46,7 +46,7 @@ async def generate_gauge_proof(
     """
     rounded_epoch = get_rounded_epoch(epoch_timestamp)
 
-    print(f"\nGenerating gauge proof:")
+    print("\nGenerating gauge proof:")
     print(f"  Protocol: {protocol}")
     print(f"  Gauge: {gauge_address[:10]}...{gauge_address[-4:]}")
     print(f"  Epoch: {rounded_epoch} (from {epoch_timestamp})")
@@ -111,7 +111,7 @@ async def generate_user_proof(
     Returns:
         Dict with proof data or None if error
     """
-    print(f"\nGenerating user proof:")
+    print("\nGenerating user proof:")
     print(f"  User: {user_address[:10]}...{user_address[-4:]}")
     print(f"  Gauge: {gauge_address[:10]}...{gauge_address[-4:]}")
     print(f"  Block: {block_number}")
