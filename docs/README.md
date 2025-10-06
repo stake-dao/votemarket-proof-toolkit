@@ -85,5 +85,3 @@ Batch multiple proof submissions together:
 - Update multiple epochs in a single transaction
 - Combine proof submissions with epoch updates
 
-> [!TIP]
-> An usage of the bundler is present in the `claim_rewards.py` script in the `examples/` directory.

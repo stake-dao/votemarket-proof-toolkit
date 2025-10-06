@@ -1,8 +1,0 @@
-[pip]
-index-url = "https://pypi.org/simple"
-extra-index-url = []
-no-binary = []
-only-binary = []
-
-[venv]
-python = "3.12"  # Default Python version
