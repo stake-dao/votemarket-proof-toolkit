@@ -7,6 +7,7 @@ This service handles:
 3. Checking proof insertion status for rewards claiming
 4. Parallel batch fetching for performance optimization
 5. LaPoste token wrapping/unwrapping detection
+6. Campaign efficiency calculations
 
 Campaign Lifecycle Phases:
 - Active: Campaign is running or has remaining periods
@@ -19,14 +20,17 @@ Technical Implementation:
 - Implements adaptive parallelism based on campaign count
 - Supports proof status checking via oracle contracts
 - Handles LaPoste wrapped tokens and their native counterparts
+- Calculates efficiency parameters
 """
 
 import asyncio
 import time
+from decimal import Decimal, localcontext
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from eth_utils.address import to_checksum_address
+from web3 import Web3
 
 from votemarket_toolkit.campaigns.models import (
     Campaign,
@@ -41,6 +45,7 @@ from votemarket_toolkit.shared.services.resource_manager import (
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils.campaign_utils import get_closability_info
+from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
 
 
 class CampaignService:
@@ -63,6 +68,54 @@ class CampaignService:
         # Simple TTL cache (1 hour)
         self._ttl_cache: Dict[str, tuple] = {}
         self._ttl = 3600  # 1 hour
+
+        # Protocol configurations for efficiency calculations
+        # Based on VoteMarket V2 UI metadata files
+        self.PROTOCOL_CONFIG = {
+            "curve": {
+                "controller": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
+                "emission_token": "0xD533a949740bb3306d119CC777fa900bA034cd52",  # CRV
+                "controller_method": "get_total_weight",
+                "emission_method": "rate",
+                "scale_factor": 10**36,
+                "chain_id": 1,
+            },
+            "balancer": {
+                "controller": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
+                "emission_token": "0xba100000625a3754423978a60c9317c58a424e3D",  # BAL
+                "controller_method": "get_total_weight",
+                "emission_method": "rate",  # Same as Curve
+                "token_admin": "0xf302f9F50958c5593770FDf4d4812309fF77414f",
+                "scale_factor": 10**18,
+                "chain_id": 1,
+            },
+            "fxn": {
+                "controller": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
+                "emission_token": "0x365AccFCa291e7D3914637ABf1F7635dB165Bb09",  # FXN
+                "controller_method": "get_total_weight",
+                "emission_method": "rate",
+                "scale_factor": 10**36,
+                "chain_id": 1,
+            },
+            "pendle": {
+                "controller": "0x44087E105137a5095c008AaB6a6530182821F2F0",
+                "emission_token": "0x808507121B80c02388fAd14726482e061B8da827",  # PENDLE
+                "ve_token": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210",  # vePENDLE
+                "controller_method": "pendlePerSec",
+                "ve_method": "totalSupplyAt",
+                "scale_factor": 10**18,
+                "chain_id": 1,
+            },
+            "frax": {
+                "controller": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
+                "emission_token": "0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0",  # FXS
+                "controller_method": "get_total_weight",
+                "emission_method": "rate",
+                "scale_factor": 10**36,
+                "chain_id": 1,
+                "fixed_weekly_rate": 0,  # FRAX emissions have ended
+            },
+        }
 
     def get_web3_service(self, chain_id: int) -> Web3Service:
         """
@@ -1166,6 +1219,319 @@ class CampaignService:
 
         except Exception as e:
             raise Exception(f"Error checking user proof status: {str(e)}")
+
+    def get_token_per_vetoken(self, protocol: str = "curve") -> float:
+        """
+        Calculate tokenPerVeToken using VoteMarket's formula for any protocol.
+
+        Each protocol has different formulas:
+        - Curve/Frax/FXN: (weeklyRate * 1e36) / totalWeight / 1e18
+        - Balancer: (weeklyRate * 1e18) / totalWeight / 1e18
+        - Pendle: (weeklyRate * 1e18) / totalSupply / 1e18
+
+        Args:
+            protocol: Protocol name ("curve", "balancer", "fxn", "pendle", "frax")
+
+        Returns:
+            float: Token emissions per veToken per week
+        """
+        if protocol not in self.PROTOCOL_CONFIG:
+            raise ValueError(f"Protocol {protocol} not supported")
+
+        config = self.PROTOCOL_CONFIG[protocol]
+        web3_service = self.get_web3_service(config["chain_id"])
+        w3 = web3_service.w3
+
+        seconds_per_week = 86400 * 7
+
+        if protocol == "pendle":
+            # Pendle uses different approach: pendlePerSec and vePENDLE totalSupply
+            controller_abi = [
+                {
+                    "name": config["controller_method"],
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            controller = w3.eth.contract(
+                address=Web3.to_checksum_address(config["controller"]),
+                abi=controller_abi,
+            )
+            rate_per_second = controller.functions.pendlePerSec().call()
+
+            # Get vePENDLE total supply at current epoch
+            ve_abi = [
+                {
+                    "name": "totalSupplyAt",
+                    "outputs": [{"type": "uint128"}],
+                    "inputs": [{"type": "uint128", "name": "timestamp"}],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            ve_token = w3.eth.contract(
+                address=Web3.to_checksum_address(config["ve_token"]),
+                abi=ve_abi,
+            )
+            # Get current week timestamp
+            current_timestamp = int(time.time())
+            current_week = (
+                current_timestamp // seconds_per_week
+            ) * seconds_per_week
+            total_supply = ve_token.functions.totalSupplyAt(
+                current_week
+            ).call()
+
+            # Calculate weekly rate
+            weekly_rate = rate_per_second * seconds_per_week
+
+            # Apply Pendle scaling (1e18 factor)
+            scaled = (weekly_rate * config["scale_factor"]) // total_supply
+            token_per_vetoken = scaled / (10**18)
+
+        elif protocol == "balancer":
+            # Balancer has a fixed emission rate
+            controller_abi = [
+                {
+                    "name": config["controller_method"],
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            controller = w3.eth.contract(
+                address=Web3.to_checksum_address(config["controller"]),
+                abi=controller_abi,
+            )
+            total_weight = controller.functions.get_total_weight().call()
+
+            # Query the Balancer token admin for the current inflation rate.
+            token_admin_abi = [
+                {
+                    "name": "getInflationRate",
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                },
+                {
+                    "name": "rate",
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                },
+            ]
+            token_admin = w3.eth.contract(
+                address=Web3.to_checksum_address(config["token_admin"]),
+                abi=token_admin_abi,
+            )
+
+            try:
+                rate_per_second = (
+                    token_admin.functions.getInflationRate().call()
+                )
+            except Exception:
+                rate_per_second = token_admin.functions.rate().call()
+
+            if total_weight == 0:
+                raise ValueError(
+                    "Balancer controller returned zero total weight"
+                )
+
+            with localcontext() as ctx:
+                ctx.prec = 40
+                rate_decimal = Decimal(rate_per_second)
+                weekly_rate = rate_decimal * Decimal(seconds_per_week)
+                total_weight_decimal = Decimal(total_weight)
+
+                # Convert both values down to token units to avoid enormous integers
+                weekly_rate_tokens = weekly_rate / Decimal(10**18)
+                total_weight_tokens = total_weight_decimal / Decimal(10**18)
+
+                if total_weight_tokens == 0:
+                    raise ValueError("Balancer total weight (tokens) is zero")
+
+                token_per_vetoken_decimal = (
+                    weekly_rate_tokens / total_weight_tokens
+                )
+
+            token_per_vetoken = float(token_per_vetoken_decimal)
+
+        else:
+            # Curve, FXN use similar approach
+            # Get total weight from controller
+            controller_abi = [
+                {
+                    "name": config["controller_method"],
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            controller = w3.eth.contract(
+                address=Web3.to_checksum_address(config["controller"]),
+                abi=controller_abi,
+            )
+            total_weight = controller.functions.get_total_weight().call()
+
+            # Get emission rate from token
+            token_abi = [
+                {
+                    "name": config["emission_method"],
+                    "outputs": [{"type": "uint256"}],
+                    "inputs": [],
+                    "stateMutability": "view",
+                    "type": "function",
+                }
+            ]
+            emission_token = w3.eth.contract(
+                address=Web3.to_checksum_address(config["emission_token"]),
+                abi=token_abi,
+            )
+            rate_per_second = emission_token.functions.rate().call()
+
+            # Calculate weekly rate
+            weekly_rate = rate_per_second * seconds_per_week
+
+            # Apply scaling formula (1e36 for Curve/FXN/Frax)
+            scaled = (weekly_rate * config["scale_factor"]) // total_weight
+            token_per_vetoken = scaled / (10**18)
+
+        return token_per_vetoken
+
+    def calculate_emission_value(
+        self, protocol: str = "curve"
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate emission value as displayed in VoteMarket UI for any protocol.
+
+        Args:
+            protocol: Protocol name ("curve", "balancer", "fxn", "pendle", "frax")
+
+        Returns:
+            Tuple of (emission_value, token_per_vetoken, token_price)
+        """
+        if protocol not in self.PROTOCOL_CONFIG:
+            raise ValueError(f"Protocol {protocol} not supported")
+
+        config = self.PROTOCOL_CONFIG[protocol]
+
+        # Get tokenPerVeToken for this protocol
+        token_per_vetoken = self.get_token_per_vetoken(protocol)
+
+        # Get emission token price
+        prices = get_erc20_prices_in_usd(
+            config["chain_id"], [(config["emission_token"], 10**18)]
+        )
+        token_price = prices[0][1] if prices else 1.0
+
+        # Calculate emission value (UI formula)
+        emission_value = token_per_vetoken * token_price
+
+        return emission_value, token_per_vetoken, token_price
+
+    def calculate_max_reward_for_efficiency(
+        self,
+        target_efficiency: float,
+        reward_token: str,
+        protocol: str = "curve",
+        chain_id: int = 1,
+    ) -> Dict[str, float]:
+        """
+        Calculate max_reward_per_vote to achieve target efficiency in UI.
+
+        This method calculates the maximum reward per vote value needed
+        to achieve a target efficiency in the VoteMarket UI. The UI uses:
+        Min Efficiency = Emission Value / Max Reward
+
+        Args:
+            target_efficiency: Desired efficiency (e.g., 1.25 for 125%)
+            reward_token: Address of reward token
+            protocol: Protocol name ("curve", "balancer", "fxn", "pendle", "frax")
+            chain_id: Chain ID for reward token price lookup (default: 1 for mainnet)
+
+        Returns:
+            Dict with calculation results:
+                - token_per_vetoken: CRV emissions per veToken
+                - crv_price: Current CRV price in USD
+                - reward_token_price: Reward token price in USD
+                - reward_token_decimals: Token decimals
+                - emission_value: Calculated emission value
+                - target_efficiency: Input target efficiency
+                - max_reward_usd: Max reward in USD terms
+                - max_reward_tokens: Max reward in token terms
+
+        Example:
+            >>> result = campaign_service.calculate_max_reward_for_efficiency(
+            ...     target_efficiency=1.25,
+            ...     reward_token="0x73968b9a57c6E53d41345FD57a6E6ae27d6CDB2F"  # SDT
+            ... )
+            >>> print(f"Set max_reward_per_vote to {result['max_reward_tokens']:.6f} SDT")
+        """
+        # Get emission value for the protocol
+        emission_value, token_per_vetoken, emission_token_price = (
+            self.calculate_emission_value(protocol)
+        )
+
+        # Get reward token decimals first
+        web3_service = self.get_web3_service(chain_id)
+        token_abi = [
+            {
+                "name": "decimals",
+                "outputs": [{"type": "uint8"}],
+                "inputs": [],
+                "stateMutability": "view",
+                "type": "function",
+            }
+        ]
+
+        token_contract = web3_service.w3.eth.contract(
+            address=Web3.to_checksum_address(reward_token), abi=token_abi
+        )
+
+        try:
+            decimals = token_contract.functions.decimals().call()
+        except Exception as e:
+            raise Exception("Failed to fetch token decimals", str(e))
+
+        # Get reward token price with correct decimals
+        prices = get_erc20_prices_in_usd(
+            chain_id, [(reward_token, 10**decimals)]
+        )
+        reward_token_price = prices[0][1] if prices else 1.0
+
+        # Calculate max reward for target efficiency
+        # UI Formula: Min Efficiency = Emission Value / Max Reward
+        # Therefore: Max Reward = Emission Value / Target Efficiency
+        max_reward_usd = emission_value / target_efficiency
+        max_reward_tokens = max_reward_usd / reward_token_price
+
+        # Get emission token symbol for display
+        emission_token_symbol = {
+            "curve": "CRV",
+            "balancer": "BAL",
+            "fxn": "FXN",
+            "pendle": "PENDLE",
+            "frax": "FXS",
+        }.get(protocol, "TOKEN")
+
+        return {
+            "protocol": protocol,
+            "token_per_vetoken": token_per_vetoken,
+            "emission_token_symbol": emission_token_symbol,
+            "emission_token_price": emission_token_price,
+            "reward_token_price": reward_token_price,
+            "reward_token_decimals": decimals,
+            "emission_value": emission_value,
+            "target_efficiency": target_efficiency,
+            "max_reward_usd": max_reward_usd,
+            "max_reward_tokens": max_reward_tokens,
+        }
 
 
 # Singleton instance
