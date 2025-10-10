@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
 """
-Example: Get all campaigns managed by a specific address
+Example: Get all campaigns managed by a specific address.
+
+This example demonstrates how to:
+- Search for campaigns by manager address
+- Filter by protocol and active status
+- Display campaign details and status
+
+Usage:
+    uv run examples/python/campaigns/by_manager.py
 """
 
 import asyncio
+
 from votemarket_toolkit.campaigns.service import CampaignService
 
 
 async def main():
+    """Fetch and display campaigns managed by a specific address."""
     # Initialize service
     service = CampaignService()
 

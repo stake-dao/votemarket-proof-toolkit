@@ -20,12 +20,11 @@ These TypeScript examples are provided as **reference implementations** to show:
 
 ```
 typescript/
-├── scripts/
-│   └── estimate-ccip-gas.ts    # CCIP gas estimation example
+├── estimate_ccip_gas.ts        # CCIP gas estimation example
 ├── types/
 │   └── ccip.ts                 # TypeScript type definitions
 └── utils/
-    └── ccip.ts                 # CCIP utility functions
+    └── ccip.ts                 # CCIP utility helpers
 ```
 
 ## Installation

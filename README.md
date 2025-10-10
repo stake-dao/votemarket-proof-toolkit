@@ -130,10 +130,10 @@ ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
 
 See [examples/python](examples/python/) for complete usage examples:
 
-- `all_campaigns.py` - Fetch all campaigns across protocols
-- `check_user_status.py` - Check user eligibility and rewards
-- `generate_proofs.py` - Generate claim proofs
-- `compute_campaign.py` - Optimize campaign parameters
+- `campaigns/list_all.py` – Fetch campaigns across protocols with periods and rewards
+- `users/check_status.py` – Check user proof status (block data, gauge data, user votes)
+- `proofs/generate.py` – Build gauge and user proofs for claims
+- `data/calculate_efficiency.py` – Model optimal `max_reward_per_vote` values
 
 ## Development
 
@@ -146,8 +146,8 @@ cd votemarket-proof-toolkit
 uv sync
 
 # Run examples
-uv run examples/python/compute_campaign.py
-uv run examples/python/get_token_prices.py
+uv run examples/python/data/calculate_efficiency.py
+uv run examples/python/data/get_token_prices.py
 
 # Format and lint
 make format              # Format all code

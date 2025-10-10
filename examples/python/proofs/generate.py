@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
-Example: Generate proofs for VoteMarket claims
+Example: Generate proofs for VoteMarket claims.
 
-This example shows how to:
+This example demonstrates how to:
 - Generate gauge proofs for a specific period
 - Generate user proofs for claiming rewards
 - Get block information for proof generation
@@ -11,7 +12,7 @@ Note: Most RPC providers only keep state for recent blocks (usually 128-1000 blo
 If you get "distance to target block exceeds maximum" errors, use a more recent block.
 
 Usage:
-    python examples/python/generate_proofs.py
+    uv run examples/python/proofs/generate.py
 """
 
 import asyncio
@@ -19,6 +20,8 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, Optional
+
+from web3.exceptions import BlockNotFound, ContractLogicError
 
 from votemarket_toolkit.proofs import VoteMarketProofs
 from votemarket_toolkit.utils import get_rounded_epoch
@@ -86,9 +89,11 @@ async def generate_gauge_proof(
             "point_data_proof": convert_proof(gauge_proof["point_data_proof"]),
         }
 
-    except Exception as e:
-        print(f"  ❌ Error: {str(e)[:100]}")
+    except (ContractLogicError, ValueError, RuntimeError) as exc:
+        print(f"  ❌ Error: {str(exc)[:100]}")
         return None
+    except Exception:
+        raise
 
 
 async def generate_user_proof(
@@ -148,9 +153,11 @@ async def generate_user_proof(
             "storage_proof": convert_proof(user_proof["storage_proof"]),
         }
 
-    except Exception as e:
-        print(f"  ❌ Error: {str(e)[:100]}")
+    except (ContractLogicError, ValueError, RuntimeError) as exc:
+        print(f"  ❌ Error: {str(exc)[:100]}")
         return None
+    except Exception:
+        raise
 
 
 async def get_block_for_epoch(
@@ -167,22 +174,48 @@ async def get_block_for_epoch(
         Block number or None if error
     """
     proof_manager = VoteMarketProofs(chain_id=chain_id)
+    web3_service = proof_manager.web3_service
+    web3_instance = web3_service.w3
 
     try:
-        # In practice, you'd need to find the block closest to the epoch timestamp
-        # For this example, we'll use a recent block
-        block_info = proof_manager.get_block_info(23438749)
+        latest_block = web3_instance.eth.get_block("latest")
+        if epoch_timestamp >= latest_block["timestamp"]:
+            dt = datetime.fromtimestamp(latest_block["timestamp"])
+            print(
+                f"\nEpoch is in the future relative to latest block; using block {latest_block['number']} ({dt.strftime('%Y-%m-%d %H:%M:%S')})"
+            )
+            return latest_block["number"]
 
-        dt = datetime.fromtimestamp(block_info["block_timestamp"])
+        low = 0
+        high = latest_block["number"]
+        closest_block = latest_block
+
+        while low <= high:
+            mid = (low + high) // 2
+            block = web3_instance.eth.get_block(mid)
+
+            if block["timestamp"] == epoch_timestamp:
+                closest_block = block
+                break
+
+            if block["timestamp"] < epoch_timestamp:
+                closest_block = block
+                low = mid + 1
+            else:
+                high = mid - 1
+
+        dt = datetime.fromtimestamp(closest_block["timestamp"])
         print(
-            f"\nBlock {block_info['block_number']} at {dt.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"\nClosest block to epoch {epoch_timestamp}: {closest_block['number']} ({dt.strftime('%Y-%m-%d %H:%M:%S')})"
         )
 
-        return block_info["block_number"]
+        return closest_block["number"]
 
-    except Exception as e:
-        print(f"Error getting block info: {str(e)[:100]}")
+    except (BlockNotFound, ValueError, ContractLogicError) as exc:
+        print(f"Error getting block info: {str(exc)[:100]}")
         return None
+    except Exception:
+        raise
 
 
 async def main() -> None:
@@ -210,15 +243,16 @@ async def main() -> None:
 
     if gauge_proof:
         # Save proof
-        os.makedirs("output", exist_ok=True)
-        filename = (
-            f"output/gauge_proof_{gauge_address[:8]}_{epoch_timestamp}.json"
-        )
+        output_dir = os.path.abspath("output")
+        os.makedirs(output_dir, exist_ok=True)
 
-        with open(filename, "w") as f:
+        filename = f"gauge_proof_{gauge_address[:8]}_{epoch_timestamp}.json"
+        filepath = os.path.join(output_dir, filename)
+
+        with open(filepath, "w") as f:
             json.dump(gauge_proof, f, indent=2)
 
-        print(f"\n  Saved to: {filename}")
+        print(f"\n  Saved to: {filepath}")
 
     # Example 2: Generate user proof (for claiming)
     print("\n\nExample 2: Generate user proof for claiming")
@@ -233,12 +267,13 @@ async def main() -> None:
 
     if user_proof:
         # Save proof
-        filename = f"output/user_proof_{user_address[:8]}_{block_number}.json"
+        filename = f"user_proof_{user_address[:8]}_{block_number}.json"
+        filepath = os.path.join(output_dir, filename)
 
-        with open(filename, "w") as f:
+        with open(filepath, "w") as f:
             json.dump(user_proof, f, indent=2)
 
-        print(f"\n  Saved to: {filename}")
+        print(f"\n  Saved to: {filepath}")
         print("  This proof can be submitted on-chain to claim rewards!")
 
     # Example 3: Get block information

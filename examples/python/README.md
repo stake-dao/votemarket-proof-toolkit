@@ -1,61 +1,47 @@
 # Python SDK Examples
 
-Complete examples demonstrating VoteMarket SDK functionality.
+Structured, ready-to-run samples showcasing the VoteMarket Python SDK. Examples are grouped into a few broad folders so it’s easy to scan.
 
-## Available Examples
+## Directory Overview
+- `campaigns/` – fetch, create, manage, and close campaigns
+- `data/` – analytics utilities and market data helpers
+- `proofs/` – proof generation workflows
+- `users/` – user eligibility checks
 
-### 1. all_campaigns.py
-Fetch all campaigns with periods and status:
-- Lists campaigns from all protocols (Curve, Balancer, Pancakeswap, Pendle)
-- Shows periods and reward amounts
-- Includes campaign status information
-- Saves everything to `all_campaigns.json`
+## Example Catalog
+### Campaigns
+- `campaigns/list_all.py` – list every active campaign (Curve, Balancer, Pendle, PancakeSwap) with periods, rewards, and status; saves to `output/all_campaigns.json`.
+- `campaigns/by_manager.py` – fetch campaigns for a specific manager address.
+- `campaigns/create_campaign_l1.py` – launch a campaign from L1 using the remote manager and CCIP fees.
+- `campaigns/create_campaign_l2.py` – launch a campaign directly on Arbitrum.
+- `campaigns/manage_campaign_l1.py` – extend or top up an existing campaign from L1.
+- `campaigns/manage_campaign_l2.py` – manage a campaign directly on Arbitrum (requires wrapped rewards).
+- `campaigns/close_campaign.py` – close and settle a campaign.
 
-### 2. check_user_status.py
-Check if a specific user is eligible for campaign rewards:
-- Verifies voting eligibility
-- Shows reward amounts
-- Checks claim status
+### Data
+- `data/calculate_efficiency.py` – compute `max_reward_per_vote` targets across supported protocols.
+- `data/get_token_prices.py` – fetch ERC-20 token prices through the toolkit pricing service.
 
-### 3. generate_proofs.py
-Generate proofs for campaign claims:
-- Creates user voting proofs
-- Generates gauge weight proofs
-- Saves proofs in JSON format
+### Proofs
+- `proofs/generate.py` – generate user and gauge proofs and export them as JSON payloads.
 
-### 4. compute_campaign.py
-**Optimize campaign parameters based on market data:**
-- Analyzes your gauge's historical performance (EMA smoothed)
-- Compares to current market rates (robust statistics)
-- Calculates optimal `max_reward_per_vote`
-- Shows budget analysis (are you over/under-budgeted?)
-- Provides market positioning vs peers
-
-**Example output:**
-```
-Budget Analysis:
-  • Your budget: 30,000 tokens
-  • Tokens needed: 9,062 tokens to achieve $0.001185/vote
-  • ⚠ Over-budgeted by 70%
-
-  💡 You can reduce budget to 9,062 tokens to save 20,938 tokens
-```
+### Users
+- `users/check_status.py` – verify whether an address can claim rewards for a campaign.
 
 ## Running Examples
-
 ```bash
-# Setup
+# Install dependencies
 uv sync
 
-# Run any example
-uv run examples/python/all_campaigns.py
-uv run examples/python/check_user_status.py
-uv run examples/python/generate_proofs.py
+# Execute any example
+uv run examples/python/campaigns/list_all.py
+uv run examples/python/campaigns/create_campaign_l1.py
 ```
 
-## Environment Setup
+All scripts honour the standard `.env` variables (e.g. `ETHEREUM_MAINNET_RPC_URL`, `ARBITRUM_MAINNET_RPC_URL`) and optional overrides such as `VOTEMARKET_MANAGER_ADDRESS` and `VOTEMARKET_REMOTE_MANAGER_ADDRESS` so you can point to your own infrastructure without editing the files.
 
-Create `.env` in the project root:
+## Environment Setup
+Create a `.env` file in the project root with the required RPC endpoints:
 ```
 ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY

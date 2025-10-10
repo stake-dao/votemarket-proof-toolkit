@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { simulateCcipReceive, getWrappedToken, getTokenBalance } from '../utils/ccip';
+import { simulateCcipReceive, getWrappedToken, getTokenBalance } from './utils/ccip';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -14,6 +14,15 @@ function validateAddress(address: string): string {
   } catch (error) {
     throw new Error(`Invalid address: ${address}`);
   }
+}
+
+function destroyProvider(provider?: ethers.providers.JsonRpcProvider): void {
+  if (!provider) {
+    return;
+  }
+
+  const closable = provider as unknown as { destroy?: () => void };
+  closable.destroy?.();
 }
 
 async function getTokenWithBalance(
@@ -67,9 +76,12 @@ async function main() {
     .help()
     .argv;
 
+  let sourceProvider: ethers.providers.JsonRpcProvider | undefined;
+  let destProvider: ethers.providers.JsonRpcProvider | undefined;
+
   try {
-    const sourceProvider = new ethers.providers.JsonRpcProvider(ARBITRUM_RPC);
-    const destProvider = new ethers.providers.JsonRpcProvider(ETHEREUM_RPC);
+    sourceProvider = new ethers.providers.JsonRpcProvider(ARBITRUM_RPC);
+    destProvider = new ethers.providers.JsonRpcProvider(ETHEREUM_RPC);
 
     const adapterAddress = validateAddress(argv.adapter as string);
     const laposteAddress = validateAddress(argv.laposte as string);
@@ -114,6 +126,9 @@ async function main() {
       console.error('Unknown error:', error);
     }
     process.exit(1);
+  } finally {
+    destroyProvider(sourceProvider);
+    destroyProvider(destProvider);
   }
 }
 

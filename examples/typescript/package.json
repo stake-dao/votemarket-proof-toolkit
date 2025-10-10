@@ -4,7 +4,7 @@
   "private": true,
   "description": "TypeScript usage examples for VoteMarket toolkit - Reference implementations only",
   "scripts": {
-    "simulate": "ts-node scripts/estimate-ccip-gas.ts",
+    "simulate": "ts-node estimate_ccip_gas.ts",
     "build": "tsc",
     "test": "echo 'These are examples, no tests configured'"
   },

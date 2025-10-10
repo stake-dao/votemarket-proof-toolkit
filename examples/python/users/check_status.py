@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
-Example: Check user proof status for VoteMarket campaigns
+Example: Check user proof status for VoteMarket campaigns.
 
-This example shows how to:
+This example demonstrates how to:
 - Check if a user can claim rewards from campaigns
 - Verify if proofs are inserted on-chain
 - Check claim eligibility for each period
@@ -13,10 +14,12 @@ Note: Users can only claim rewards if they:
 3. Have block and point data uploaded (usually done automatically)
 
 Usage:
-    python examples/python/check_user_status.py
+    uv run examples/python/users/check_status.py
 """
 
 import asyncio
+
+from web3.exceptions import ContractLogicError
 
 # VoteMarket toolkit imports
 from votemarket_toolkit.campaigns.service import CampaignService
@@ -118,13 +121,14 @@ async def check_user_campaign_status(
         else:
             print("  ⚠️  Unable to fetch proof status")
 
-    except Exception as e:
-        print(f"  ❌ Error: {str(e)[:100]}")
+    except (ContractLogicError, ValueError, RuntimeError) as exc:
+        print(f"  ❌ Error: {str(exc)[:100]}")
+    except Exception:
+        raise
 
 
-async def main() -> None:
+async def main():
     """Run the example with sample data."""
-
     print("=== VoteMarket Example: Check User Proof Status ===")
 
     # Example configuration

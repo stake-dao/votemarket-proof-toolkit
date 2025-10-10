@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 """
-Example: Calculate max_reward_per_vote for different protocols
+Example: Calculate max_reward_per_vote for different protocols.
+
+This example demonstrates how to:
+- Calculate optimal reward rates for target efficiency
+- Compare efficiency across different protocols
+- Get emission rates and token prices
+
+Usage:
+    uv run examples/python/data/calculate_efficiency.py
 """
 
-from votemarket_toolkit.campaigns.service import campaign_service
 from web3 import Web3
+from web3.exceptions import ContractLogicError
+
+from votemarket_toolkit.campaigns.service import campaign_service
 
 
 def main():
+    """Calculate and display efficiency metrics for multiple protocols."""
     # Example configurations for different protocols
     examples = [
         {
@@ -64,7 +75,8 @@ def main():
                     abi=token_abi,
                 )
                 reward_symbol = token_contract.functions.symbol().call()
-            except:
+            except (ContractLogicError, ValueError) as exc:
+                print(f"  ⚠️ Unable to fetch token symbol: {exc}")
                 reward_symbol = "TOKEN"
 
             # Display results
@@ -97,8 +109,12 @@ def main():
                 f"\n→ Set max_reward_per_vote to: {token_display} {reward_symbol}"
             )
 
-        except Exception as e:
-            print(f"Error: {str(e)}")
+        except (ContractLogicError, ValueError) as exc:
+            print(
+                f"Error calculating efficiency for {config['protocol']}: {exc}"
+            )
+        except Exception:
+            raise
 
     print("\n" + "=" * 60)
 
