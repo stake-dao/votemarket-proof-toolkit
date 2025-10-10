@@ -9,7 +9,7 @@ Creating a campaign with L1 tokens involves several steps to ensure the tokens a
 2. Bridging a message to L2
 3. Minting wrapped tokens on L2 to be used for the campaign
 
-The helper contract for creating campaigns is the [CampaignRemoteManager](https://etherscan.io/address/0xd1f0101Df22Cb7447F486Da5784237AB7a55eB4e).
+The helper contract for creating campaigns is the [CampaignRemoteManager](https://etherscan.io/address/0x53aD4Cd1F1e52DD02aa9FC4A8250A1b74F351CA2).
 
 #### Implementation
 
