@@ -1,6 +1,7 @@
 """Shared formatting and file utilities for commands."""
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -15,12 +16,32 @@ def load_json(file_path: str) -> Dict[str, Any]:
     """
     Load and parse a JSON file.
 
+    Supports both package resources (when installed) and local file paths (for development).
+
     Args:
-        file_path: Path to JSON file
+        file_path: Path to JSON file (can be relative package path or absolute)
 
     Returns:
         Parsed JSON data as dictionary
     """
+    # Check if this looks like a package resource path
+    if file_path.startswith("votemarket_toolkit/"):
+        # Convert path to package notation
+        parts = file_path.split("/")
+        package = ".".join(parts[:-1])  # e.g., "votemarket_toolkit.resources.abi"
+        resource = parts[-1]  # e.g., "ccip_adapter.json"
+
+        # Use importlib.resources for Python 3.9+
+        if sys.version_info >= (3, 9):
+            from importlib.resources import files
+            resource_path = files(package).joinpath(resource)
+            return json.loads(resource_path.read_text())
+        else:
+            # Fallback for Python 3.7-3.8
+            from importlib.resources import read_text
+            return json.loads(read_text(package, resource))
+
+    # Fall back to regular file opening for absolute paths
     with open(file_path, "r") as file:
         return json.load(file)
 
