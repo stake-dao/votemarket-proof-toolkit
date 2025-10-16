@@ -1,6 +1,6 @@
 [project]
 name = "votemarket-toolkit"
-version = "1.0.3"
+version = "1.0.4"
 description = "Python SDK for VoteMarket - campaign management, proofs, and analytics"
 authors = [{name = "Stake DAO", email = "admin@stakedao.org"}]
 readme = "README.md"
@@ -49,6 +49,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["votemarket_toolkit"]
+artifacts = [
+    "votemarket_toolkit/resources/**/*.json",
+    "votemarket_toolkit/resources/**/*.sol",
+]
 
 [tool.hatch.build.targets.sdist]
 only-include = [
