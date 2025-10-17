@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(unzip:*)"
+      "Bash(unzip:*)",
+      "Bash(mkdir:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m streamlit:*)"
     ],
     "deny": [],
     "ask": []

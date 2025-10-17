@@ -805,6 +805,56 @@ class CampaignService:
 
         return results
 
+    async def get_active_campaigns_by_protocol(
+        self,
+        protocol: str,
+        chain_id: int,
+        check_proofs: bool = False,
+        parallel_requests: int = 16,
+    ) -> List[Campaign]:
+        """
+        Get active campaigns for a specific protocol and chain.
+
+        This is a convenience method that automatically gets the platform address
+        from the registry and fetches active campaigns.
+
+        Args:
+            protocol: Protocol name ("curve", "balancer", "frax", "fxn", "pendle")
+            chain_id: Chain ID to query
+            check_proofs: Whether to check proof insertion status
+            parallel_requests: Number of parallel requests (default: 16)
+
+        Returns:
+            List of active campaigns
+
+        Example:
+            >>> service = CampaignService()
+            >>> campaigns = await service.get_active_campaigns_by_protocol(
+            ...     protocol="curve",
+            ...     chain_id=42161,
+            ...     check_proofs=True
+            ... )
+        """
+        # Get platform address from registry (try v2 first, then v2_old)
+        platform_address = registry.get_platform(protocol, chain_id, "v2")
+        if not platform_address:
+            platform_address = registry.get_platform(protocol, chain_id, "v2_old")
+        if not platform_address:
+            platform_address = registry.get_platform(protocol, chain_id, "v1")
+
+        if not platform_address:
+            raise Exception(
+                f"No platform found for {protocol} on chain {chain_id}"
+            )
+
+        # Fetch active campaigns
+        return await self.get_active_campaigns(
+            chain_id=chain_id,
+            platform_address=platform_address,
+            parallel_requests=parallel_requests,
+            check_proofs=check_proofs,
+        )
+
     def _enrich_status_info(self, campaigns: List[Dict]) -> None:
         """
         Add status_info to each campaign with closability information.
