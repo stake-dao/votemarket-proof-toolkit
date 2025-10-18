@@ -200,6 +200,257 @@ class CampaignService:
         dict_platforms = registry.get_all_platforms(protocol)
         return [Platform(**p) for p in dict_platforms]
 
+    # -----------------------------
+    # Batch sizing helpers
+    # -----------------------------
+    def _determine_campaign_fetch_batch_size(self, total_campaigns: int) -> int:
+        """Determine batch size for generic campaign fetching.
+
+        Mirrors the sizing logic used in get_campaigns.
+        """
+        if total_campaigns > 400:
+            return 30
+        if total_campaigns > 200:
+            return 25
+        if total_campaigns > 100:
+            return 20
+        if total_campaigns > 50:
+            return 15
+        return max(1, min(10, total_campaigns))
+
+    def _determine_active_ids_batch_size(self, total_campaigns: int) -> int:
+        """Determine batch size for active campaign id discovery.
+
+        Mirrors the sizing logic used in get_active_campaigns.
+        """
+        if total_campaigns > 300:
+            return 100
+        if total_campaigns > 100:
+            return 150
+        return total_campaigns
+
+    # -----------------------------
+    # Proof status helpers
+    # -----------------------------
+    def _populate_proof_status_flags(
+        self,
+        campaigns: List[Dict],
+        web3_service: Web3Service,
+        platform_contract,
+    ) -> None:
+        """Populate block/point proof flags on campaigns' periods.
+
+        This performs a gauge-level proof check (no user addresses) across
+        recent periods and annotates the in-memory campaign structures.
+        """
+        if not campaigns:
+            return
+
+        try:
+            # Get oracle address through lens contract
+            oracle_lens_address = platform_contract.functions.ORACLE().call()
+            oracle_lens_contract = web3_service.get_contract(
+                to_checksum_address(oracle_lens_address),
+                "lens_oracle",
+            )
+            oracle_address = oracle_lens_contract.functions.oracle().call()
+
+            # Load bytecode
+            proof_bytecode = resource_manager.load_bytecode("GetInsertedProofs")
+
+            for campaign in campaigns:
+                if not campaign.get("periods"):
+                    continue
+
+                gauge = campaign["campaign"]["gauge"]
+                # Limit epochs to first 10 to reduce RPC load
+                epochs = [p["timestamp"] for p in campaign["periods"][:10]]
+                if not epochs:
+                    continue
+
+                try:
+                    tx = self.contract_reader.build_get_inserted_proofs_constructor_tx(
+                        {"bytecode": proof_bytecode},
+                        oracle_address,
+                        gauge,
+                        [],
+                        epochs,
+                    )
+                    result = web3_service.w3.eth.call(tx)  # type: ignore
+                    epoch_results = self.contract_reader.decode_inserted_proofs(result)
+
+                    # Annotate each period with proof flags
+                    for period in campaign["periods"]:
+                        epoch_result = next(
+                            (er for er in epoch_results if er["epoch"] == period["timestamp"]),
+                            None,
+                        )
+                        if not epoch_result:
+                            continue
+
+                        point_inserted = any(
+                            pd["is_updated"] for pd in epoch_result.get("point_data_results", [])
+                        )
+                        period["point_data_inserted"] = point_inserted
+                        period["block_updated"] = epoch_result.get("is_block_updated", False)
+                except Exception:
+                    # Skip proof flags for this campaign on error
+                    continue
+        except Exception:
+            # Silently ignore proof status enrichment errors
+            return
+
+    # -----------------------------
+    # Campaign fetching helpers
+    # -----------------------------
+    async def _fetch_campaign_batches(
+        self,
+        web3_service: Web3Service,
+        bytecode_data: Dict[str, Any],
+        platform_address: str,
+        total_campaigns: int,
+        campaign_id: Optional[int],
+        parallel_requests: int,
+    ) -> Tuple[List[Dict], int]:
+        """Fetch campaigns in batches with retry and parallelization.
+
+        Returns tuple of (campaigns, errors_count).
+        """
+        errors_count = 0
+
+        async def fetch_batch(start_idx: int, limit: int, retry_count: int = 0) -> List[Dict]:
+            nonlocal errors_count
+            try:
+                tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                    bytecode_data,
+                    [platform_address, start_idx, limit],
+                )
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    web3_service.w3.eth.call,
+                    tx,  # type: ignore
+                )
+                return self.contract_reader.decode_campaign_data(result)
+            except Exception:
+                if retry_count < 2 and limit > 1:
+                    mid_point = limit // 2
+                    results1 = await fetch_batch(start_idx, mid_point, retry_count + 1)
+                    results2 = await fetch_batch(start_idx + mid_point, limit - mid_point, retry_count + 1)
+                    return results1 + results2
+                errors_count += 1
+                return []
+
+        tasks: List[Any] = []
+        if campaign_id is not None:
+            tasks.append(fetch_batch(campaign_id, 1))
+            effective_parallel = 1
+        else:
+            batch_size = self._determine_campaign_fetch_batch_size(total_campaigns)
+            effective_parallel = parallel_requests
+            for start_idx in range(0, total_campaigns, batch_size):
+                limit = min(batch_size, total_campaigns - start_idx)
+                tasks.append(fetch_batch(start_idx, limit))
+
+        all_campaigns: List[Dict] = []
+        for i in range(0, len(tasks), effective_parallel):
+            chunk = tasks[i : i + effective_parallel]
+            results = await asyncio.gather(*chunk, return_exceptions=True)
+            for result in results:
+                if isinstance(result, list):
+                    all_campaigns.extend(result)
+
+        return all_campaigns, errors_count
+
+    async def _get_active_campaign_ids(
+        self,
+        web3_service: Web3Service,
+        platform_address: str,
+        total_campaigns: int,
+    ) -> List[int]:
+        """Return active campaign IDs using the optimized bytecode approach."""
+        active_ids_bytecode = resource_manager.load_bytecode("GetActiveCampaignIds")
+        active_campaign_ids: List[int] = []
+
+        batch_size = self._determine_active_ids_batch_size(total_campaigns)
+        if batch_size < total_campaigns:
+            tasks = []
+
+            async def check_batch(start: int, size: int) -> List[int]:
+                try:
+                    tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
+                        {"bytecode": active_ids_bytecode}, platform_address, start, size
+                    )
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        web3_service.w3.eth.call,
+                        tx,
+                    )
+                    batch_data = self.contract_reader.decode_active_campaign_ids(result)
+                    return batch_data["campaign_ids"]
+                except Exception:
+                    return []
+
+            for start_id in range(0, total_campaigns, batch_size):
+                tasks.append(check_batch(start_id, batch_size))
+
+            results = await asyncio.gather(*tasks)
+            for batch_ids in results:
+                active_campaign_ids.extend(batch_ids)
+        else:
+            try:
+                tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
+                    {"bytecode": active_ids_bytecode}, platform_address, 0, total_campaigns
+                )
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    web3_service.w3.eth.call,
+                    tx,
+                )
+                batch_data = self.contract_reader.decode_active_campaign_ids(result)
+                active_campaign_ids = batch_data["campaign_ids"]
+            except Exception:
+                return []
+
+        return active_campaign_ids
+
+    async def _fetch_campaigns_by_ids(
+        self,
+        web3_service: Web3Service,
+        platform_address: str,
+        campaign_ids: List[int],
+    ) -> List[Dict]:
+        """Fetch full campaign details for the provided ids in parallel."""
+        if not campaign_ids:
+            return []
+
+        bytecode_data = resource_manager.load_bytecode("BatchCampaignsWithPeriods")
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        max_workers = min(len(campaign_ids), 50)
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+
+        async def fetch_one(campaign_id: int) -> Optional[Dict]:
+            try:
+                tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                    bytecode_data,
+                    [platform_address, campaign_id, 1],
+                )
+                result = await asyncio.get_event_loop().run_in_executor(
+                    executor,
+                    web3_service.w3.eth.call,
+                    tx,
+                )
+                campaigns = self.contract_reader.decode_campaign_data(result)
+                return campaigns[0] if campaigns else None
+            except Exception:
+                return None
+
+        tasks = [fetch_one(cid) for cid in campaign_ids]
+        results = await asyncio.gather(*tasks)
+        executor.shutdown(wait=False)
+        return [c for c in results if c is not None]
+
     async def get_campaigns(
         self,
         chain_id: int,
@@ -343,55 +594,21 @@ class CampaignService:
                         errors_count += 1
                         return []
 
-            # Create batch tasks
-            tasks = []
-
-            if campaign_id is not None:
-                # Single campaign fetch
-                tasks.append(fetch_batch(campaign_id, 1))
-                effective_parallel = 1
-            else:
-                # Determine optimal batch size based on campaign count
-                if total_campaigns > 400:
-                    batch_size = 30
-                elif total_campaigns > 200:
-                    batch_size = 25
-                elif total_campaigns > 100:
-                    batch_size = 20
-                elif total_campaigns > 50:
-                    batch_size = 15
-                else:
-                    batch_size = min(10, total_campaigns)
-
-                # Use the provided parallel_requests parameter
-                effective_parallel = parallel_requests
-
-                # Create all batch tasks
-                for start_idx in range(0, total_campaigns, batch_size):
-                    limit = min(batch_size, total_campaigns - start_idx)
-                    tasks.append(fetch_batch(start_idx, limit))
-
-            # Execute in parallel chunks
-            all_campaigns = []
-            # Execute in parallel chunks
-            for i in range(0, len(tasks), effective_parallel):
-                chunk = tasks[i : i + effective_parallel]
-                results = await asyncio.gather(*chunk, return_exceptions=True)
-
-                for result in results:
-                    if isinstance(result, list):
-                        all_campaigns.extend(result)
-
+            # Fetch all campaigns via helper
+            all_campaigns, errors_count = await self._fetch_campaign_batches(
+                web3_service=web3_service,
+                bytecode_data=bytecode_data,
+                platform_address=platform_address,
+                total_campaigns=total_campaigns,
+                campaign_id=campaign_id,
+                parallel_requests=parallel_requests,
+            )
             # Only log if there were errors
             success_count = len(all_campaigns)
             if errors_count > 0:
-                chain_name = {
-                    1: "Ethereum",
-                    10: "Optimism",
-                    137: "Polygon",
-                    8453: "Base",
-                    42161: "Arbitrum",
-                }.get(chain_id, f"Chain {chain_id}")
+                chain_name = {1: "Ethereum", 10: "Optimism", 137: "Polygon", 8453: "Base", 42161: "Arbitrum"}.get(
+                    chain_id, f"Chain {chain_id}"
+                )
                 print(
                     f"Warning: Fetched {success_count}/{total_campaigns} campaigns from {chain_name} "
                     f"({errors_count} failed batches, will retry)"
@@ -401,92 +618,7 @@ class CampaignService:
             # This verifies if the oracle has received the necessary proofs
             # for users to be able to claim their rewards
             if check_proofs and all_campaigns:
-                try:
-                    # Get oracle address through lens contract
-                    # Chain: platform.ORACLE() returns lens, lens.oracle() returns actual oracle
-                    oracle_lens_address = (
-                        platform_contract.functions.ORACLE().call()
-                    )
-
-                    oracle_lens_contract = web3_service.get_contract(
-                        to_checksum_address(oracle_lens_address),
-                        "lens_oracle",
-                    )
-                    oracle_address = (
-                        oracle_lens_contract.functions.oracle().call()
-                    )
-
-                    # Load GetInsertedProofs bytecode
-                    proof_bytecode = resource_manager.load_bytecode(
-                        "GetInsertedProofs"
-                    )
-
-                    # Check proof insertion for each campaign
-                    for campaign in all_campaigns:
-                        if not campaign.get("periods"):
-                            continue
-
-                        gauge = campaign["campaign"]["gauge"]
-                        # Check first 10 periods to avoid excessive calls
-                        epochs = [
-                            p["timestamp"] for p in campaign["periods"][:10]
-                        ]
-
-                        if not epochs:
-                            continue
-
-                        try:
-                            # Build transaction to check if proofs are inserted for these epochs
-                            tx = self.contract_reader.build_get_inserted_proofs_constructor_tx(
-                                {"bytecode": proof_bytecode},
-                                oracle_address,
-                                gauge,
-                                [],  # No user addresses needed for gauge-level check
-                                epochs,
-                            )
-
-                            result = web3_service.w3.eth.call(tx)  # type: ignore
-                            epoch_results = (
-                                self.contract_reader.decode_inserted_proofs(
-                                    result
-                                )
-                            )
-
-                            # Update each period with its proof insertion status
-                            for period in campaign["periods"]:
-                                # Find matching epoch result
-                                epoch_result = next(
-                                    (
-                                        er
-                                        for er in epoch_results
-                                        if er["epoch"] == period["timestamp"]
-                                    ),
-                                    None,
-                                )
-
-                                if epoch_result:
-                                    # Check if point data (vote weights) have been inserted
-                                    point_inserted = any(
-                                        pd["is_updated"]
-                                        for pd in epoch_result.get(
-                                            "point_data_results", []
-                                        )
-                                    )
-                                    period["point_data_inserted"] = (
-                                        point_inserted
-                                    )
-                                    # Check if block number has been set for this epoch
-                                    period["block_updated"] = epoch_result.get(
-                                        "is_block_updated", False
-                                    )
-
-                        except Exception:
-                            # Skip if proof check fails for this campaign
-                            pass
-
-                except Exception:
-                    # Silently skip if proof checking fails
-                    pass
+                self._populate_proof_status_flags(all_campaigns, web3_service, platform_contract)
 
             # Fetch token information (both native and receipt tokens)
             await self._enrich_token_information(all_campaigns, chain_id)
@@ -567,139 +699,32 @@ class CampaignService:
             if total_campaigns == 0:
                 return []
 
-            # Phase 1: Use our optimized contract to get active campaign IDs
-            # Load the GetActiveCampaignIds bytecode
-            active_ids_bytecode = resource_manager.load_bytecode(
-                "GetActiveCampaignIds"
+            # Phase 1: Get active campaign IDs via helper
+            active_campaign_ids = await self._get_active_campaign_ids(
+                web3_service=web3_service,
+                platform_address=platform_address,
+                total_campaigns=total_campaigns,
             )
-
-            active_campaign_ids = []
-
-            # Always use contract for efficiency
-            # Adjust batch size based on platform size
-            if total_campaigns > 300:
-                batch_size = 100  # Smaller batches for large platforms
-            elif total_campaigns > 100:
-                batch_size = 150  # Medium batches
-            else:
-                batch_size = total_campaigns  # All at once for small platforms
-
-            if batch_size < total_campaigns:
-                # Use batches - create all tasks and execute in parallel
-                tasks = []
-                for start_id in range(0, total_campaigns, batch_size):
-
-                    async def check_batch(start, size):
-                        try:
-                            tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
-                                {"bytecode": active_ids_bytecode},
-                                platform_address,
-                                start,
-                                size,
-                            )
-                            result = (
-                                await asyncio.get_event_loop().run_in_executor(
-                                    None,
-                                    web3_service.w3.eth.call,
-                                    tx,
-                                )
-                            )
-                            batch_data = self.contract_reader.decode_active_campaign_ids(
-                                result
-                            )
-                            return batch_data["campaign_ids"]
-                        except Exception as e:
-                            print(
-                                f"Error checking batch {start}-{start+size}: {str(e)}"
-                            )
-                            return []
-
-                    tasks.append(check_batch(start_id, batch_size))
-
-                # Execute all batches in parallel
-                results = await asyncio.gather(*tasks)
-                for batch_ids in results:
-                    active_campaign_ids.extend(batch_ids)
-            else:
-                # For smaller platforms, check all at once
-                try:
-                    tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
-                        {"bytecode": active_ids_bytecode},
-                        platform_address,
-                        0,  # start from 0
-                        total_campaigns,  # check all campaigns
-                    )
-
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        web3_service.w3.eth.call,
-                        tx,
-                    )
-
-                    batch_data = (
-                        self.contract_reader.decode_active_campaign_ids(result)
-                    )
-                    active_campaign_ids = batch_data["campaign_ids"]
-
-                except Exception as e:
-                    print(f"Error getting active campaigns: {str(e)}")
-                    return []
 
             if not active_campaign_ids:
                 return []
 
             # Phase 2: Fetch full details only for active campaigns
-            # Load bytecode for batch fetching
-            bytecode_data = resource_manager.load_bytecode(
-                "BatchCampaignsWithPeriods"
+            active_campaigns = await self._fetch_campaigns_by_ids(
+                web3_service=web3_service,
+                platform_address=platform_address,
+                campaign_ids=active_campaign_ids,
             )
-
-            # Fetch active campaigns in parallel batches
-            active_campaigns = []
-
-            if not active_campaign_ids:
-                return []
-
-            # Fetch all campaigns in parallel with maximum parallelism
-            from concurrent.futures import ThreadPoolExecutor
-
-            # Use aggressive parallelism for RPC calls
-            # RPC calls are I/O bound, so we can have many more workers than CPU cores
-            max_workers = min(
-                len(active_campaign_ids), 50
-            )  # Up to 50 parallel requests
-            executor = ThreadPoolExecutor(max_workers=max_workers)
-
-            async def fetch_one(campaign_id):
-                """Fetch a single campaign."""
-                try:
-                    tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
-                        bytecode_data,
-                        [platform_address, campaign_id, 1],
-                    )
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        executor,
-                        web3_service.w3.eth.call,
-                        tx,
-                    )
-                    campaigns = self.contract_reader.decode_campaign_data(
-                        result
-                    )
-                    return campaigns[0] if campaigns else None
-                except Exception:
-                    return None
-
-            # Create tasks for ALL active campaigns and execute in parallel
-            tasks = [fetch_one(cid) for cid in active_campaign_ids]
-            results = await asyncio.gather(*tasks)
-            active_campaigns = [c for c in results if c is not None]
-
-            # Clean up executor
-            executor.shutdown(wait=False)
 
             # Enrich with token information
             await self._enrich_token_information(active_campaigns, chain_id)
             self._enrich_status_info(active_campaigns)
+
+            # Optionally annotate proof flags similar to get_campaigns
+            if check_proofs and active_campaigns:
+                self._populate_proof_status_flags(
+                    active_campaigns, web3_service, platform_contract
+                )
 
             return active_campaigns
 
@@ -901,6 +926,142 @@ class CampaignService:
                 "reason": closability["closability_status"],
             }
 
+    # -----------------------------
+    # Token enrichment helpers
+    # -----------------------------
+    def _collect_unique_reward_tokens(self, campaigns: List[Campaign]) -> List[str]:
+        return list(
+            set(
+                c["campaign"]["reward_token"]
+                for c in campaigns
+                if c.get("campaign", {}).get("reward_token")
+            )
+        )
+
+    async def _build_token_mapping(
+        self, chain_id: int, unique_tokens: List[str]
+    ) -> Dict[str, Optional[str]]:
+        native_tokens = await laposte_service.get_native_tokens(chain_id, unique_tokens)
+        return dict(zip(unique_tokens, native_tokens))
+
+    def _build_all_tokens_to_fetch(
+        self,
+        chain_id: int,
+        unique_tokens: List[str],
+        native_tokens: List[Optional[str]],
+    ) -> List[Dict[str, Any]]:
+        all_tokens_to_fetch: List[Dict[str, Any]] = []
+
+        for token in unique_tokens:
+            if token:
+                all_tokens_to_fetch.append(
+                    {
+                        "address": token,
+                        "chain_id": chain_id,
+                        "is_native": False,
+                        "original_chain_id": chain_id,
+                    }
+                )
+
+        for i, native_token in enumerate(native_tokens):
+            if native_token and native_token.lower() != unique_tokens[i].lower():
+                all_tokens_to_fetch.append(
+                    {
+                        "address": native_token,
+                        "chain_id": chain_id,
+                        "is_native": True,
+                        "original_chain_id": chain_id,
+                    }
+                )
+
+        return all_tokens_to_fetch
+
+    async def _fetch_token_info_cache(
+        self, all_tokens_to_fetch: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        token_info_cache: Dict[str, Dict[str, Any]] = {}
+        if not all_tokens_to_fetch:
+            return token_info_cache
+
+        tasks = [
+            laposte_service.get_token_info(
+                t["chain_id"], t["address"], t["is_native"], t["original_chain_id"]
+            )
+            for t in all_tokens_to_fetch
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                continue
+            token_address = all_tokens_to_fetch[i]["address"]
+            token_info_cache[token_address.lower()] = result  # type: ignore
+        return token_info_cache
+
+    async def _enrich_token_prices(
+        self,
+        token_info_cache: Dict[str, Dict[str, Any]],
+        all_tokens_to_fetch: List[Dict[str, Any]],
+        chain_id: int,
+    ) -> None:
+        if not token_info_cache:
+            return
+
+        receipt_token_infos: List[Dict[str, Any]] = []
+        native_token_infos: List[Dict[str, Any]] = []
+
+        for token_to_fetch in all_tokens_to_fetch:
+            token_addr_lower = token_to_fetch["address"].lower()
+            if token_addr_lower in token_info_cache:
+                token_info = token_info_cache[token_addr_lower]
+                if token_to_fetch["is_native"]:
+                    native_token_infos.append(token_info)
+                else:
+                    receipt_token_infos.append(token_info)
+
+        if receipt_token_infos:
+            await laposte_service.enrich_token_prices(receipt_token_infos, chain_id)
+
+        if native_token_infos:
+            # Mainnet prices are generally more liquid/reliable
+            await laposte_service.enrich_token_prices(native_token_infos, 1)
+
+    def _apply_token_info_to_campaigns(
+        self,
+        campaigns: List[Campaign],
+        token_info_cache: Dict[str, Dict[str, Any]],
+        token_mapping: Dict[str, Optional[str]],
+        chain_id: int,
+    ) -> None:
+        for campaign in campaigns:
+            reward_token = campaign["campaign"].get("reward_token")
+            if not reward_token:
+                continue
+
+            reward_token_lower = reward_token.lower()
+            native_token = token_mapping.get(reward_token, reward_token)
+            native_token_lower = native_token.lower() if native_token else reward_token_lower
+
+            receipt_info = token_info_cache.get(
+                reward_token_lower,
+                {
+                    "name": "Unknown",
+                    "symbol": "???",
+                    "address": reward_token,
+                    "decimals": 18,
+                    "chain_id": chain_id,
+                    "price": 0.0,
+                },
+            )
+
+            if native_token_lower != reward_token_lower:
+                native_info = token_info_cache.get(native_token_lower, receipt_info)
+            else:
+                native_info = receipt_info
+
+            campaign["receipt_reward_token"] = receipt_info
+            campaign["reward_token"] = native_info
+
     async def _enrich_token_information(
         self, campaigns: List[Campaign], chain_id: int
     ) -> None:
@@ -921,146 +1082,29 @@ class CampaignService:
             return
 
         # Collect unique reward tokens
-        unique_tokens = list(
-            set(
-                c["campaign"]["reward_token"]
-                for c in campaigns
-                if c.get("campaign", {}).get("reward_token")
-            )
-        )
+        unique_tokens = self._collect_unique_reward_tokens(campaigns)
 
         if not unique_tokens:
             return
 
         try:
-            # Get native tokens for all wrapped tokens
-            native_tokens = await laposte_service.get_native_tokens(
-                chain_id, unique_tokens
+            # Build mapping and fetch plan
+            token_mapping = await self._build_token_mapping(chain_id, unique_tokens)
+            native_tokens = [token_mapping[t] for t in unique_tokens]
+            all_tokens_to_fetch = self._build_all_tokens_to_fetch(
+                chain_id, unique_tokens, native_tokens
             )
 
-            # Create mapping of wrapped to native
-            token_mapping = dict(zip(unique_tokens, native_tokens))
+            # Fetch token infos and enrich prices
+            token_info_cache = await self._fetch_token_info_cache(all_tokens_to_fetch)
+            await self._enrich_token_prices(
+                token_info_cache, all_tokens_to_fetch, chain_id
+            )
 
-            # Collect all tokens we need to fetch (both receipt and native)
-            all_tokens_to_fetch = []
-
-            # Add receipt tokens
-            for token in unique_tokens:
-                if token:
-                    all_tokens_to_fetch.append(
-                        {
-                            "address": token,
-                            "chain_id": chain_id,
-                            "is_native": False,
-                            "original_chain_id": chain_id,
-                        }
-                    )
-
-            # Add native tokens (if different from receipt)
-            for i, native_token in enumerate(native_tokens):
-                if (
-                    native_token
-                    and native_token.lower() != unique_tokens[i].lower()
-                ):
-                    all_tokens_to_fetch.append(
-                        {
-                            "address": native_token,
-                            "chain_id": chain_id,
-                            "is_native": True,
-                            "original_chain_id": chain_id,
-                        }
-                    )
-
-            # Fetch all token info in parallel
-            token_info_cache = {}
-
-            if all_tokens_to_fetch:
-                tasks = [
-                    laposte_service.get_token_info(
-                        t["chain_id"],
-                        t["address"],
-                        t["is_native"],
-                        t["original_chain_id"],
-                    )
-                    for t in all_tokens_to_fetch
-                ]
-
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                # Build cache from results
-                for i, result in enumerate(results):
-                    if isinstance(result, dict):
-                        token_address = all_tokens_to_fetch[i]["address"]
-                        token_info_cache[token_address.lower()] = result
-
-            # Batch fetch prices for all tokens
-            # Group tokens by the chain they should be fetched from
-            if token_info_cache:
-                # Separate receipt tokens (current chain) from native tokens (might be mainnet)
-                receipt_token_infos = []
-                native_token_infos = []
-
-                for token_to_fetch in all_tokens_to_fetch:
-                    token_addr_lower = token_to_fetch["address"].lower()
-                    if token_addr_lower in token_info_cache:
-                        token_info = token_info_cache[token_addr_lower]
-                        if token_to_fetch["is_native"]:
-                            native_token_infos.append(token_info)
-                        else:
-                            receipt_token_infos.append(token_info)
-
-                # Fetch prices for receipt tokens on current chain
-                if receipt_token_infos:
-                    await laposte_service.enrich_token_prices(
-                        receipt_token_infos, chain_id
-                    )
-
-                # Fetch prices for native tokens on mainnet (where they're more likely to have liquidity)
-                if native_token_infos:
-                    await laposte_service.enrich_token_prices(
-                        native_token_infos,
-                        1,  # Ethereum mainnet
-                    )
-
-            # Enrich each campaign
-            for campaign in campaigns:
-                reward_token = campaign["campaign"].get("reward_token")
-                if not reward_token:
-                    continue
-
-                reward_token_lower = reward_token.lower()
-                native_token = token_mapping.get(reward_token, reward_token)
-                native_token_lower = (
-                    native_token.lower()
-                    if native_token
-                    else reward_token_lower
-                )
-
-                # Get receipt token info (the wrapped/LaPoste token on-chain)
-                receipt_info = token_info_cache.get(
-                    reward_token_lower,
-                    {
-                        "name": "Unknown",
-                        "symbol": "???",
-                        "address": reward_token,
-                        "decimals": 18,
-                        "chain_id": chain_id,
-                        "price": 0.0,
-                    },
-                )
-
-                # Get native token info
-                if native_token_lower != reward_token_lower:
-                    # It's wrapped, get the native token info
-                    native_info = token_info_cache.get(
-                        native_token_lower, receipt_info
-                    )
-                else:
-                    # Not wrapped, both are the same
-                    native_info = receipt_info
-
-                campaign["receipt_reward_token"] = receipt_info
-                campaign["reward_token"] = native_info
+            # Apply info to campaigns
+            self._apply_token_info_to_campaigns(
+                campaigns, token_info_cache, token_mapping, chain_id
+            )
 
         except Exception as e:
             print(
