@@ -5,7 +5,7 @@ Pricing utilities for fetching ERC20 token prices.
 import time
 from typing import List, Optional, Tuple
 
-import requests
+import httpx
 from eth_utils.address import to_checksum_address
 
 try:
@@ -168,7 +168,11 @@ def get_erc20_prices_in_usd(
         all_uris = f"https://coins.llama.fi/prices/current/{all_params}"
 
     try:
-        response = requests.get(all_uris, timeout=30)
+        # Use shared sync client for pooling and consistent timeouts
+        from votemarket_toolkit.shared.services.http_client import get_client
+
+        client = get_client()
+        response = client.get(all_uris)
         response.raise_for_status()
         all_prices = response.json()
 
@@ -205,7 +209,7 @@ def get_erc20_prices_in_usd(
             else:
                 results[i] = ("0.00", 0)
 
-    except requests.RequestException as e:
+    except httpx.RequestError as e:
         print(f"Error fetching prices from DefiLlama: {e}")
         for i in range(len(results)):
             if results[i] is None:

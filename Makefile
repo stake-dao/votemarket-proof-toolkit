@@ -9,6 +9,7 @@ VENV := .venv
 .PHONY: build deploy clean-build test-build release
 .PHONY: user-proof gauge-proof block-info
 .PHONY: user-campaign-status check-user-eligibility get-active-campaigns get-epoch-blocks index-votes
+.PHONY: vm
 .PHONY: install-ts simulate simulate-ts get-campaign-example
 
 # Positional arguments support for user-campaign-status target
@@ -158,3 +159,7 @@ simulate-ts:
 # Examples
 get-campaign-example:
 	$(PYTHON) examples/get_campaign_example.py
+
+# Unified CLI wrapper
+vm:
+	$(PYTHON) -m votemarket_toolkit.cli $(ARGS)

@@ -2,7 +2,6 @@ import asyncio
 import os
 from typing import Any, Dict, List
 
-import httpx
 from eth_utils import to_checksum_address
 from rich import print as rprint
 from rich.console import Console
@@ -13,6 +12,7 @@ from votemarket_toolkit.shared.services.etherscan_service import (
 )
 from votemarket_toolkit.votes.models.data_types import GaugeVotes, VoteLog
 from votemarket_toolkit.votes.services.parquet_service import ParquetService
+from votemarket_toolkit.shared.services.http_client import get_async_client
 
 console = Console()
 
@@ -46,19 +46,19 @@ class VotesService:
         )
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(remote_file)
-                response.raise_for_status()
+            client = get_async_client()
+            response = await client.get(remote_file)
+            response.raise_for_status()
 
-                # Ensure cache directory exists
-                os.makedirs(self.cache_dir, exist_ok=True)
+            # Ensure cache directory exists
+            os.makedirs(self.cache_dir, exist_ok=True)
 
-                # Write the downloaded file
-                with open(cache_file, "wb") as f:
-                    f.write(response.content)
-                rprint(
-                    "[green]Successfully downloaded votes cache from stake-dao/api[/green]"
-                )
+            # Write the downloaded file
+            with open(cache_file, "wb") as f:
+                f.write(response.content)
+            rprint(
+                "[green]Successfully downloaded votes cache from stake-dao/api[/green]"
+            )
         except Exception as e:
             rprint(f"[red]Failed to fetch remote parquet file: {str(e)}[/red]")
             # If file doesn't exist locally, create empty cache

@@ -169,6 +169,29 @@ make check-user-eligibility USER=0x... PROTOCOL=curve STATUS=active
 
 This command checks pre-generated proof data from the [VoteMarket API](https://github.com/stake-dao/api/tree/main/api/votemarket) to determine which periods have claimable rewards.
 
+## Unified CLI
+
+You can use the unified CLI instead of individual scripts.
+
+Examples:
+
+- Generate a user proof
+  uv run -m votemarket_toolkit.cli proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000 [--chain-id 1]
+
+- Generate a gauge proof
+  uv run -m votemarket_toolkit.cli proofs-gauge --protocol curve --gauge-address 0x... --current-epoch 1699920000 --block-number 18500000 [--chain-id 1]
+
+- List active campaigns
+  uv run -m votemarket_toolkit.cli campaigns-active --protocol curve --chain-id 42161
+  uv run -m votemarket_toolkit.cli campaigns-active --platform 0x... --chain-id 42161
+
+- Check a user’s eligibility
+  uv run -m votemarket_toolkit.cli users-eligibility --user 0x... --protocol curve [--gauge 0x...] [--chain-id 42161] [--status active|closed|all]
+
+When installed from PyPI, the CLI is available as `votemarket`:
+
+- votemarket proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000
+
 ## Development
 
 ```bash

@@ -7,17 +7,14 @@ from datetime import datetime, timezone
 
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.proofs.user_eligibility_service import UserEligibilityService
+from votemarket_toolkit.proofs.user_eligibility_service import (
+    UserEligibilityService,
+)
+from votemarket_toolkit.shared.registry import get_supported_chains
 
 
-# Chain names mapping
-CHAIN_NAMES = {
-    1: "Ethereum",
-    10: "Optimism", 
-    137: "Polygon",
-    8453: "Base",
-    42161: "Arbitrum"
-}
+# Derive chain names from registry and title-case them for display
+CHAIN_NAMES = {cid: name.title() for cid, name in get_supported_chains().items()}
 
 
 async def main():

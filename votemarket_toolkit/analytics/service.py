@@ -22,7 +22,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
 from eth_utils.address import to_checksum_address
 
 from votemarket_toolkit.analytics.models import (
@@ -58,22 +57,13 @@ class AnalyticsService:
     def __init__(self):
         """Initialize the analytics service with caching."""
         self._cache: Dict[str, Any] = {}
-        self._client: Optional[httpx.AsyncClient] = None
         # TTL cache for expensive operations (1 hour)
         self._ttl_cache: Dict[str, Tuple] = {}
         self._ttl = 3600  # 1 hour
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create async HTTP client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=30.0)
-        return self._client
-
     async def close(self):
-        """Close the HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        """No-op: uses shared HTTP client managed globally."""
+        return None
 
     def _get_cache_key(self, *args) -> str:
         """Generate cache key from arguments."""
@@ -96,7 +86,11 @@ class AnalyticsService:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        client = await self._get_client()
+        from votemarket_toolkit.shared.services.http_client import (
+            get_async_client,
+        )
+
+        client = get_async_client()
         response = await client.get(url)
         response.raise_for_status()
         data = response.json()

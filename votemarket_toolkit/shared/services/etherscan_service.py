@@ -10,15 +10,14 @@ import os
 import time
 from typing import Any, Dict, List
 
-import requests
+import httpx
 from dotenv import load_dotenv
+from votemarket_toolkit.shared.services.http_client import get_client
 
 load_dotenv()
 
+# Read once; validate lazily in call sites to avoid import-time failures
 EXPLORER_KEY = os.getenv("EXPLORER_KEY")
-
-if not EXPLORER_KEY:
-    raise ValueError("EXPLORER_KEY is not set")
 
 
 class RateLimiter:
@@ -137,17 +136,28 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
     Raises:
         Exception: If max retries are reached or an unexpected error occurs.
     """
+    if not EXPLORER_KEY:
+        raise ValueError(
+            "EXPLORER_KEY is not set (required for Etherscan API calls)"
+        )
+
     max_retries = 5
+    client = get_client()
     for _ in range(max_retries):
         try:
-            response = requests.get(url)
+            response = client.get(url)
+            if response.status_code == 429:
+                logging.info("Rate limit reached, retrying after delay...")
+                delay(1000)
+                continue
+
             data = response.json()
 
-            if data["status"] == "1":
+            if data.get("status") == "1":
                 return data["result"]
             elif (
-                data["status"] == "0"
-                and data["message"] == f"No {request_type} found"
+                data.get("status") == "0"
+                and data.get("message") == f"No {request_type} found"
             ):
                 logging.info(
                     f"No {request_type} found for the given parameters"
@@ -158,14 +168,10 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
                 delay(1000)
             else:
                 logging.error(f"Unexpected response: {data}")
-                raise Exception(data["message"] or "Unknown error")
-        except requests.RequestException as e:
-            if response.status_code == 429:
-                logging.info("Rate limit reached, retrying after delay...")
-                delay(1000)
-            else:
-                logging.error(f"Error fetching {request_type}: {str(e)}")
-                raise e
+                raise Exception(data.get("message") or "Unknown error")
+        except httpx.RequestError as e:
+            logging.error(f"Error fetching {request_type}: {str(e)}")
+            raise e
 
     raise Exception("Max retries reached")
 
