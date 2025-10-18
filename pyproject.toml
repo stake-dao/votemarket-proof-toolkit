@@ -29,6 +29,8 @@ dependencies = [
     "pyarrow>=17.0.0",
     "rich>=13.7.0",
     "httpx>=0.28.1",
+    "streamlit>=1.28.0",
+    "pandas>=2.0.0",
 ]
 
 [project.optional-dependencies]

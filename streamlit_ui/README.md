@@ -32,21 +32,21 @@ A user-friendly web interface for the VoteMarket Proof Toolkit, providing easy a
 
 ### Prerequisites
 - Python 3.10 or higher
-- VoteMarket Proof Toolkit installed
+- UV or pip
 
 ### Setup
 
-1. **Install the base toolkit** (if not already installed):
-   ```bash
-   cd /path/to/votemarket-proof-toolkit
-   pip install -e .
-   ```
+```bash
+# Clone and install
+git clone https://github.com/stake-dao/votemarket-proof-toolkit
+cd votemarket-proof-toolkit
 
-2. **Install Streamlit UI dependencies**:
-   ```bash
-   cd streamlit_ui
-   pip install -r requirements.txt
-   ```
+# With UV (recommended)
+uv sync
+
+# With pip
+pip install -e .
+```
 
 3. **Configure RPC endpoints** (required):
 
@@ -70,19 +70,18 @@ A user-friendly web interface for the VoteMarket Proof Toolkit, providing easy a
 
 ### Running the UI
 
-From the `streamlit_ui` directory:
-
 ```bash
-streamlit run app.py
+# With UV (from project root)
+uv run streamlit run streamlit_ui/app.py
+
+# With pip
+streamlit run streamlit_ui/app.py
+
+# Or use the convenience script
+cd streamlit_ui && ./run.sh
 ```
 
-The UI will open in your default browser at `http://localhost:8501`
-
-### Alternative: Run from anywhere
-
-```bash
-streamlit run /path/to/votemarket-proof-toolkit/streamlit_ui/app.py
-```
+The UI will open at `http://localhost:8501`
 
 ### Quick Start Guide
 
@@ -177,7 +176,8 @@ streamlit_ui/
 - Check network connectivity
 
 **Module Import Errors**
-- Make sure the base toolkit is installed: `pip install -e ..`
+- With UV: Make sure dependencies are synced: `uv pip sync`
+- With pip: Make sure the base toolkit is installed: `pip install -e ..`
 - Verify you're running from the correct directory
 
 **Data Loading Issues**
@@ -208,7 +208,10 @@ streamlit_ui/
 Test the UI with different protocols and chains:
 
 ```bash
-# Test different configurations
+# With UV (from project root)
+uv run streamlit run streamlit_ui/app.py
+
+# With pip (from streamlit_ui directory)
 streamlit run app.py
 ```
 

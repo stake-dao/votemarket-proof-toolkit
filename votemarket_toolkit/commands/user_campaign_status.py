@@ -9,11 +9,13 @@ import argparse
 import asyncio
 import json
 import sys
-from typing import Dict, List
+import time
+from typing import Any, Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 from rich import print as rprint
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.table import Table
 
 from votemarket_toolkit.campaigns.service import campaign_service
@@ -89,6 +91,227 @@ def _create_period_status_table(
         )
 
     return table
+
+
+def _resolve_platform_metadata(
+    chain_id: Optional[int], platform_address: str
+) -> Optional[Dict[str, Any]]:
+    """Find protocol/version metadata for a platform address."""
+    if chain_id is None:
+        return None
+
+    candidates = registry.get_platforms_for_chain(chain_id)
+    platform_lower = platform_address.lower()
+    for entry in candidates:
+        if entry.get("address", "").lower() == platform_lower:
+            return entry
+    return None
+
+
+async def list_user_voted_campaigns(
+    chain_id: int,
+    platform_address: str,
+    user_address: str,
+    protocol: Optional[str],
+) -> List[Dict[str, Any]]:
+    """
+    List campaigns where the user currently has a recorded vote.
+
+    Returns campaign summaries enriched with current vote slope information.
+    """
+    if not protocol:
+        rprint(
+            "[yellow]Unable to determine platform protocol. Listing skipped.[/yellow]"
+        )
+        return []
+
+    if protocol.lower() == "pendle":
+        rprint(
+            "[yellow]Listing voted campaigns is not yet supported for Pendle platforms.[/yellow]"
+        )
+        return []
+
+    rprint(
+        Panel(
+            f"Scanning campaigns for user votes: {format_address(user_address)}",
+            style="bold cyan",
+        )
+    )
+
+    campaigns = await campaign_service.get_campaigns(
+        chain_id=chain_id,
+        platform_address=platform_address,
+        campaign_id=None,
+        check_proofs=False,
+    )
+
+    if not campaigns:
+        rprint("[yellow]No campaigns found on this platform.[/yellow]")
+        return []
+
+    gauge_controller_address = registry.get_gauge_controller(protocol)
+    if not gauge_controller_address:
+        rprint(
+            f"[yellow]No gauge controller registered for protocol '{protocol}'.[/yellow]"
+        )
+        return []
+
+    web3_service = campaign_service.get_web3_service(chain_id)
+    gauge_controller = web3_service.get_contract(
+        to_checksum_address(gauge_controller_address.lower()),
+        "gauge_controller",
+    )
+
+    loop = asyncio.get_event_loop()
+    now = int(time.time())
+
+    async def fetch_vote_data(campaign: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        gauge_address = campaign["campaign"]["gauge"]
+
+        def _call_contracts():
+            slope, power, end = gauge_controller.functions.vote_user_slopes(
+                to_checksum_address(user_address),
+                to_checksum_address(gauge_address),
+            ).call()
+            last_vote = gauge_controller.functions.last_user_vote(
+                to_checksum_address(user_address),
+                to_checksum_address(gauge_address),
+            ).call()
+            return {
+                "slope": int(slope),
+                "power": int(power),
+                "end": int(end),
+                "last_vote": int(last_vote),
+            }
+
+        try:
+            vote_data = await loop.run_in_executor(None, _call_contracts)
+        except Exception:
+            return None
+
+        if vote_data["slope"] <= 0:
+            return None
+
+        total_periods = campaign.get("campaign", {}).get(
+            "number_of_periods", len(campaign.get("periods", []))
+        )
+
+        return {
+            "id": campaign["id"],
+            "gauge": gauge_address,
+            "is_closed": campaign.get("is_closed", False),
+            "periods": total_periods,
+            "slope": vote_data["slope"],
+            "power": vote_data["power"],
+            "end": vote_data["end"],
+            "last_vote": vote_data["last_vote"],
+            "is_active_vote": vote_data["end"] > now,
+        }
+
+    tasks = [fetch_vote_data(campaign) for campaign in campaigns]
+    vote_entries = [
+        entry for entry in await asyncio.gather(*tasks) if entry is not None
+    ]
+
+    if not vote_entries:
+        rprint(
+            "[yellow]No campaigns found with an active vote slope for this user.[/yellow]"
+        )
+        return []
+
+    vote_entries.sort(
+        key=lambda item: (
+            item["is_closed"],
+            not item["is_active_vote"],
+            -item["slope"],
+            item["id"],
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("#", style="cyan", width=4)
+    table.add_column("Campaign", style="yellow", width=9)
+    table.add_column("Status", style="magenta", width=8)
+    table.add_column("Gauge", style="white")
+    table.add_column("Periods", style="green", width=8, justify="right")
+    table.add_column("Slope", style="blue", width=14, justify="right")
+    table.add_column("Vote Ends", style="white", width=16)
+    table.add_column("Last Vote", style="white", width=16)
+    table.add_column("Active", style="green", width=8)
+
+    for idx, campaign in enumerate(vote_entries, start=1):
+        status = "[green]ACTIVE[/green]"
+        if campaign["is_closed"]:
+            status = "[dim]CLOSED[/dim]"
+
+        vote_end = (
+            format_timestamp(campaign["end"])
+            if campaign["end"] > 0
+            else "N/A"
+        )
+        last_vote = (
+            format_timestamp(campaign["last_vote"])
+            if campaign["last_vote"] > 0
+            else "N/A"
+        )
+        active_vote = (
+            "[green]Yes[/green]" if campaign["is_active_vote"] else "[dim]No[/dim]"
+        )
+
+        table.add_row(
+            str(idx),
+            f"#{campaign['id']}",
+            status,
+            format_address(campaign["gauge"]),
+            str(campaign["periods"]),
+            f"{campaign['slope']:,.0f}",
+            vote_end,
+            last_vote,
+            active_vote,
+        )
+
+    console.print(table)
+    rprint(
+        f"[dim]Found {len(vote_entries)} campaign(s) with a recorded vote for this user.[/dim]"
+    )
+    return vote_entries
+
+
+def _prompt_campaign_from_available(
+    available_campaigns: List[Dict[str, Any]]
+) -> int:
+    """Prompt the user to choose a campaign from the pre-filtered list."""
+    if not available_campaigns:
+        raise ValueError("No campaigns available for selection.")
+
+    default_choice = str(available_campaigns[0]["id"])
+    rprint("\n[cyan]Select a campaign to inspect in detail:[/cyan]")
+    rprint("[dim]Enter a campaign ID or the row number from the table above.[/dim]")
+
+    while True:
+        try:
+            choice = Prompt.ask("Campaign ID", default=default_choice).strip()
+        except (KeyboardInterrupt, EOFError):
+            rprint("\n[yellow]Selection cancelled[/yellow]")
+            sys.exit(0)
+
+        if choice.lower() in {"q", "quit", "exit"}:
+            rprint("\n[yellow]Selection cancelled[/yellow]")
+            sys.exit(0)
+
+        if choice.isdigit():
+            numeric_choice = int(choice)
+            # Direct ID match
+            for campaign in available_campaigns:
+                if campaign["id"] == numeric_choice:
+                    return campaign["id"]
+            # Row index match
+            if 1 <= numeric_choice <= len(available_campaigns):
+                return available_campaigns[numeric_choice - 1]["id"]
+
+        rprint(
+            "[red]Invalid selection.[/red] Please enter a valid campaign ID or row number."
+        )
 
 
 async def check_user_campaign_status(
@@ -313,7 +536,7 @@ def main():
     parser.add_argument(
         "--user",
         type=str,
-        required=True,
+        required=False,
         help="User address to check proofs for",
     )
     parser.add_argument(
@@ -329,6 +552,11 @@ def main():
         help="Show brief output (summary only)",
     )
     parser.add_argument(
+        "--list-available",
+        action="store_true",
+        help="List campaigns where the user currently has a vote recorded",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="Force interactive mode for selections",
@@ -336,12 +564,14 @@ def main():
 
     args = parser.parse_args()
 
+    platform_metadata: Optional[Dict[str, Any]] = None
+
     # Interactive platform selection if not provided
     if not args.platform or args.interactive:
         # If chain is specified, use it as filter
-        platform_info = select_platform(chain_id=args.chain_id)
-        platform_address = platform_info["address"]
-        chain_id = platform_info["chain_id"]
+        platform_metadata = select_platform(chain_id=args.chain_id)
+        platform_address = platform_metadata["address"]
+        chain_id = platform_metadata["chain_id"]
     else:
         # Validate and format platform address
         try:
@@ -370,19 +600,86 @@ def main():
                 chain_name = chain_names.get(chain_id, f"Chain {chain_id}")
                 rprint(f"[dim]Auto-detected chain: {chain_name}[/dim]")
 
+        platform_metadata = _resolve_platform_metadata(chain_id, platform_address)
+
+    platform_protocol = (
+        platform_metadata.get("protocol") if platform_metadata else None
+    )
+
     # Validate user address
+    user_input = args.user.strip() if args.user else ""
+
+    if args.interactive or not user_input:
+        while True:
+            try:
+                prompt_message = (
+                    "[cyan]Enter user address (0x...)[/cyan]"
+                    if not user_input
+                    else "[cyan]Confirm or update user address (0x...)[/cyan]"
+                )
+                user_response = (
+                    Prompt.ask(prompt_message, default=user_input).strip()
+                    if user_input
+                    else Prompt.ask(prompt_message).strip()
+                )
+            except (KeyboardInterrupt, EOFError):
+                rprint("\n[yellow]Operation cancelled[/yellow]")
+                sys.exit(0)
+
+            if user_response:
+                user_input = user_response
+                break
+
+            rprint(
+                "[yellow]A user address is required to continue. Please try again.[/yellow]"
+            )
+
     try:
-        user_address = to_checksum_address(args.user.lower())
+        user_address = to_checksum_address(user_input.lower())
     except Exception as e:
         rprint(f"[red]Error:[/red] Invalid user address: {e}")
         sys.exit(1)
 
-    # Interactive campaign selection if not provided
-    if not args.campaign_id or args.interactive:
-        # Run async selection
-        campaign_id = asyncio.run(select_campaign(chain_id, platform_address))
-        campaign_ids = [campaign_id]
-    else:
+    available_campaigns: List[Dict[str, Any]] = []
+    if args.list_available:
+        available_campaigns = asyncio.run(
+            list_user_voted_campaigns(
+                chain_id=chain_id,
+                platform_address=platform_address,
+                user_address=user_address,
+                protocol=platform_protocol,
+            )
+        )
+
+        if not args.campaign_id:
+            if available_campaigns:
+                try:
+                    proceed = Prompt.ask(
+                        "Check detailed status for one of these campaigns? [y/n]",
+                        choices=["y", "n"],
+                        default="y",
+                    )
+                except (KeyboardInterrupt, EOFError):
+                    rprint("\n[yellow]Operation cancelled[/yellow]")
+                    sys.exit(0)
+
+                if proceed.lower() != "y":
+                    return
+            else:
+                try:
+                    proceed = Prompt.ask(
+                        "No active votes found. Continue to select a campaign? [y/n]",
+                        choices=["y", "n"],
+                        default="n",
+                    )
+                except (KeyboardInterrupt, EOFError):
+                    rprint("\n[yellow]Operation cancelled[/yellow]")
+                    sys.exit(0)
+
+                if proceed.lower() != "y":
+                    return
+
+    if args.campaign_id and not args.interactive:
         # Parse campaign IDs (support comma-separated list)
         try:
             campaign_ids = [
@@ -393,6 +690,12 @@ def main():
                 "[red]Error:[/red] Invalid campaign ID format. Use numbers separated by commas."
             )
             sys.exit(1)
+    else:
+        if available_campaigns:
+            campaign_ids = [_prompt_campaign_from_available(available_campaigns)]
+        else:
+            campaign_id = asyncio.run(select_campaign(chain_id, platform_address))
+            campaign_ids = [campaign_id]
 
     # Run the async function
     asyncio.run(

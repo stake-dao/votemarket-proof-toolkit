@@ -8,8 +8,17 @@ VENV := .venv
 .PHONY: all install install-dev clean format lint
 .PHONY: build deploy clean-build test-build release
 .PHONY: user-proof gauge-proof block-info
-.PHONY: user-campaign-status get-active-campaigns get-epoch-blocks index-votes
+.PHONY: user-campaign-status check-user-eligibility get-active-campaigns get-epoch-blocks index-votes
 .PHONY: install-ts simulate simulate-ts get-campaign-example
+
+# Positional arguments support for user-campaign-status target
+ifneq ($(filter user-campaign-status,$(MAKECMDGOALS)),)
+USER_CAMPAIGN_STATUS_ARGS := $(filter-out user-campaign-status,$(MAKECMDGOALS))
+ifneq ($(strip $(USER_CAMPAIGN_STATUS_ARGS)),)
+USER_ADDRESS ?= $(firstword $(USER_CAMPAIGN_STATUS_ARGS))
+$(foreach arg,$(USER_CAMPAIGN_STATUS_ARGS),$(eval $(arg):;@:))
+endif
+endif
 
 # Default target
 all: install
@@ -96,10 +105,18 @@ user-campaign-status:
 		$(if $(CHAIN_ID),--chain-id=$(CHAIN_ID)) \
 		$(if $(PLATFORM),--platform=$(PLATFORM)) \
 		$(if $(CAMPAIGN_ID),--campaign-id=$(CAMPAIGN_ID)) \
-		--user=$(USER_ADDRESS) \
+		$(if $(USER_ADDRESS),--user=$(USER_ADDRESS)) \
 		$(if $(BRIEF),--brief) \
 		$(if $(FORMAT),--format=$(FORMAT)) \
+		$(if $(LIST_AVAILABLE),--list-available) \
 		$(if $(INTERACTIVE),--interactive)
+
+check-user-eligibility:
+	$(PYTHON) votemarket_toolkit/commands/check_user_eligibility.py \
+		--user=$(USER) \
+		--protocol=$(PROTOCOL) \
+		$(if $(GAUGE),--gauge=$(GAUGE)) \
+		$(if $(CHAIN_ID),--chain-id=$(CHAIN_ID))
 
 get-active-campaigns:
 	$(PYTHON) votemarket_toolkit/commands/active_campaigns.py \

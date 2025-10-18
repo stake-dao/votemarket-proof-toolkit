@@ -126,6 +126,20 @@ ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
 ```
 
+## Streamlit UI
+
+Web interface for campaigns, proofs, and analytics.
+
+```bash
+# Run with UV
+uv run streamlit run streamlit_ui/app.py
+
+# Run with pip  
+streamlit run streamlit_ui/app.py
+```
+
+See [streamlit_ui/README.md](streamlit_ui/README.md) for details.
+
 ## Examples
 
 See [examples/python](examples/python/) for complete usage examples:
@@ -134,6 +148,26 @@ See [examples/python](examples/python/) for complete usage examples:
 - `users/check_status.py` – Check user proof status (block data, gauge data, user votes)
 - `proofs/generate.py` – Build gauge and user proofs for claims
 - `data/calculate_efficiency.py` – Model optimal `max_reward_per_vote` values
+
+### Check User Eligibility
+
+Check if a user has claimable rewards across all campaigns:
+
+```bash
+# Check eligibility for all campaigns in a protocol
+make check-user-eligibility USER=0x... PROTOCOL=curve
+
+# Filter by specific gauge
+make check-user-eligibility USER=0x... PROTOCOL=curve GAUGE=0x...
+
+# Filter by chain
+make check-user-eligibility USER=0x... PROTOCOL=balancer CHAIN_ID=42161
+
+# Show only active campaigns
+make check-user-eligibility USER=0x... PROTOCOL=curve STATUS=active
+```
+
+This command checks pre-generated proof data from the [VoteMarket API](https://github.com/stake-dao/api/tree/main/api/votemarket) to determine which periods have claimable rewards.
 
 ## Development
 
@@ -161,6 +195,7 @@ make deploy              # Deploy to PyPI
 # Development commands (see Makefile for full list)
 make list-campaigns CHAIN_ID=42161 PLATFORM=0x...
 make get-active-campaigns PROTOCOL=curve
+make check-user-eligibility USER=0x... PROTOCOL=curve [GAUGE=0x...] [CHAIN_ID=1] [STATUS=active]
 ```
 
 ## License
