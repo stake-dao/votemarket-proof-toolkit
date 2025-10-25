@@ -132,6 +132,13 @@ def generate_user_proof(
             web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
+    elif protocol == "yb":
+        vote_user_slope_slot = get_user_gauge_storage_slot(
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
+            vote_user_slope_base_slot,
+        )
+        index_additionnal_slot = 3
     elif protocol == "pendle":
         vote_user_slope_slot = get_user_gauge_storage_slot_pendle(
             web_3.to_checksum_address(user.lower()),

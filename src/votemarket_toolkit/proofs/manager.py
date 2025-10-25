@@ -22,6 +22,7 @@ class VoteMarketProofs:
         rpc_url = GlobalConstants.get_rpc_url(chain_id)
 
         self.chain_id = chain_id
+        self.yb_gauges = None
         if not rpc_url:
             raise ValueError(
                 "ETHEREUM_MAINNET_RPC_URL environment variable is not set"
@@ -135,6 +136,18 @@ class VoteMarketProofs:
                     if active_pool.lower() == gauge.lower():
                         return True
                 return False
+            if protocol == "yb":
+                if self.yb_gauges == None:
+                    self.yb_gauges = {}
+                    gauge_controller_contract = self.web3_service.get_contract(
+                        gauge_controller_address, "yb_gauge_controller"
+                    )
+                    nb_gauges = gauge_controller_contract.functions.n_gauges().call()
+
+                    for i in range(nb_gauges):
+                        gauge_address = gauge_controller_contract.functions.gauges(i).call()
+                        self.yb_gauges[gauge_address.lower()] = True
+                return gauge.lower() in self.yb_gauges
             else:
                 gauge_controller_contract = self.web3_service.get_contract(
                     gauge_controller_address, "gauge_controller"
