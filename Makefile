@@ -67,10 +67,10 @@ index-votes: install
 		$(if $(GAUGE_ADDRESS),"--gauge-address=$(GAUGE_ADDRESS)")
 
 vm_yb_platforms: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_all_platforms.py yb --epoch 1761177600
+	$(PYTHON) src/votemarket_toolkit/external/vm_all_platforms.py yb --epoch 1761782400 --block 23733120
 
 vm_yb_active_proofs: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_active_proofs.py temp/all_platforms.json 1761177600
+	$(PYTHON) src/votemarket_toolkit/external/vm_active_proofs.py temp/all_platforms.json 1761782400
 
 # Help and examples
 help:
