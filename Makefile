@@ -66,11 +66,11 @@ index-votes: install
 		$(if $(PROTOCOL),"--protocol=$(PROTOCOL)") \
 		$(if $(GAUGE_ADDRESS),"--gauge-address=$(GAUGE_ADDRESS)")
 
-vm_pendle_platforms: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_all_platforms.py pendle --epoch 1754524800
+vm_yb_platforms: install
+	$(PYTHON) src/votemarket_toolkit/external/vm_all_platforms.py yb --epoch 1761782400 --block 23733120
 
-vm_pendle_active_proofs: install
-	$(PYTHON) src/votemarket_toolkit/external/vm_active_proofs.py temp/all_platforms.json 1754524800
+vm_yb_active_proofs: install
+	$(PYTHON) src/votemarket_toolkit/external/vm_active_proofs.py temp/all_platforms.json 1761782400
 
 # Help and examples
 help:
