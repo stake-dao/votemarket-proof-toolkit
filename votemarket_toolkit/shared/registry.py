@@ -22,6 +22,65 @@ class Registry:
         42161: "arbitrum",
     }
 
+    # Fallback platform addresses (used when GitHub fetch fails)
+    FALLBACK_PLATFORMS = {
+        "curve": {
+            "v2": {
+                42161: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+                10: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+                8453: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+                137: "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
+            },
+            "v2_old": {
+                42161: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+                10: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+                8453: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+                137: "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5",
+            },
+        },
+        "balancer": {
+            "v2": {
+                42161: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+                10: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+                8453: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+                137: "0xDD2FaD5606cD8ec0c3b93Eb4F9849572b598F4c7",
+            },
+        },
+        "fxn": {
+            "v2": {
+                42161: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+            },
+        },
+        "pendle": {
+            "v2": {
+                42161: "0x105694FC5204787eD571842671d1262A54a8135B",
+                10: "0x105694FC5204787eD571842671d1262A54a8135B",
+                8453: "0x105694FC5204787eD571842671d1262A54a8135B",
+                137: "0x105694FC5204787eD571842671d1262A54a8135B",
+            },
+        },
+        "frax": {
+            "v2": {
+                42161: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                10: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                8453: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+                137: "0x155a7Cf21F8853c135BdeBa27FEA19674C65F2b4",
+            },
+        },
+    }
+
+    # Fallback gauge controllers (used when GitHub fetch fails)
+    FALLBACK_CONTROLLERS = {
+        "curve": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
+        "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
+        "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
+        "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
+        "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0",
+    }
+
     def __init__(self):
         self._data = None
         self._platforms = {}
@@ -37,7 +96,19 @@ class Registry:
             self._parse_data()
 
         except Exception as e:
-            print(f"Warning: Could not fetch registry: {str(e)[:100]}")
+            print(
+                f"Warning: Could not fetch registry from GitHub: {str(e)[:100]}"
+            )
+            print("Using fallback static registry data")
+            self._use_fallback_data()
+
+    def _use_fallback_data(self):
+        """Use fallback static data when GitHub fetch fails."""
+        # Copy fallback platforms
+        import copy
+
+        self._platforms = copy.deepcopy(self.FALLBACK_PLATFORMS)
+        self._controllers = copy.deepcopy(self.FALLBACK_CONTROLLERS)
 
     def _parse_data(self):
         """Parse platforms and controllers from the registry data."""

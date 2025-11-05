@@ -12,6 +12,43 @@ Python SDK for VoteMarket - campaign management, proofs, and analytics.
 pip install votemarket-toolkit
 ```
 
+### Development Prerequisites
+
+For development, this project uses [uv](https://github.com/astral-sh/uv) for fast, reliable dependency management.
+
+**Install uv:**
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Alternative: via pip
+pip install uv
+```
+
+**Alternative: Traditional pip/venv workflow**
+
+If you prefer not to use uv, you can use standard Python tools:
+
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # macOS/Linux
+# OR
+.venv\Scripts\activate  # Windows
+
+# Install package in editable mode
+pip install -e ".[dev]"
+
+# Run commands directly
+python -m votemarket_toolkit.cli --help
+```
+
 ## Quick Start
 
 ```python
@@ -122,8 +159,13 @@ gauge_votes = await votes.get_gauge_votes("curve", "0x...", start_block, end_blo
 Create `.env` file with RPC endpoints:
 
 ```bash
+# Required for all chains
 ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+OPTIMISM_MAINNET_RPC_URL=https://opt-mainnet.g.alchemy.com/v2/YOUR_KEY
+BASE_MAINNET_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+POLYGON_MAINNET_RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
+BSC_MAINNET_RPC_URL=https://bsc-dataseed.binance.org/
 ```
 
 ## Streamlit UI
@@ -199,7 +241,7 @@ When installed from PyPI, the CLI is available as `votemarket`:
 git clone https://github.com/stake-dao/votemarket-proof-toolkit
 cd votemarket-proof-toolkit
 
-# Install dependencies
+# Install dependencies (requires uv - see below)
 uv sync
 
 # Run examples

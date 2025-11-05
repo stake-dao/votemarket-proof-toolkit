@@ -16,7 +16,7 @@ def validate_eth_address(address: str, param_name: str = "address") -> str:
 
 def validate_chain_id(chain_id: int) -> None:
     """Validate chain ID"""
-    valid_chain_ids = {1, 42161}  # Ethereum, Arbitrum
+    valid_chain_ids = {1, 10, 137, 8453, 42161, 56, 146, 252}  # Ethereum, Optimism, Polygon, Base, Arbitrum, BSC, Sonic, Fraxtal
     if chain_id not in valid_chain_ids:
         raise ValueError(
             f"Invalid chain_id: {chain_id}. Must be one of {valid_chain_ids}"
@@ -25,7 +25,7 @@ def validate_chain_id(chain_id: int) -> None:
 
 def validate_protocol(protocol: str) -> str:
     """Validate and normalize protocol name"""
-    valid_protocols = {"curve", "balancer", "fxn", "pendle"}
+    valid_protocols = {"curve", "balancer", "fxn", "pendle", "frax"}
     protocol = protocol.lower()
     if protocol not in valid_protocols:
         raise ValueError(
