@@ -12,6 +12,7 @@ from votemarket_toolkit.shared.types import EligibleUser
 from votemarket_toolkit.utils.blockchain import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
 
+MAX_UINT256 = (2**256) - 1
 
 class VoteMarketDataService:
     def __init__(self, chain_id: int):
@@ -126,30 +127,63 @@ class VoteMarketDataService:
 
             eligible_users: List[EligibleUser] = []
 
+            # Iterate over the raw results array in steps of 2
             for i in range(0, len(results), 2):
+                # Determine the corresponding user address
                 user = unique_users[i // 2]
-
+                
+                # Initialize variables
+                last_vote, slope, power, end, bias = 0, 0, 0, 0, 0
+                
+                # --- 1. Decode results based on the protocol ---
                 if protocol == "pendle":
-                    last_vote = 0
+                    # Pendle structure: last_vote is effectively 0 for eligibility check
                     power, _, slope = results[i]
+                    # End time is the second element of the second result item
                     end = results[i + 1][1]
+                    # last_vote remains 0
+                    
                 elif protocol == "yb":
+                    # YB structure: last_vote is the first result item
                     last_vote = results[i]
-                    slope, _, power, end = results[i + 1]
-                else:
+                    # Second result item contains slope, bias, power, and end time
+                    slope, bias, power, end = results[i + 1]
+                    
+                else: # Default protocol (e.g., 'velo', etc.)
                     last_vote = results[i]
+                    # Second result item contains slope, power, and end time
                     slope, power, end = results[i + 1]
 
-                if (
-                    current_epoch < end
-                    and current_epoch > last_vote
-                    and slope > 0
-                ):
+                # --- 2. General Eligibility Check (Fail-Fast) ---
+                # The lock must NOT have ended AND the user must have voted before the current epoch
+                if not (current_epoch < end and current_epoch > last_vote):
+                    continue # Skip to the next user if basic conditions fail
+
+                # --- 3. Protocol-Specific Eligibility and Slope Logic ---
+                is_eligible = False
+                final_slope = slope # Default slope is the base 'slope' value
+
+                if protocol == "yb":
+                    # Special case for YB: Infinite lock
+                    if end == MAX_UINT256:
+                        if bias > 0:
+                            is_eligible = True
+                            final_slope = bias # Use 'bias' as the effective slope for infinite lock
+                    # Normal YB case: Finite lock
+                    elif slope > 0:
+                        is_eligible = True
+                        
+                # All other protocols (including 'pendle'): Check if slope is positive
+                elif slope > 0:
+                    is_eligible = True
+                
+                # --- 4. Append Eligible User ---
+                if is_eligible:
                     eligible_users.append(
                         EligibleUser(
                             user=user,
                             last_vote=last_vote,
-                            slope=slope,
+                            slope=final_slope,
                             power=power,
                             end=end,
                         )
