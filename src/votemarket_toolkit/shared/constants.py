@@ -158,7 +158,7 @@ class ContractRegistry:
 
     YB = {
         1: None,
-        42161: "0x4355aad70D49170B1CDc9B24e377B54C9BA97f59",
+        42161: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
         10: None,
         8453: None,
         137: None,
