@@ -1,9 +1,11 @@
 import argparse
 import asyncio
+import json
 import re
 import sys
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich import print as rprint
 from rich.table import Table
@@ -14,6 +16,7 @@ from votemarket_toolkit.commands.validation import (
     validate_eth_address,
     validate_protocol,
 )
+from votemarket_toolkit.proofs.manager import VoteMarketProofs
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.campaign_utils import (
     get_campaign_status,
@@ -75,6 +78,9 @@ def _process_campaign_periods(
             "date": datetime.fromtimestamp(period["timestamp"]).strftime(
                 "%Y-%m-%d %H:%M"
             ),
+            "block_number": period.get("block_number"),
+            "block_hash": period.get("block_hash"),
+            "block_timestamp": period.get("block_timestamp"),
             "reward_per_period": period["reward_per_period"],
             "reward_per_period_ether": period["reward_per_period"] / 1e18,
             "reward_per_vote": period["reward_per_vote"],
@@ -213,17 +219,149 @@ def _build_campaign_output_data(
     }
 
 
+def _infer_platform_protocol(
+    chain_id: int,
+    platform: str,
+    explicit_protocol: Optional[str] = None,
+) -> Optional[str]:
+    """Best-effort detection of the protocol for a platform address."""
+    if explicit_protocol:
+        return explicit_protocol
+
+    candidates = registry.get_platforms_for_chain(chain_id)
+    target = platform.lower()
+    for entry in candidates:
+        if entry.get("address", "").lower() == target:
+            return entry.get("protocol")
+    return None
+
+
+async def _generate_missing_gauge_proofs_for_campaign(
+    campaign_entry: Dict[str, Any],
+    protocol: Optional[str],
+    proofs_output_dir: str,
+    proof_service_cache: Dict[int, VoteMarketProofs],
+) -> Tuple[int, int]:
+    """
+    Generate gauge proofs for periods missing point data.
+
+    Returns:
+        (generated_count, error_count)
+    """
+    if not protocol:
+        return 0, 0
+
+    periods = campaign_entry.get("periods") or []
+    if not periods:
+        return 0, 0
+
+    gauge = campaign_entry.get("gauge")
+    campaign_details = campaign_entry.get("campaign_details", {})
+    source_chain_id = campaign_details.get("chain_id") or campaign_entry.get(
+        "chain_id"
+    )
+
+    if not gauge or not source_chain_id:
+        return 0, 0
+
+    proofs_path = Path(proofs_output_dir)
+    proofs_path.mkdir(parents=True, exist_ok=True)
+
+    loop = asyncio.get_running_loop()
+    generated = 0
+    failures = 0
+
+    def _get_manager() -> VoteMarketProofs:
+        if source_chain_id not in proof_service_cache:
+            proof_service_cache[source_chain_id] = VoteMarketProofs(
+                source_chain_id
+            )
+        return proof_service_cache[source_chain_id]
+
+    for period in periods:
+        if period.get("point_data_inserted"):
+            continue
+        if not period.get("block_updated"):
+            continue
+
+        block_number = period.get("block_number")
+        if not block_number:
+            continue
+
+        epoch = period.get("timestamp")
+        if not epoch:
+            continue
+
+        filename = (
+            f"campaign_{campaign_entry['campaign_id']}_epoch_{epoch}_gauge_proof.json"
+        )
+        filepath = proofs_path / filename
+        proof_payload: Optional[Dict[str, Any]] = None
+
+        if filepath.exists():
+            try:
+                proof_payload = json.loads(filepath.read_text())
+            except Exception as exc:  # pragma: no cover
+                period["generated_gauge_proof_error"] = (
+                    f"Failed to read cached proof: {exc}"
+                )
+                failures += 1
+                continue
+
+        if proof_payload is None:
+            try:
+                manager = await loop.run_in_executor(None, _get_manager)
+
+                def _generate():
+                    proof = manager.get_gauge_proof(
+                        protocol, gauge, epoch, block_number
+                    )
+                    return {
+                        "protocol": protocol,
+                        "gauge_address": gauge,
+                        "epoch": epoch,
+                        "block_number": block_number,
+                        "generated_at": datetime.utcnow().isoformat(),
+                        "gauge_controller_proof": "0x"
+                        + proof["gauge_controller_proof"].hex(),
+                        "point_data_proof": "0x"
+                        + proof["point_data_proof"].hex(),
+                    }
+
+                proof_payload = await loop.run_in_executor(None, _generate)
+                saved_path = save_json_output(
+                    proof_payload,
+                    filename,
+                    output_dir=proofs_output_dir,
+                    print_path=False,
+                )
+                proof_payload["file"] = saved_path
+            except Exception as exc:  # pragma: no cover
+                period["generated_gauge_proof_error"] = str(exc)
+                failures += 1
+                continue
+        else:
+            proof_payload["file"] = str(filepath.resolve())
+
+        period["generated_gauge_proof"] = proof_payload
+        generated += 1
+
+    return generated, failures
+
+
 async def get_all_active_campaigns(
     chain_id: Optional[int] = None,
     platform: Optional[str] = None,
     protocol: Optional[str] = None,
     campaign_id: Optional[int] = None,
+    generate_missing_proofs: bool = False,
+    proofs_output_dir: str = "output/proofs",
 ):
     """Get active campaigns across multiple chains/platforms"""
     campaign_service = CampaignService()
 
     # Determine which platforms to query
-    platforms_to_query = []
+    platforms_to_query: List[Dict[str, Any]] = []
 
     # If campaign_id is provided, we need at least protocol or (chain_id + platform)
     if campaign_id is not None:
@@ -237,7 +375,16 @@ async def get_all_active_campaigns(
     # If platform is specified, use only that platform (ignore protocol)
     if chain_id and platform:
         # Single chain/platform combination (most specific)
-        platforms_to_query.append((chain_id, platform))
+        platform_protocol = _infer_platform_protocol(
+            chain_id, platform, protocol
+        )
+        platforms_to_query.append(
+            {
+                "chain_id": chain_id,
+                "platform": platform,
+                "protocol": platform_protocol,
+            }
+        )
     elif protocol and chain_id:
         # Get platforms for the protocol on a specific chain
         all_platforms = campaign_service.get_all_platforms(protocol)
@@ -246,19 +393,39 @@ async def get_all_active_campaigns(
             p for p in all_platforms if p.chain_id == chain_id
         ]
         platforms_to_query.extend(
-            [(p.chain_id, p.address) for p in filtered_platforms]
+            [
+                {
+                    "chain_id": p.chain_id,
+                    "platform": p.address,
+                    "protocol": p.protocol,
+                }
+                for p in filtered_platforms
+            ]
         )
     elif protocol:
         # Get all platforms for the protocol across all chains
         all_platforms = campaign_service.get_all_platforms(protocol)
         platforms_to_query.extend(
-            [(p.chain_id, p.address) for p in all_platforms]
+            [
+                {
+                    "chain_id": p.chain_id,
+                    "platform": p.address,
+                    "protocol": p.protocol,
+                }
+                for p in all_platforms
+            ]
         )
     elif chain_id:
         # All platforms on a specific chain
         platforms = registry.get_platforms_for_chain(chain_id)
         for platform in platforms:
-            platforms_to_query.append((chain_id, platform["address"]))
+            platforms_to_query.append(
+                {
+                    "chain_id": chain_id,
+                    "platform": platform["address"],
+                    "protocol": platform.get("protocol"),
+                }
+            )
     else:
         console.print(
             "[yellow]Please provide at least a chain-id or protocol[/yellow]"
@@ -268,9 +435,12 @@ async def get_all_active_campaigns(
     # Create tasks for all platforms
     tasks = [
         get_active_campaigns_for_platform(
-            chain_id, platform, campaign_service, campaign_id
+            entry["chain_id"],
+            entry["platform"],
+            campaign_service,
+            campaign_id,
         )
-        for chain_id, platform in platforms_to_query
+        for entry in platforms_to_query
     ]
 
     # Execute all tasks concurrently
@@ -302,6 +472,8 @@ async def get_all_active_campaigns(
             "total_periods_with_proofs": 0,
             "campaigns_with_all_proofs": 0,
             "campaigns_missing_proofs": 0,
+            "gauge_proofs_generated": 0,
+            "gauge_proof_errors": 0,
         },
     }
 
@@ -312,11 +484,17 @@ async def get_all_active_campaigns(
     # Build token price cache from enriched campaign data
     # Campaigns already have prices from get_active_campaigns()
     token_price_cache = {}
+    proof_service_cache: Dict[int, VoteMarketProofs] = {}
 
-    for (chain_id, platform), campaigns in zip(platforms_to_query, results):
+    for entry, campaigns in zip(platforms_to_query, results):
+        chain_id = entry["chain_id"]
+        platform = entry["platform"]
+        platform_protocol = entry.get("protocol")
         if campaigns:
             total_campaigns += len(campaigns)
-            platforms_with_campaigns.append((chain_id, platform, campaigns))
+            platforms_with_campaigns.append(
+                (chain_id, platform, campaigns, platform_protocol)
+            )
 
             # Extract prices from enriched campaign data
             for c in campaigns:
@@ -331,7 +509,7 @@ async def get_all_active_campaigns(
                         token_price_cache[cache_key] = price
 
     # Display results split by platform
-    for chain_id, platform, campaigns in platforms_with_campaigns:
+    for chain_id, platform, campaigns, platform_protocol in platforms_with_campaigns:
         # Create a table for this platform
         rprint(
             f"\n[bold magenta]━━━ Platform: {format_address(platform)} | Chain: {chain_id} | Total: {len(campaigns)} ━━━[/bold magenta]"
@@ -427,19 +605,28 @@ async def get_all_active_campaigns(
                 avg_reward_per_vote_usd,
             ) = _process_campaign_periods(c, chain_id, token_price_usd)
 
-            # Add to output data
-            output_data["campaigns"].append(
-                _build_campaign_output_data(
-                    c,
-                    chain_id,
-                    platform,
-                    periods_with_rewards,
-                    avg_reward_per_vote,
-                    avg_reward_per_vote_usd,
-                    token_price_usd,
-                    closability,
-                )
+            campaign_entry = _build_campaign_output_data(
+                c,
+                chain_id,
+                platform,
+                periods_with_rewards,
+                avg_reward_per_vote,
+                avg_reward_per_vote_usd,
+                token_price_usd,
+                closability,
             )
+
+            if generate_missing_proofs:
+                generated, errors = await _generate_missing_gauge_proofs_for_campaign(
+                    campaign_entry,
+                    platform_protocol or protocol,
+                    proofs_output_dir,
+                    proof_service_cache,
+                )
+                output_data["summary"]["gauge_proofs_generated"] += generated
+                output_data["summary"]["gauge_proof_errors"] += errors
+
+            output_data["campaigns"].append(campaign_entry)
 
         # Display the table for this platform
         rprint(table)
@@ -460,18 +647,28 @@ async def get_all_active_campaigns(
                     avg_reward_per_vote_usd,
                 ) = _process_campaign_periods(c, chain_id, token_price_usd)
 
-                output_data["campaigns"].append(
-                    _build_campaign_output_data(
-                        c,
-                        chain_id,
-                        platform,
-                        periods_with_rewards,
-                        avg_reward_per_vote,
-                        avg_reward_per_vote_usd,
-                        token_price_usd,
-                        closability,
-                    )
+                campaign_entry = _build_campaign_output_data(
+                    c,
+                    chain_id,
+                    platform,
+                    periods_with_rewards,
+                    avg_reward_per_vote,
+                    avg_reward_per_vote_usd,
+                    token_price_usd,
+                    closability,
                 )
+
+                if generate_missing_proofs:
+                    generated, errors = await _generate_missing_gauge_proofs_for_campaign(
+                        campaign_entry,
+                        platform_protocol or protocol,
+                        proofs_output_dir,
+                        proof_service_cache,
+                    )
+                    output_data["summary"]["gauge_proofs_generated"] += generated
+                    output_data["summary"]["gauge_proof_errors"] += errors
+
+                output_data["campaigns"].append(campaign_entry)
 
     # Show summary
     if total_campaigns == 0:
@@ -755,6 +952,23 @@ def main():
         type=int,
         help="Specific campaign ID to fetch (fetches all campaigns if not provided)",
     )
+    parser.add_argument(
+        "--generate-missing-proofs",
+        action="store_true",
+        default=None,
+        help="Generate gauge proofs for any period missing point data (default: enabled)",
+    )
+    parser.add_argument(
+        "--skip-proof-generation",
+        action="store_true",
+        help="Disable automatic gauge proof generation",
+    )
+    parser.add_argument(
+        "--proofs-output-dir",
+        type=str,
+        default="output/proofs",
+        help="Directory to store generated proof files (used with --generate-missing-proofs)",
+    )
     args = parser.parse_args()
 
     try:
@@ -770,6 +984,12 @@ def main():
         if args.protocol:
             args.protocol = validate_protocol(args.protocol)
 
+        generate_missing = True
+        if args.skip_proof_generation:
+            generate_missing = False
+        elif args.generate_missing_proofs:
+            generate_missing = True
+
         # Run the async function
         asyncio.run(
             get_all_active_campaigns(
@@ -777,6 +997,8 @@ def main():
                 platform=args.platform,
                 protocol=args.protocol,
                 campaign_id=args.campaign_id,
+                generate_missing_proofs=generate_missing,
+                proofs_output_dir=args.proofs_output_dir,
             )
         )
 

@@ -162,7 +162,7 @@ async def list_user_voted_campaigns(
         "gauge_controller",
     )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     now = int(time.time())
 
     async def fetch_vote_data(campaign: Dict[str, Any]) -> Optional[Dict[str, Any]]:

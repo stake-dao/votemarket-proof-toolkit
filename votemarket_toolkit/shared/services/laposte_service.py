@@ -1,5 +1,6 @@
 """Service for handling LaPoste wrapped tokens and their native counterparts."""
 
+import asyncio
 from typing import Dict, List, Optional
 
 from eth_utils import to_checksum_address
@@ -61,7 +62,11 @@ class LaPosteService:
         }
 
         try:
-            result = web3_service.w3.eth.call(tx)
+            # Use executor to avoid blocking the event loop
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, web3_service.w3.eth.call, tx
+            )
             # Decode the result
             native_tokens = web3_service.w3.codec.decode(
                 ["address[]"], result
@@ -96,8 +101,6 @@ class LaPosteService:
         Returns:
             Dict with token information
         """
-        import asyncio
-
         token_address = to_checksum_address(token_address.lower())
 
         # For native tokens from LaPoste, they're usually on Ethereum mainnet
@@ -123,7 +126,7 @@ class LaPosteService:
             token_contract = web3_service.get_contract(token_address, "erc20")
 
             # Run all RPC calls in parallel using executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             name_future = loop.run_in_executor(
                 None, token_contract.functions.name().call
             )
@@ -162,7 +165,7 @@ class LaPosteService:
                     )
 
                     # Run all RPC calls in parallel
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     name_future = loop.run_in_executor(
                         None, token_contract.functions.name().call
                     )

@@ -124,7 +124,10 @@ get-active-campaigns:
 		$(if $(CHAIN_ID),--chain-id=$(CHAIN_ID)) \
 		$(if $(PLATFORM),--platform=$(PLATFORM)) \
 		$(if $(PROTOCOL),--protocol=$(PROTOCOL)) \
-		$(if $(CAMPAIGN_ID),--campaign-id=$(CAMPAIGN_ID))
+		$(if $(CAMPAIGN_ID),--campaign-id=$(CAMPAIGN_ID)) \
+		$(if $(GENERATE_MISSING_PROOFS),--generate-missing-proofs) \
+		$(if $(SKIP_PROOF_GENERATION),--skip-proof-generation) \
+		$(if $(PROOFS_OUTPUT_DIR),--proofs-output-dir=$(PROOFS_OUTPUT_DIR))
 
 get-epoch-blocks:
 	$(PYTHON) votemarket_toolkit/commands/get_epoch_blocks.py \

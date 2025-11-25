@@ -25,6 +25,7 @@ Technical Implementation:
 
 import asyncio
 import time
+import json
 from decimal import Decimal, localcontext
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -145,42 +146,29 @@ class CampaignService:
         return cache_dir / f"{safe_key}.cache"
 
     def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
-        """Get value from TTL cache if not expired."""
-        import pickle
-
         cache_path = self._get_cache_path(key)
-
-        if cache_path.exists():
-            try:
-                with open(cache_path, "rb") as f:
-                    data = pickle.load(f)
-
-                value, expiry = data
-                if time.time() < expiry:
-                    return value
-                else:
-                    # Remove expired file
-                    cache_path.unlink()
-            except Exception:
-                # If file is corrupted, remove it
-                if cache_path.exists():
-                    cache_path.unlink()
-
+        try:
+            with open(cache_path, "r") as f:
+                data = json.load(f)
+            value, expiry = data["value"], data["expiry"]
+            if time.time() < expiry:
+                return value
+            cache_path.unlink(missing_ok=True)
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
         return None
 
     def _set_ttl_cache(self, key: str, value: Any) -> None:
         """Set value in TTL cache."""
-        import pickle
-
         cache_path = self._get_cache_path(key)
 
         try:
-            with open(cache_path, "wb") as f:
-                pickle.dump((value, time.time() + self._ttl), f)
-        except Exception:
-            # If write fails, try to clean up
+            with open(cache_path, "w") as f:
+                json.dump({"value": value, "expiry": time.time() + self._ttl}, f)
+        except (OSError, TypeError):
+            # If write fails (including non-serializable data), clean up
             if cache_path.exists():
-                cache_path.unlink()
+                cache_path.unlink(missing_ok=True)
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
@@ -232,7 +220,7 @@ class CampaignService:
     # -----------------------------
     # Proof status helpers
     # -----------------------------
-    def _populate_proof_status_flags(
+    async def _populate_proof_status_flags(
         self,
         campaigns: List[Dict],
         web3_service: Web3Service,
@@ -246,14 +234,25 @@ class CampaignService:
         if not campaigns:
             return
 
+        loop = asyncio.get_running_loop()
+
         try:
             # Get oracle address through lens contract
-            oracle_lens_address = platform_contract.functions.ORACLE().call()
+            oracle_lens_address = await loop.run_in_executor(
+                None, platform_contract.functions.ORACLE().call
+            )
             oracle_lens_contract = web3_service.get_contract(
                 to_checksum_address(oracle_lens_address),
                 "lens_oracle",
             )
-            oracle_address = oracle_lens_contract.functions.oracle().call()
+            oracle_address = await loop.run_in_executor(
+                None, oracle_lens_contract.functions.oracle().call
+            )
+            oracle_contract = web3_service.get_contract(
+                to_checksum_address(oracle_address),
+                "oracle",
+            )
+            block_cache: Dict[int, Dict[str, Any]] = {}
 
             # Load bytecode
             proof_bytecode = resource_manager.load_bytecode("GetInsertedProofs")
@@ -276,7 +275,9 @@ class CampaignService:
                         [],
                         epochs,
                     )
-                    result = web3_service.w3.eth.call(tx)  # type: ignore
+                    result = await loop.run_in_executor(
+                        None, web3_service.w3.eth.call, tx
+                    )
                     epoch_results = self.contract_reader.decode_inserted_proofs(result)
 
                     # Annotate each period with proof flags
@@ -293,6 +294,29 @@ class CampaignService:
                         )
                         period["point_data_inserted"] = point_inserted
                         period["block_updated"] = epoch_result.get("is_block_updated", False)
+                        if period["block_updated"]:
+                            block_info = block_cache.get(period["timestamp"])
+                            if block_info is None:
+                                try:
+                                    block_header = await loop.run_in_executor(
+                                        None,
+                                        oracle_contract.functions.epochBlockNumber(period["timestamp"]).call
+                                    )
+                                    block_info = {
+                                        "block_number": block_header[2],
+                                        "block_hash": block_header[0].hex()
+                                        if hasattr(block_header[0], "hex")
+                                        else block_header[0],
+                                        "block_timestamp": block_header[3],
+                                    }
+                                except Exception:
+                                    block_info = {}
+                                block_cache[period["timestamp"]] = block_info
+
+                            if block_info:
+                                period["block_number"] = block_info.get("block_number")
+                                period["block_hash"] = block_info.get("block_hash")
+                                period["block_timestamp"] = block_info.get("block_timestamp")
                 except Exception:
                     # Skip proof flags for this campaign on error
                     continue
@@ -325,7 +349,7 @@ class CampaignService:
                     bytecode_data,
                     [platform_address, start_idx, limit],
                 )
-                result = await asyncio.get_event_loop().run_in_executor(
+                result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     web3_service.w3.eth.call,
                     tx,  # type: ignore
@@ -380,7 +404,7 @@ class CampaignService:
                     tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
                         {"bytecode": active_ids_bytecode}, platform_address, start, size
                     )
-                    result = await asyncio.get_event_loop().run_in_executor(
+                    result = await asyncio.get_running_loop().run_in_executor(
                         None,
                         web3_service.w3.eth.call,
                         tx,
@@ -401,7 +425,7 @@ class CampaignService:
                 tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
                     {"bytecode": active_ids_bytecode}, platform_address, 0, total_campaigns
                 )
-                result = await asyncio.get_event_loop().run_in_executor(
+                result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     web3_service.w3.eth.call,
                     tx,
@@ -425,30 +449,28 @@ class CampaignService:
 
         bytecode_data = resource_manager.load_bytecode("BatchCampaignsWithPeriods")
 
-        from concurrent.futures import ThreadPoolExecutor
-
-        max_workers = min(len(campaign_ids), 50)
-        executor = ThreadPoolExecutor(max_workers=max_workers)
+        # Use semaphore to limit concurrency instead of custom ThreadPoolExecutor
+        semaphore = asyncio.Semaphore(50)
 
         async def fetch_one(campaign_id: int) -> Optional[Dict]:
-            try:
-                tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
-                    bytecode_data,
-                    [platform_address, campaign_id, 1],
-                )
-                result = await asyncio.get_event_loop().run_in_executor(
-                    executor,
-                    web3_service.w3.eth.call,
-                    tx,
-                )
-                campaigns = self.contract_reader.decode_campaign_data(result)
-                return campaigns[0] if campaigns else None
-            except Exception:
-                return None
+            async with semaphore:
+                try:
+                    tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                        bytecode_data,
+                        [platform_address, campaign_id, 1],
+                    )
+                    result = await asyncio.get_running_loop().run_in_executor(
+                        None,  # Use default executor - properly managed by asyncio
+                        web3_service.w3.eth.call,
+                        tx,
+                    )
+                    campaigns = self.contract_reader.decode_campaign_data(result)
+                    return campaigns[0] if campaigns else None
+                except Exception:
+                    return None
 
         tasks = [fetch_one(cid) for cid in campaign_ids]
         results = await asyncio.gather(*tasks)
-        executor.shutdown(wait=False)
         return [c for c in results if c is not None]
 
     async def get_campaigns(
@@ -569,7 +591,7 @@ class CampaignService:
                         [platform_address, start_idx, limit],
                     )
                     # Execute call asynchronously to avoid blocking
-                    result = await asyncio.get_event_loop().run_in_executor(
+                    result = await asyncio.get_running_loop().run_in_executor(
                         None,
                         web3_service.w3.eth.call,
                         tx,  # type: ignore
@@ -618,7 +640,7 @@ class CampaignService:
             # This verifies if the oracle has received the necessary proofs
             # for users to be able to claim their rewards
             if check_proofs and all_campaigns:
-                self._populate_proof_status_flags(all_campaigns, web3_service, platform_contract)
+                await self._populate_proof_status_flags(all_campaigns, web3_service, platform_contract)
 
             # Fetch token information (both native and receipt tokens)
             await self._enrich_token_information(all_campaigns, chain_id)
@@ -722,7 +744,7 @@ class CampaignService:
 
             # Optionally annotate proof flags similar to get_campaigns
             if check_proofs and active_campaigns:
-                self._populate_proof_status_flags(
+                await self._populate_proof_status_flags(
                     active_campaigns, web3_service, platform_contract
                 )
 
@@ -1208,7 +1230,7 @@ class CampaignService:
                 epochs,
             )
 
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None,
                 web3_service.w3.eth.call,
                 tx,  # type: ignore
