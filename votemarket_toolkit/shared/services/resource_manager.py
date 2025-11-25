@@ -1,3 +1,4 @@
+
 import json
 import os
 from pathlib import Path
@@ -8,17 +9,29 @@ class ResourceManager:
     """Manages access to project resources like ABIs, bytecodes, and contracts"""
 
     def __init__(self):
-        self._package_root = Path(__file__).parent.parent.parent
+        self._package_root = Path(__file__).resolve().parent.parent.parent
+        self._resources_root = (self._package_root / "resources").resolve(
+            strict=False
+        )
         self._cache: Dict[str, Any] = {}
 
     def get_resource_path(self, resource_type: str, filename: str) -> Path:
         """Get full path to a resource file"""
-        resource_dir = self._package_root / "resources" / resource_type
-        return resource_dir / filename
+        resource_dir = self._get_resource_dir(resource_type)
+        resource_path = (resource_dir / filename).resolve(strict=False)
+
+        try:
+            resource_path.relative_to(resource_dir)
+        except ValueError:
+            raise ValueError(
+                f"Invalid resource path outside {resource_dir}: {filename}"
+            )
+
+        return resource_path
 
     def ensure_resource_dir(self, resource_type: str) -> Path:
         """Ensure resource directory exists and return its path"""
-        resource_dir = self._package_root / "resources" / resource_type
+        resource_dir = self._get_resource_dir(resource_type)
         os.makedirs(resource_dir, exist_ok=True)
         return resource_dir
 
@@ -57,6 +70,17 @@ class ResourceManager:
                 f,
                 indent=2,
             )
+
+    def _get_resource_dir(self, resource_type: str) -> Path:
+        resource_dir = (self._resources_root / resource_type).resolve(
+            strict=False
+        )
+        try:
+            resource_dir.relative_to(self._resources_root)
+        except ValueError:
+            raise ValueError(f"Invalid resource type: {resource_type}")
+
+        return resource_dir
 
 
 # Global instance
