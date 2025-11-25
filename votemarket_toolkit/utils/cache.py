@@ -13,7 +13,6 @@ Cache files are stored in .cache directory and excluded from git.
 import asyncio
 import hashlib
 import json
-import pickle
 import time
 from functools import wraps
 from pathlib import Path
@@ -78,15 +77,19 @@ class TTLCache:
 
             if cache_path.exists():
                 try:
-                    with open(cache_path, "rb") as f:
-                        entry = pickle.load(f)
+                    with open(cache_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+
+                    # Reconstruct CacheEntry from JSON data
+                    entry = CacheEntry(data["value"], 0)
+                    entry.expiry_time = data["expiry_time"]
 
                     if not entry.is_expired():
                         return entry.value
                     else:
                         # Remove expired file
                         cache_path.unlink()
-                except Exception:
+                except (json.JSONDecodeError, KeyError, Exception):
                     # If file is corrupted, remove it
                     if cache_path.exists():
                         cache_path.unlink()
@@ -105,9 +108,14 @@ class TTLCache:
             entry = CacheEntry(value, ttl)
 
             try:
-                with open(cache_path, "wb") as f:
-                    pickle.dump(entry, f)
-            except Exception:
+                # Create JSON-serializable representation
+                data = {
+                    "value": entry.value,
+                    "expiry_time": entry.expiry_time
+                }
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+            except (TypeError, json.JSONEncodeError, Exception):
                 # If write fails, try to clean up
                 if cache_path.exists():
                     cache_path.unlink()
@@ -138,12 +146,13 @@ class TTLCache:
             # Check all cache files
             for cache_file in CACHE_DIR.glob("*.cache"):
                 try:
-                    with open(cache_file, "rb") as f:
-                        entry = pickle.load(f)
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
 
-                    if entry.is_expired():
+                    # Check if expired
+                    if time.time() > data.get("expiry_time", 0):
                         cache_file.unlink()
-                except Exception:
+                except (json.JSONDecodeError, KeyError, Exception):
                     # If file is corrupted or can't be read, remove it
                     try:
                         cache_file.unlink()
@@ -171,15 +180,16 @@ class TTLCache:
 
         for cache_file in CACHE_DIR.glob("*.cache"):
             try:
-                with open(cache_file, "rb") as f:
-                    entry = pickle.load(f)
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
                 total_entries += 1
-                if entry.is_expired():
+                # Check if expired
+                if time.time() > data.get("expiry_time", 0):
                     expired_entries += 1
                 else:
                     active_entries += 1
-            except Exception:
+            except (json.JSONDecodeError, KeyError, Exception):
                 pass
 
         return {

@@ -409,14 +409,13 @@ class AnalyticsService:
 
     def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
         """Get value from TTL cache if not expired."""
-        import pickle
 
         cache_path = self._get_cache_path(key)
 
         if cache_path.exists():
             try:
                 with open(cache_path, "rb") as f:
-                    data = pickle.load(f)
+                    data = f.read()
 
                 value, expiry = data
                 if time.time() < expiry:
@@ -433,13 +432,11 @@ class AnalyticsService:
 
     def _set_ttl_cache(self, key: str, value: Any) -> None:
         """Set value in TTL cache."""
-        import pickle
-
         cache_path = self._get_cache_path(key)
 
         try:
             with open(cache_path, "wb") as f:
-                pickle.dump((value, time.time() + self._ttl), f)
+                f.write((value, time.time() + self._ttl))
         except Exception:
             # If write fails, try to clean up
             if cache_path.exists():
