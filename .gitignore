@@ -3,6 +3,7 @@
 # IDE settings
 .vscode/
 .vscode/settings.json
+.claude/
 
 # Python version files (causes conflicts with pyenv)
 .python-version

@@ -168,20 +168,6 @@ POLYGON_MAINNET_RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
 BSC_MAINNET_RPC_URL=https://bsc-dataseed.binance.org/
 ```
 
-## Streamlit UI
-
-Web interface for campaigns, proofs, and analytics.
-
-```bash
-# Run with UV
-uv run streamlit run streamlit_ui/app.py
-
-# Run with pip  
-streamlit run streamlit_ui/app.py
-```
-
-See [streamlit_ui/README.md](streamlit_ui/README.md) for details.
-
 ## Examples
 
 See [examples/python](examples/python/) for complete usage examples:
