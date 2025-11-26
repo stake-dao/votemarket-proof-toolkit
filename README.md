@@ -1,169 +1,254 @@
-<div align="center">
-<img src="./assets/Inspector.svg" width="200">
+# VoteMarket Toolkit
 
-# VotemarketV2 Proofs Toolkit
+Python SDK for VoteMarket - campaign management, proofs, and analytics.
 
-⚙️ Streamlined toolkit for generating Votemarket V2 proofs and interacting with the protocol
-
-[![GitHub issues](https://img.shields.io/github/issues/stake-dao/votemarket-proof-toolkit.svg)](https://github.com/stake-dao/votemarket-proof-toolkit/issues)
-[![GitHub stars](https://img.shields.io/github/stars/stake-dao/votemarket-proof-generator.svg)](https://github.com/stake-dao/votemarket-proof-toolkit/stargazers)
-
-</div>
-
-## Table of Contents
-
-- [VotemarketV2 Proofs Toolkit](#votemarketv2-proofs-toolkit)
-  - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
-  - [Features](#features)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-  - [Usage](#usage)
-    - [Using the Makefile](#using-the-makefile)
-    - [Using Python Scripts](#using-python-scripts)
-  - [Understanding Block Numbers and Proofs](#understanding-block-numbers-and-proofs)
-  - [Documentation](#documentation)
-
-## Introduction
-
-The VotemarketV2 Proofs Toolkit is a set of utilities designed to interact with Votemarket V2, focusing on generating Ethereum proofs for claim operations. This toolkit streamlines the process of creating proofs, making it easier for developers and users to interact with the VM Oracle.
-
-## Features
-
-- Generate user proofs
-- Generate gauge proofs
-- Retrieve block information
-- Support for multiple protocols (Curve, Balancer, Frax, FXN)
-- Get voters for a gauge
-- Get active campaigns on Votemarket
-
-## Prerequisites
-
-- Python 3.8 or higher
-- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
-  ```bash
-  # Install uv
-  pip install uv
-  # or
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
+[![PyPI version](https://badge.fury.io/py/votemarket-toolkit.svg)](https://badge.fury.io/py/votemarket-toolkit)
+[![Python](https://img.shields.io/pypi/pyversions/votemarket-toolkit.svg)](https://pypi.org/project/votemarket-toolkit/)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 ## Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/stake-dao/votemarket-proof-toolkit.git
-   cd votemarket-proof-toolkit
-   ```
+```bash
+pip install votemarket-toolkit
+```
 
-2. **Install dependencies using uv:**
-   ```bash
-   make install-dev
-   ```
+### Development Prerequisites
 
-3. **Verify installation:**
-   ```bash
-   make help
-   ```
+For development, this project uses [uv](https://github.com/astral-sh/uv) for fast, reliable dependency management.
+
+**Install uv:**
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Alternative: via pip
+pip install uv
+```
+
+**Alternative: Traditional pip/venv workflow**
+
+If you prefer not to use uv, you can use standard Python tools:
+
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # macOS/Linux
+# OR
+.venv\Scripts\activate  # Windows
+
+# Install package in editable mode
+pip install -e ".[dev]"
+
+# Run commands directly
+python -m votemarket_toolkit.cli --help
+```
 
 ## Quick Start
 
-1. **View available commands:**
-   ```bash
-   make help
-   ```
+```python
+from votemarket_toolkit.campaigns.service import CampaignService
+from votemarket_toolkit.shared import registry
 
-2. **Generate a user proof:**
-   ```bash
-   make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER_ADDRESS=0x... BLOCK_NUMBER=12345678
-   ```
+# Get platform address
+curve_platform = registry.get_platform("curve", chain_id=42161)
 
-3. **Run example scripts:**
-   ```bash
-   make run-examples
-   ```
+# Fetch campaigns
+service = CampaignService()
+campaigns = await service.get_campaigns(
+    chain_id=42161,
+    platform_address=curve_platform,
+    campaign_id=97
+)
+```
+
+## Features
+
+- **Campaign Management**: Fetch, create, and manage VoteMarket campaigns
+- **Proof Generation**: Generate merkle proofs for reward claims
+- **Analytics**: Analyze historical performance and optimize parameters
+- **Multi-chain**: Supports Ethereum, Arbitrum, and other networks
+- **Registry**: Built-in platform and gauge registries
+
+## Services
+
+### CampaignService
+Fetch and manage campaign data, lifecycle status, and proof insertion.
+
+```python
+from votemarket_toolkit.campaigns import CampaignService
+
+service = CampaignService()
+campaigns = await service.get_campaigns(chain_id=42161, platform_address="0x...")
+```
+
+### AnalyticsService
+Access historical performance metrics from the VoteMarket analytics repository.
+
+```python
+from votemarket_toolkit.analytics import get_analytics_service
+
+analytics = get_analytics_service()
+history = await analytics.fetch_gauge_history("curve", "0x...")
+```
+
+### CampaignOptimizer
+Calculate optimal campaign parameters using market data and historical performance.
+
+```python
+from votemarket_toolkit.analytics import get_campaign_optimizer
+
+optimizer = get_campaign_optimizer()
+result = await optimizer.calculate_optimal_campaign(
+    protocol="curve",
+    gauge="0x...",
+    reward_token="0x...",
+    chain_id=1,
+    total_reward_tokens=10000
+)
+```
+
+### VoteMarketProofs
+Generate merkle proofs for user and gauge rewards.
+
+```python
+from votemarket_toolkit.proofs import VoteMarketProofs
+
+proofs = VoteMarketProofs(chain_id=1)
+gauge_proof = proofs.get_gauge_proof("curve", "0x...", epoch, block_number)
+user_proof = proofs.get_user_proof("curve", "0x...", "0x...", block_number)
+```
+
+### Web3Service
+Multi-chain Web3 connections with contract interaction utilities.
+
+```python
+from votemarket_toolkit.shared.services import Web3Service
+
+web3 = Web3Service.get_instance(chain_id=1)
+contract = web3.get_contract(address, "vm_platform")
+```
+
+### LaPosteService
+Handle wrapped/native token conversions for cross-chain rewards.
+
+```python
+from votemarket_toolkit.shared.services.laposte_service import laposte_service
+
+native_tokens = await laposte_service.get_native_tokens(chain_id, ["0x..."])
+token_info = await laposte_service.get_token_info(chain_id, "0x...")
+```
+
+### VotesService
+Fetch and cache voting data for gauges.
+
+```python
+from votemarket_toolkit.votes.services import VotesService
+
+votes = VotesService()
+gauge_votes = await votes.get_gauge_votes("curve", "0x...", start_block, end_block)
+```
 
 ## Configuration
 
-1. Create a `.env` file in the root directory of the project.
-2. Add your RPC URLs to the `.env` file:
-   ```
-   ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/API_KEY
-
-   ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/API_KEY
-
-   ... (depending on where VM are deployed)
-
-   ```
-
-## Usage
-
-The toolkit provides multiple ways to generate proofs for interacting with Votemarket V2:
-
-### Using the Makefile
-
-1. **Generate user proof:**
-   ```bash
-   make user-proof PROTOCOL=curve GAUGE_ADDRESS=0x... USER=0x... BLOCK_NUMBER=12345678
-   ```
-
-2. **Generate gauge proof:**
-   ```bash
-   make gauge-proof PROTOCOL=curve GAUGE_ADDRESS=0x... CURRENT_EPOCH=1234567890 BLOCK_NUMBER=12345678
-   ```
-
-3. **Get block information:**
-   ```bash
-   make block-info BLOCK_NUMBER=12345678
-   ```
-
-### Using Python Scripts
-
-You can also use the Python scripts directly for more complex integrations or chained actions. Refer to the `examples` and `external` directories for sample usage. `external` is used for the API and Stake Dao weekly operations.****
-
-## Understanding Block Numbers and Proofs
-
-The `BLOCK_NUMBER` parameter is crucial when generating proofs. This number should be the block set in the Votemarket oracle for the specific period you're interested in claiming (period is rounded down by week, as on mainnet gauge controller).
-
-To get the correct block number for a specific epoch or set of epochs, you can use the following Makefile command:
+Create `.env` file with RPC endpoints:
 
 ```bash
-make get-epoch-blocks CHAIN_ID=1 PLATFORM=0x... EPOCHS=1234,1235,1236
+# Required for all chains
+ETHEREUM_MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+ARBITRUM_MAINNET_RPC_URL=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+OPTIMISM_MAINNET_RPC_URL=https://opt-mainnet.g.alchemy.com/v2/YOUR_KEY
+BASE_MAINNET_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+POLYGON_MAINNET_RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
+BSC_MAINNET_RPC_URL=https://bsc-dataseed.binance.org/
 ```
 
-This command will return the block numbers set in the oracle for the specified epochs. For example:
+## Examples
 
-```
-Epoch Blocks:
-  Epoch 1234: Block 15000000
-  Epoch 1235: Block 15007000
-  Epoch 1236: Block 15014000
-```
+See [examples/python](examples/python/) for complete usage examples:
 
-Use these block numbers when generating proofs to ensure they match the oracle's state for the relevant epoch.
+- `campaigns/list_all.py` – Fetch campaigns across protocols with periods and rewards
+- `users/check_status.py` – Check user proof status (block data, gauge data, user votes)
+- `proofs/generate.py` – Build gauge and user proofs for claims
+- `data/calculate_efficiency.py` – Model optimal `max_reward_per_vote` values
 
-## Documentation
+### Check User Eligibility
 
-For detailed information on each component and function, please refer to:
-
-- [Developer Documentation](docs/README.md): Comprehensive guide for integrating with VoteMarket V2, including:
-  - Contract addresses and deployments
-  - Campaign creation and management
-  - Claiming rewards
-  - Using the Bundler for batch operations
-
-The developer documentation provides detailed examples and best practices for integrating with the protocol, while the source code documentation offers technical details about implementation.
-
-## Usage
-
-See `make help` for available commands or run specific examples:
+Check if a user has claimable rewards across all campaigns:
 
 ```bash
-# Show all available commands
-make help
+# Check eligibility for all campaigns in a protocol
+make check-user-eligibility USER=0x... PROTOCOL=curve
 
-# Run specific example
-make run-example EXAMPLE=create_campaign_l1
+# Filter by specific gauge
+make check-user-eligibility USER=0x... PROTOCOL=curve GAUGE=0x...
+
+# Filter by chain
+make check-user-eligibility USER=0x... PROTOCOL=balancer CHAIN_ID=42161
+
+# Show only active campaigns
+make check-user-eligibility USER=0x... PROTOCOL=curve STATUS=active
 ```
 
-For detailed implementation examples, check the `docs/examples/` directory.
+This command checks pre-generated proof data from the [VoteMarket API](https://github.com/stake-dao/api/tree/main/api/votemarket) to determine which periods have claimable rewards.
+
+## Unified CLI
+
+You can use the unified CLI instead of individual scripts.
+
+Examples:
+
+- Generate a user proof
+  uv run -m votemarket_toolkit.cli proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000 [--chain-id 1]
+
+- Generate a gauge proof
+  uv run -m votemarket_toolkit.cli proofs-gauge --protocol curve --gauge-address 0x... --current-epoch 1699920000 --block-number 18500000 [--chain-id 1]
+
+- List active campaigns
+  uv run -m votemarket_toolkit.cli campaigns-active --protocol curve --chain-id 42161
+  uv run -m votemarket_toolkit.cli campaigns-active --platform 0x... --chain-id 42161
+
+- Check a user’s eligibility
+  uv run -m votemarket_toolkit.cli users-eligibility --user 0x... --protocol curve [--gauge 0x...] [--chain-id 42161] [--status active|closed|all]
+
+When installed from PyPI, the CLI is available as `votemarket`:
+
+- votemarket proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000
+
+## Development
+
+```bash
+# Clone repository
+git clone https://github.com/stake-dao/votemarket-proof-toolkit
+cd votemarket-proof-toolkit
+
+# Install dependencies (requires uv - see below)
+uv sync
+
+# Run examples
+uv run examples/python/data/calculate_efficiency.py
+uv run examples/python/data/get_token_prices.py
+
+# Format and lint
+make format              # Format all code
+make format FILE=path    # Format specific file
+
+# Build and publish
+make build               # Build package
+make test-build          # Test build locally
+make deploy              # Deploy to PyPI
+
+# Development commands (see Makefile for full list)
+make list-campaigns CHAIN_ID=42161 PLATFORM=0x...
+make get-active-campaigns PROTOCOL=curve
+make check-user-eligibility USER=0x... PROTOCOL=curve [GAUGE=0x...] [CHAIN_ID=1] [STATUS=active]
+```
+
+## License
+
+AGPL-3.0 License - see [LICENSE](LICENSE)

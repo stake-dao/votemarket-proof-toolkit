@@ -3,6 +3,10 @@
 # IDE settings
 .vscode/
 .vscode/settings.json
+.claude/
+
+# Python version files (causes conflicts with pyenv)
+.python-version
 
 # System files
 .DS_Store
@@ -18,7 +22,10 @@ env/
 
 # Temporary files
 cache/
+.cache/
 temp/
 node_modules/
 .venv
 out/
+output/
+.address_registry_cache.json
