@@ -17,6 +17,8 @@ from votemarket_toolkit.shared.types import EligibleUser
 from votemarket_toolkit.utils.blockchain import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
 
+MAX_UINT256 = (2**256) - 1
+
 
 class EligibilityService:
     """
@@ -54,7 +56,7 @@ class EligibilityService:
         3. User has positive voting power (slope > 0)
 
         Args:
-            protocol: Protocol name ("curve", "balancer", "frax", "pendle")
+            protocol: Protocol name ("curve", "balancer", "frax", "pendle", "yb")
             gauge_address: Address of the gauge to check
             current_epoch: Timestamp of the epoch to check eligibility for
             block_number: Block number to query at
@@ -136,6 +138,29 @@ class EligibilityService:
                                 [to_checksum_address(user)],
                             )
                         )
+                elif protocol == "yb":
+                    # YB uses different vote_user_slopes signature
+                    multicall.add(
+                        W3Multicall.Call(
+                            gauge_controller_address,
+                            "last_user_vote(address,address)(uint256)",
+                            [
+                                to_checksum_address(user),
+                                to_checksum_address(gauge_address),
+                            ],
+                        )
+                    )
+                    # YB returns (slope, bias, power, end)
+                    multicall.add(
+                        W3Multicall.Call(
+                            gauge_controller_address,
+                            "vote_user_slopes(address,address)(uint256,uint256,uint256,uint256)",
+                            [
+                                to_checksum_address(user),
+                                to_checksum_address(gauge_address),
+                            ],
+                        )
+                    )
                 else:
                     # Curve/Balancer/Frax use standard gauge controller interface
                     # Get last vote timestamp
@@ -170,27 +195,51 @@ class EligibilityService:
             for i in range(0, len(results), 2):
                 user = unique_users[i // 2]
 
+                # Initialize variables
+                last_vote, slope, power, end, bias = 0, 0, 0, 0, 0
+
                 if protocol == "pendle":
                     # Pendle data structure
                     last_vote = 0  # Pendle doesn't track last vote timestamp
                     power, _, slope = results[i]
                     end = results[i + 1][1]  # Position end timestamp
+                elif protocol == "yb":
+                    # YB data structure: last_vote + (slope, bias, power, end)
+                    last_vote = results[i]
+                    slope, bias, power, end = results[i + 1]
                 else:
                     # Standard gauge controller data
                     last_vote = results[i]
                     slope, power, end = results[i + 1]
 
-                # Check eligibility
-                if (
-                    current_epoch < end
-                    and current_epoch > last_vote
-                    and slope > 0
-                ):
+                # Basic eligibility check (fail-fast)
+                # Lock must NOT have ended AND user must have voted before current epoch
+                if not (current_epoch < end and current_epoch > last_vote):
+                    continue
+
+                # Protocol-specific eligibility and slope logic
+                is_eligible = False
+                final_slope = slope
+
+                if protocol == "yb":
+                    # Special case for YB: Infinite lock (perma lock)
+                    if end == MAX_UINT256:
+                        if bias > 0:
+                            is_eligible = True
+                            final_slope = bias  # Use bias as effective slope for infinite lock
+                    # Normal YB case: Finite lock
+                    elif slope > 0:
+                        is_eligible = True
+                # All other protocols: Check if slope is positive
+                elif slope > 0:
+                    is_eligible = True
+
+                if is_eligible:
                     eligible_users.append(
                         EligibleUser(
                             user=user,
                             last_vote=last_vote,
-                            slope=slope,
+                            slope=final_slope,
                             power=power,
                             end=end,
                         )

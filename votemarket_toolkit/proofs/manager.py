@@ -133,6 +133,17 @@ class VoteMarketProofs:
                     if active_pool.lower() == gauge.lower():
                         return True
                 return False
+            elif protocol == "yb":
+                # YB gauge controller uses gauges(uint256) and n_gauges()
+                gauge_controller_contract = self.web3_service.get_contract(
+                    gauge_controller_address, "yb_gauge_controller"
+                )
+                n_gauges = gauge_controller_contract.functions.n_gauges().call()
+                for i in range(n_gauges):
+                    gauge_addr = gauge_controller_contract.functions.gauges(i).call()
+                    if gauge_addr.lower() == gauge.lower():
+                        return True
+                return False
             else:
                 gauge_controller_contract = self.web3_service.get_contract(
                     gauge_controller_address, "gauge_controller"

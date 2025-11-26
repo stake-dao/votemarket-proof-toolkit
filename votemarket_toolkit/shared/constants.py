@@ -43,6 +43,11 @@ class GaugeControllerConstants:
             "point_weights": 161,
             "vote_user_slope": 162,
         },
+        "yb": {
+            "point_weights": 1000000006,
+            "last_user_vote": 1000000005,
+            "vote_user_slope": 1000000003,
+        },
     }
 
     GAUGE_CONTROLLER = {
@@ -51,6 +56,7 @@ class GaugeControllerConstants:
         "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
         "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
         "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0",
+        "yb": "0x1Be14811A3a06F6aF4fA64310a636e1Df04c1c21",
     }
 
     CREATION_BLOCKS = {
@@ -59,6 +65,7 @@ class GaugeControllerConstants:
         "frax": 14052749,
         "fxn": 18156185,
         "pendle": 16032096,
+        "yb": 23370933,
     }
 
     VE_ADDRESSES = {"pendle": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210"}
@@ -76,6 +83,7 @@ class GaugeVotesConstants:
         "frax": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
         "fxn": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
         "pendle": "0x44087E105137a5095c008AaB6a6530182821F2F0",
+        "yb": "0x1Be14811A3a06F6aF4fA64310a636e1Df04c1c21",
     }
 
 
@@ -168,8 +176,16 @@ class ContractRegistry:
         137: "0x105694FC5204787eD571842671d1262A54a8135B",
     }
 
+    VOTEMARKET_YB = {
+        1: None,
+        42161: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
+        10: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
+        8453: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
+        137: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
+    }
+
     # Available protocols
-    PROTOCOLS = ["curve", "balancer", "frax", "fxn", "pendle"]
+    PROTOCOLS = ["curve", "balancer", "frax", "fxn", "pendle", "yb"]
 
     @staticmethod
     def get_matching_contracts(base_name: str) -> list:

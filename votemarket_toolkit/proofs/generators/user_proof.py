@@ -131,20 +131,27 @@ def generate_user_proof(
     vote_user_slope_base_slot = gauge_slots["vote_user_slope"]
 
     # Calculate vote user slope storage slot (different for Curve protocol)
-    index_additionnal_slot = 2
+    index_additionnal_slot = [2]
     if protocol == "curve":
         vote_user_slope_slot = get_user_gauge_storage_slot_pre_vyper03(
             web_3.to_checksum_address(user.lower()),
             web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
+    elif protocol == "yb":
+        vote_user_slope_slot = get_user_gauge_storage_slot(
+            web_3.to_checksum_address(user.lower()),
+            web_3.to_checksum_address(gauge_address.lower()),
+            vote_user_slope_base_slot,
+        )
+        index_additionnal_slot = [1, 3]
     elif protocol == "pendle":
         vote_user_slope_slot = get_user_gauge_storage_slot_pendle(
             web_3.to_checksum_address(user.lower()),
             web_3.to_checksum_address(gauge_address.lower()),
             vote_user_slope_base_slot,
         )
-        index_additionnal_slot = 1
+        index_additionnal_slot = [1]
     else:
         vote_user_slope_slot = get_user_gauge_storage_slot(
             web_3.to_checksum_address(user.lower()),
@@ -152,17 +159,17 @@ def generate_user_proof(
             vote_user_slope_base_slot,
         )
 
-    # Calculate additional slots
+    # Combine all slots & calculate additional slots
     vote_user_slope_slope = vote_user_slope_slot
-    vote_user_slope_end = vote_user_slope_slot + index_additionnal_slot
 
-    # Combine all slots
     slots = [web_3.to_hex(last_user_vote_slot)] if protocol != "pendle" else []
 
     slots += [
         web_3.to_hex(vote_user_slope_slope),
-        web_3.to_hex(vote_user_slope_end),
     ]
+
+    for index in index_additionnal_slot:
+        slots += [web_3.to_hex(vote_user_slope_slot + index)]
 
     # Get raw proof from the blockchain
     gauge_controller = registry.get_gauge_controller(protocol)

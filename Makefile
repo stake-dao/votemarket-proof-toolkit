@@ -11,6 +11,7 @@ VENV := .venv
 .PHONY: user-campaign-status check-user-eligibility get-active-campaigns get-epoch-blocks index-votes
 .PHONY: vm
 .PHONY: install-ts simulate simulate-ts
+.PHONY: vm_yb_platforms vm_yb_active_proofs
 
 # Positional arguments support for user-campaign-status target
 ifneq ($(filter user-campaign-status,$(MAKECMDGOALS)),)
@@ -162,3 +163,10 @@ simulate-ts:
 # Unified CLI wrapper
 vm:
 	$(PYTHON) -m votemarket_toolkit.cli $(ARGS)
+
+# YB Protocol Commands
+vm_yb_platforms: install
+	$(PYTHON) scripts/vm_all_platforms.py yb --epoch $(EPOCH)
+
+vm_yb_active_proofs: install
+	$(PYTHON) scripts/vm_active_proofs.py temp/all_platforms.json $(EPOCH)

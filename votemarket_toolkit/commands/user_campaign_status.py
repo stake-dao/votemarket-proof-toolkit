@@ -13,6 +13,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
+
+MAX_UINT256 = (2**256) - 1
 from rich import print as rprint
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -157,28 +159,41 @@ async def list_user_voted_campaigns(
         return []
 
     web3_service = campaign_service.get_web3_service(chain_id)
+    # Use protocol-specific ABI for gauge controller
+    abi_name = "yb_gauge_controller" if protocol.lower() == "yb" else "gauge_controller"
     gauge_controller = web3_service.get_contract(
         to_checksum_address(gauge_controller_address.lower()),
-        "gauge_controller",
+        abi_name,
     )
 
     loop = asyncio.get_running_loop()
     now = int(time.time())
+    is_yb = protocol.lower() == "yb"
 
     async def fetch_vote_data(campaign: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         gauge_address = campaign["campaign"]["gauge"]
 
         def _call_contracts():
-            slope, power, end = gauge_controller.functions.vote_user_slopes(
-                to_checksum_address(user_address),
-                to_checksum_address(gauge_address),
-            ).call()
+            # YB vote_user_slopes returns 4 values: (slope, bias, power, end)
+            # Standard returns 3 values: (slope, power, end)
+            if is_yb:
+                slope, bias, power, end = gauge_controller.functions.vote_user_slopes(
+                    to_checksum_address(user_address),
+                    to_checksum_address(gauge_address),
+                ).call()
+            else:
+                slope, power, end = gauge_controller.functions.vote_user_slopes(
+                    to_checksum_address(user_address),
+                    to_checksum_address(gauge_address),
+                ).call()
+                bias = 0
             last_vote = gauge_controller.functions.last_user_vote(
                 to_checksum_address(user_address),
                 to_checksum_address(gauge_address),
             ).call()
             return {
                 "slope": int(slope),
+                "bias": int(bias),
                 "power": int(power),
                 "end": int(end),
                 "last_vote": int(last_vote),
@@ -189,7 +204,12 @@ async def list_user_voted_campaigns(
         except Exception:
             return None
 
-        if vote_data["slope"] <= 0:
+        # YB infinite lock (perma lock): use bias as effective slope when end == MAX_UINT256
+        effective_slope = vote_data["slope"]
+        if is_yb and vote_data["end"] == MAX_UINT256 and vote_data["bias"] > 0:
+            effective_slope = vote_data["bias"]
+
+        if effective_slope <= 0:
             return None
 
         total_periods = campaign.get("campaign", {}).get(
@@ -201,11 +221,11 @@ async def list_user_voted_campaigns(
             "gauge": gauge_address,
             "is_closed": campaign.get("is_closed", False),
             "periods": total_periods,
-            "slope": vote_data["slope"],
+            "slope": effective_slope,
             "power": vote_data["power"],
             "end": vote_data["end"],
             "last_vote": vote_data["last_vote"],
-            "is_active_vote": vote_data["end"] > now,
+            "is_active_vote": vote_data["end"] > now or vote_data["end"] == MAX_UINT256,
         }
 
     tasks = [fetch_vote_data(campaign) for campaign in campaigns]

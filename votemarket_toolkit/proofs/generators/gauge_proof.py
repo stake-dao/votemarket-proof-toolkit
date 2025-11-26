@@ -86,6 +86,22 @@ def get_gauge_time_storage_slot_pre_vyper03(
     return int.from_bytes(final_slot, byteorder="big")
 
 
+def get_gauge_time_storage_slot_yb(gauge: str, time: int, base_slot: int) -> int:
+    """
+    Calculate storage position for gauge time (used for YieldBasis protocol).
+
+    Args:
+        gauge (str): The gauge address.
+        time (int): The current epoch.
+        base_slot (int): The base slot for point weights.
+
+    Returns:
+        int: The calculated storage position.
+    """
+    gauge_encoded = keccak(encode(["uint256", "address"], [base_slot, gauge]))
+    return int.from_bytes(gauge_encoded, byteorder="big")
+
+
 def generate_gauge_proof(
     web_3: Web3,
     protocol: str,
@@ -115,6 +131,7 @@ def generate_gauge_proof(
 
     position_functions = {
         "curve": get_gauge_time_storage_slot_pre_vyper03,
+        "yb": get_gauge_time_storage_slot_yb,
         "pendle": get_gauge_time_storage_slot_pendle,
         "default": get_gauge_time_storage_slot,
     }
