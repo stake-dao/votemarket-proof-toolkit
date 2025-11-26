@@ -142,9 +142,15 @@ class VoteMarketProofs:
                     gauge_controller_contract = self.web3_service.get_contract(
                         gauge_controller_address, "yb_gauge_controller"
                     )
-                    nb_gauges = gauge_controller_contract.functions.n_gauges().call()
+                    nb_gauges = (
+                        gauge_controller_contract.functions.n_gauges().call()
+                    )
                     for i in range(nb_gauges):
-                        gauge_address = gauge_controller_contract.functions.gauges(i).call()
+                        gauge_address = (
+                            gauge_controller_contract.functions.gauges(
+                                i
+                            ).call()
+                        )
                         self.yb_gauges[gauge_address.lower()] = True
                 return gauge.lower() in self.yb_gauges
             else:

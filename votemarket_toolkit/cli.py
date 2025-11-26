@@ -4,41 +4,54 @@ Unified CLI for VoteMarket Toolkit.
 
 Examples:
   - Proofs
-    uv run -m votemarket_toolkit.cli proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000 [--chain-id 1]
-    uv run -m votemarket_toolkit.cli proofs-gauge --protocol curve --gauge-address 0x... --current-epoch 1699920000 --block-number 18500000 [--chain-id 1]
+    votemarket proofs-user --protocol curve --gauge-address 0x... --user-address 0x... --block-number 18500000
+    votemarket proofs-gauge --protocol curve --gauge-address 0x... --current-epoch 1699920000 --block-number 18500000
 
   - Campaigns
-    uv run -m votemarket_toolkit.cli campaigns-active --protocol curve --chain-id 42161
-    uv run -m votemarket_toolkit.cli campaigns-active --platform 0x... --chain-id 42161
+    votemarket campaigns-active --protocol curve --chain-id 42161
+    votemarket campaigns-active --platform 0x... --chain-id 42161
 
   - User eligibility
-    uv run -m votemarket_toolkit.cli users-eligibility --user 0x... --protocol curve [--gauge 0x...] [--chain-id 42161] [--status active|closed|all]
+    votemarket users-eligibility --user 0x... --protocol curve [--gauge 0x...] [--chain-id 42161]
+
+  - Index votes
+    votemarket index-votes --protocol curve --gauge-address 0x... [--chain-id 1]
+
+  - User campaign status
+    votemarket user-campaign-status --chain-id 42161 --platform 0x... --campaign-id 97 --user 0x...
 """
 
 import argparse
 import asyncio
-import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.campaigns.service import CampaignService
+from votemarket_toolkit.campaigns.service import (
+    CampaignService,
+    campaign_service,
+)
 from votemarket_toolkit.commands.validation import (
     validate_chain_id,
     validate_eth_address,
     validate_protocol,
 )
-from votemarket_toolkit.proofs import VoteMarketProofs
-from votemarket_toolkit.proofs import UserEligibilityService
+from votemarket_toolkit.proofs import UserEligibilityService, VoteMarketProofs
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils.formatters import (
     console,
+    format_address,
     generate_timestamped_filename,
     save_json_output,
 )
+from votemarket_toolkit.votes.services.votes_service import votes_service
 
 
-def _resolve_platform_from_protocol(protocol: str, chain_id: int) -> Optional[str]:
+def _resolve_platform_from_protocol(
+    protocol: str, chain_id: int
+) -> Optional[str]:
     """Resolve a platform address for a protocol/chain, trying v2→v2_old→v1."""
     for version in ("v2", "v2_old", "v1"):
         addr = registry.get_platform(protocol, chain_id, version)
@@ -91,9 +104,7 @@ def cmd_proofs_user(args: argparse.Namespace) -> None:
     filename = args.output or f"user_proof_{args.block_number}.json"
     save_json_output(output_data, filename)
 
-    console.print(
-        f"User proof generated. Saved → output/{filename}"
-    )
+    console.print(f"User proof generated. Saved → output/{filename}")
 
 
 def cmd_proofs_gauge(args: argparse.Namespace) -> None:
@@ -119,12 +130,12 @@ def cmd_proofs_gauge(args: argparse.Namespace) -> None:
     filename = args.output or f"gauge_proof_{args.block_number}.json"
     save_json_output(output_data, filename)
 
-    console.print(
-        f"Gauge proof generated. Saved → output/{filename}"
-    )
+    console.print(f"Gauge proof generated. Saved → output/{filename}")
 
 
-async def _fetch_active_campaigns(args: argparse.Namespace) -> List[Dict[str, Any]]:
+async def _fetch_active_campaigns(
+    args: argparse.Namespace,
+) -> List[Dict[str, Any]]:
     service = CampaignService()
 
     if args.platform:
@@ -232,6 +243,137 @@ def cmd_users_eligibility(args: argparse.Namespace) -> None:
     asyncio.run(run())
 
 
+def cmd_index_votes(args: argparse.Namespace) -> None:
+    """Index and display votes for a gauge."""
+
+    async def run():
+        protocol = validate_protocol(args.protocol)
+        gauge_address = validate_eth_address(
+            args.gauge_address, "gauge_address"
+        )
+        chain_id = args.chain_id
+        validate_chain_id(chain_id)
+
+        web3_service = Web3Service.get_instance(chain_id)
+        block_number = web3_service.get_latest_block()["number"]
+
+        gauge_votes = await votes_service.get_gauge_votes(
+            protocol, gauge_address, block_number
+        )
+
+        if args.json:
+            output = {
+                "protocol": protocol,
+                "gauge_address": gauge_address,
+                "chain_id": chain_id,
+                "latest_block": gauge_votes.latest_block,
+                "votes": [
+                    {
+                        "time": v.time,
+                        "user": v.user,
+                        "weight": v.weight,
+                    }
+                    for v in gauge_votes.votes
+                ],
+            }
+            filename = args.output or generate_timestamped_filename(
+                "gauge_votes"
+            )
+            save_json_output(output, filename)
+            return
+
+        console.print(
+            f"[bold]Votes for gauge {format_address(gauge_address)}[/bold]"
+        )
+        console.print(f"Latest block: {gauge_votes.latest_block}\n")
+
+        for vote in gauge_votes.votes:
+            date = datetime.fromtimestamp(vote.time).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            user = format_address(vote.user)
+            weight = f"{vote.weight/100:.2f}%"
+            console.print(f"  {date} | {user} | {weight}")
+
+    asyncio.run(run())
+
+
+def cmd_user_campaign_status(args: argparse.Namespace) -> None:
+    """Check proof insertion status for a user in a campaign."""
+
+    async def run():
+        chain_id = args.chain_id
+        validate_chain_id(chain_id)
+        platform = validate_eth_address(args.platform, "platform")
+        user = validate_eth_address(args.user, "user")
+
+        campaigns = await campaign_service.get_campaigns(
+            chain_id=chain_id,
+            platform_address=platform,
+            campaign_id=args.campaign_id,
+            check_proofs=True,
+        )
+
+        if not campaigns:
+            console.print(
+                f"[yellow]Campaign #{args.campaign_id} not found[/yellow]"
+            )
+            return
+
+        campaign = campaigns[0]
+        proof_status = await campaign_service.get_user_campaign_proof_status(
+            chain_id=chain_id,
+            platform_address=platform,
+            campaign=campaign,
+            user_address=user,
+        )
+
+        total_periods = len(proof_status["periods"])
+        claimable = sum(
+            1
+            for p in proof_status["periods"]
+            if p.get("block_updated")
+            and p.get("point_data_inserted")
+            and p.get("user_slope_inserted")
+        )
+
+        if args.json:
+            output = {
+                "campaign_id": args.campaign_id,
+                "chain_id": chain_id,
+                "platform": platform,
+                "user": user,
+                "gauge": campaign["campaign"]["gauge"],
+                "total_periods": total_periods,
+                "claimable_periods": claimable,
+                "fully_claimable": claimable == total_periods,
+                "periods": proof_status["periods"],
+            }
+            filename = args.output or generate_timestamped_filename(
+                "user_campaign_status"
+            )
+            save_json_output(output, filename)
+            return
+
+        console.print(f"[bold]Campaign #{args.campaign_id} Status[/bold]")
+        console.print(
+            f"Gauge: {format_address(campaign['campaign']['gauge'])}"
+        )
+        console.print(f"User: {format_address(user)}")
+        console.print(f"Claimable: {claimable}/{total_periods} periods")
+
+        if claimable == total_periods:
+            console.print("[green]✓ All proofs inserted - can claim![/green]")
+        elif claimable > 0:
+            console.print(
+                f"[yellow]⚠ Partial proofs ({claimable}/{total_periods})[/yellow]"
+            )
+        else:
+            console.print("[red]✗ No proofs available yet[/red]")
+
+    asyncio.run(run())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="votemarket",
@@ -268,9 +410,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     # campaigns-active
     p_ca = sub.add_parser(
-        "campaigns-active", help="List active campaigns for a platform or protocol"
+        "campaigns-active",
+        help="List active campaigns for a platform or protocol",
     )
-    p_ca.add_argument("--platform", type=str, help="Platform address (optional)")
+    p_ca.add_argument(
+        "--platform", type=str, help="Platform address (optional)"
+    )
     p_ca.add_argument("--protocol", type=str, help="Protocol name (optional)")
     p_ca.add_argument("--chain-id", type=int, help="Chain ID (required)")
     p_ca.add_argument("--campaign-id", type=int, help="Specific campaign ID")
@@ -301,6 +446,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_ue.add_argument("--json", action="store_true", help="Output JSON")
     p_ue.add_argument("--output", type=str, help="Output filename")
     p_ue.set_defaults(func=cmd_users_eligibility)
+
+    # index-votes
+    p_iv = sub.add_parser(
+        "index-votes",
+        help="Index and display votes for a gauge",
+    )
+    p_iv.add_argument("--protocol", type=str, required=True)
+    p_iv.add_argument("--gauge-address", type=str, required=True)
+    p_iv.add_argument("--chain-id", type=int, default=1)
+    p_iv.add_argument("--json", action="store_true", help="Output JSON")
+    p_iv.add_argument("--output", type=str, help="Output filename")
+    p_iv.set_defaults(func=cmd_index_votes)
+
+    # user-campaign-status
+    p_ucs = sub.add_parser(
+        "user-campaign-status",
+        help="Check proof insertion status for a user in a campaign",
+    )
+    p_ucs.add_argument("--chain-id", type=int, required=True)
+    p_ucs.add_argument("--platform", type=str, required=True)
+    p_ucs.add_argument("--campaign-id", type=int, required=True)
+    p_ucs.add_argument("--user", type=str, required=True)
+    p_ucs.add_argument("--json", action="store_true", help="Output JSON")
+    p_ucs.add_argument("--output", type=str, help="Output filename")
+    p_ucs.set_defaults(func=cmd_user_campaign_status)
 
     return parser
 

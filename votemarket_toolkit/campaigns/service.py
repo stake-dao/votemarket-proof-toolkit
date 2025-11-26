@@ -24,8 +24,8 @@ Technical Implementation:
 """
 
 import asyncio
-import time
 import json
+import time
 from decimal import Decimal, localcontext
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -164,7 +164,9 @@ class CampaignService:
 
         try:
             with open(cache_path, "w") as f:
-                json.dump({"value": value, "expiry": time.time() + self._ttl}, f)
+                json.dump(
+                    {"value": value, "expiry": time.time() + self._ttl}, f
+                )
         except (OSError, TypeError):
             # If write fails (including non-serializable data), clean up
             if cache_path.exists():
@@ -191,7 +193,9 @@ class CampaignService:
     # -----------------------------
     # Batch sizing helpers
     # -----------------------------
-    def _determine_campaign_fetch_batch_size(self, total_campaigns: int) -> int:
+    def _determine_campaign_fetch_batch_size(
+        self, total_campaigns: int
+    ) -> int:
         """Determine batch size for generic campaign fetching.
 
         Mirrors the sizing logic used in get_campaigns.
@@ -255,7 +259,9 @@ class CampaignService:
             block_cache: Dict[int, Dict[str, Any]] = {}
 
             # Load bytecode
-            proof_bytecode = resource_manager.load_bytecode("GetInsertedProofs")
+            proof_bytecode = resource_manager.load_bytecode(
+                "GetInsertedProofs"
+            )
 
             for campaign in campaigns:
                 if not campaign.get("periods"):
@@ -278,35 +284,50 @@ class CampaignService:
                     result = await loop.run_in_executor(
                         None, web3_service.w3.eth.call, tx
                     )
-                    epoch_results = self.contract_reader.decode_inserted_proofs(result)
+                    epoch_results = (
+                        self.contract_reader.decode_inserted_proofs(result)
+                    )
 
                     # Annotate each period with proof flags
                     for period in campaign["periods"]:
                         epoch_result = next(
-                            (er for er in epoch_results if er["epoch"] == period["timestamp"]),
+                            (
+                                er
+                                for er in epoch_results
+                                if er["epoch"] == period["timestamp"]
+                            ),
                             None,
                         )
                         if not epoch_result:
                             continue
 
                         point_inserted = any(
-                            pd["is_updated"] for pd in epoch_result.get("point_data_results", [])
+                            pd["is_updated"]
+                            for pd in epoch_result.get(
+                                "point_data_results", []
+                            )
                         )
                         period["point_data_inserted"] = point_inserted
-                        period["block_updated"] = epoch_result.get("is_block_updated", False)
+                        period["block_updated"] = epoch_result.get(
+                            "is_block_updated", False
+                        )
                         if period["block_updated"]:
                             block_info = block_cache.get(period["timestamp"])
                             if block_info is None:
                                 try:
                                     block_header = await loop.run_in_executor(
                                         None,
-                                        oracle_contract.functions.epochBlockNumber(period["timestamp"]).call
+                                        oracle_contract.functions.epochBlockNumber(
+                                            period["timestamp"]
+                                        ).call,
                                     )
                                     block_info = {
                                         "block_number": block_header[2],
-                                        "block_hash": block_header[0].hex()
-                                        if hasattr(block_header[0], "hex")
-                                        else block_header[0],
+                                        "block_hash": (
+                                            block_header[0].hex()
+                                            if hasattr(block_header[0], "hex")
+                                            else block_header[0]
+                                        ),
                                         "block_timestamp": block_header[3],
                                     }
                                 except Exception:
@@ -314,9 +335,15 @@ class CampaignService:
                                 block_cache[period["timestamp"]] = block_info
 
                             if block_info:
-                                period["block_number"] = block_info.get("block_number")
-                                period["block_hash"] = block_info.get("block_hash")
-                                period["block_timestamp"] = block_info.get("block_timestamp")
+                                period["block_number"] = block_info.get(
+                                    "block_number"
+                                )
+                                period["block_hash"] = block_info.get(
+                                    "block_hash"
+                                )
+                                period["block_timestamp"] = block_info.get(
+                                    "block_timestamp"
+                                )
                 except Exception:
                     # Skip proof flags for this campaign on error
                     continue
@@ -342,7 +369,9 @@ class CampaignService:
         """
         errors_count = 0
 
-        async def fetch_batch(start_idx: int, limit: int, retry_count: int = 0) -> List[Dict]:
+        async def fetch_batch(
+            start_idx: int, limit: int, retry_count: int = 0
+        ) -> List[Dict]:
             nonlocal errors_count
             try:
                 tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
@@ -358,8 +387,14 @@ class CampaignService:
             except Exception:
                 if retry_count < 2 and limit > 1:
                     mid_point = limit // 2
-                    results1 = await fetch_batch(start_idx, mid_point, retry_count + 1)
-                    results2 = await fetch_batch(start_idx + mid_point, limit - mid_point, retry_count + 1)
+                    results1 = await fetch_batch(
+                        start_idx, mid_point, retry_count + 1
+                    )
+                    results2 = await fetch_batch(
+                        start_idx + mid_point,
+                        limit - mid_point,
+                        retry_count + 1,
+                    )
                     return results1 + results2
                 errors_count += 1
                 return []
@@ -369,7 +404,9 @@ class CampaignService:
             tasks.append(fetch_batch(campaign_id, 1))
             effective_parallel = 1
         else:
-            batch_size = self._determine_campaign_fetch_batch_size(total_campaigns)
+            batch_size = self._determine_campaign_fetch_batch_size(
+                total_campaigns
+            )
             effective_parallel = parallel_requests
             for start_idx in range(0, total_campaigns, batch_size):
                 limit = min(batch_size, total_campaigns - start_idx)
@@ -392,7 +429,9 @@ class CampaignService:
         total_campaigns: int,
     ) -> List[int]:
         """Return active campaign IDs using the optimized bytecode approach."""
-        active_ids_bytecode = resource_manager.load_bytecode("GetActiveCampaignIds")
+        active_ids_bytecode = resource_manager.load_bytecode(
+            "GetActiveCampaignIds"
+        )
         active_campaign_ids: List[int] = []
 
         batch_size = self._determine_active_ids_batch_size(total_campaigns)
@@ -402,14 +441,19 @@ class CampaignService:
             async def check_batch(start: int, size: int) -> List[int]:
                 try:
                     tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
-                        {"bytecode": active_ids_bytecode}, platform_address, start, size
+                        {"bytecode": active_ids_bytecode},
+                        platform_address,
+                        start,
+                        size,
                     )
                     result = await asyncio.get_running_loop().run_in_executor(
                         None,
                         web3_service.w3.eth.call,
                         tx,
                     )
-                    batch_data = self.contract_reader.decode_active_campaign_ids(result)
+                    batch_data = (
+                        self.contract_reader.decode_active_campaign_ids(result)
+                    )
                     return batch_data["campaign_ids"]
                 except Exception:
                     return []
@@ -423,14 +467,19 @@ class CampaignService:
         else:
             try:
                 tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
-                    {"bytecode": active_ids_bytecode}, platform_address, 0, total_campaigns
+                    {"bytecode": active_ids_bytecode},
+                    platform_address,
+                    0,
+                    total_campaigns,
                 )
                 result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     web3_service.w3.eth.call,
                     tx,
                 )
-                batch_data = self.contract_reader.decode_active_campaign_ids(result)
+                batch_data = self.contract_reader.decode_active_campaign_ids(
+                    result
+                )
                 active_campaign_ids = batch_data["campaign_ids"]
             except Exception:
                 return []
@@ -447,7 +496,9 @@ class CampaignService:
         if not campaign_ids:
             return []
 
-        bytecode_data = resource_manager.load_bytecode("BatchCampaignsWithPeriods")
+        bytecode_data = resource_manager.load_bytecode(
+            "BatchCampaignsWithPeriods"
+        )
 
         # Use semaphore to limit concurrency instead of custom ThreadPoolExecutor
         semaphore = asyncio.Semaphore(50)
@@ -464,7 +515,9 @@ class CampaignService:
                         web3_service.w3.eth.call,
                         tx,
                     )
-                    campaigns = self.contract_reader.decode_campaign_data(result)
+                    campaigns = self.contract_reader.decode_campaign_data(
+                        result
+                    )
                     return campaigns[0] if campaigns else None
                 except Exception:
                     return None
@@ -628,9 +681,13 @@ class CampaignService:
             # Only log if there were errors
             success_count = len(all_campaigns)
             if errors_count > 0:
-                chain_name = {1: "Ethereum", 10: "Optimism", 137: "Polygon", 8453: "Base", 42161: "Arbitrum"}.get(
-                    chain_id, f"Chain {chain_id}"
-                )
+                chain_name = {
+                    1: "Ethereum",
+                    10: "Optimism",
+                    137: "Polygon",
+                    8453: "Base",
+                    42161: "Arbitrum",
+                }.get(chain_id, f"Chain {chain_id}")
                 print(
                     f"Warning: Fetched {success_count}/{total_campaigns} campaigns from {chain_name} "
                     f"({errors_count} failed batches, will retry)"
@@ -640,7 +697,9 @@ class CampaignService:
             # This verifies if the oracle has received the necessary proofs
             # for users to be able to claim their rewards
             if check_proofs and all_campaigns:
-                await self._populate_proof_status_flags(all_campaigns, web3_service, platform_contract)
+                await self._populate_proof_status_flags(
+                    all_campaigns, web3_service, platform_contract
+                )
 
             # Fetch token information (both native and receipt tokens)
             await self._enrich_token_information(all_campaigns, chain_id)
@@ -885,7 +944,9 @@ class CampaignService:
         # Get platform address from registry (try v2 first, then v2_old)
         platform_address = registry.get_platform(protocol, chain_id, "v2")
         if not platform_address:
-            platform_address = registry.get_platform(protocol, chain_id, "v2_old")
+            platform_address = registry.get_platform(
+                protocol, chain_id, "v2_old"
+            )
         if not platform_address:
             platform_address = registry.get_platform(protocol, chain_id, "v1")
 
@@ -951,7 +1012,9 @@ class CampaignService:
     # -----------------------------
     # Token enrichment helpers
     # -----------------------------
-    def _collect_unique_reward_tokens(self, campaigns: List[Campaign]) -> List[str]:
+    def _collect_unique_reward_tokens(
+        self, campaigns: List[Campaign]
+    ) -> List[str]:
         return list(
             set(
                 c["campaign"]["reward_token"]
@@ -963,7 +1026,9 @@ class CampaignService:
     async def _build_token_mapping(
         self, chain_id: int, unique_tokens: List[str]
     ) -> Dict[str, Optional[str]]:
-        native_tokens = await laposte_service.get_native_tokens(chain_id, unique_tokens)
+        native_tokens = await laposte_service.get_native_tokens(
+            chain_id, unique_tokens
+        )
         return dict(zip(unique_tokens, native_tokens))
 
     def _build_all_tokens_to_fetch(
@@ -986,7 +1051,10 @@ class CampaignService:
                 )
 
         for i, native_token in enumerate(native_tokens):
-            if native_token and native_token.lower() != unique_tokens[i].lower():
+            if (
+                native_token
+                and native_token.lower() != unique_tokens[i].lower()
+            ):
                 all_tokens_to_fetch.append(
                     {
                         "address": native_token,
@@ -1007,7 +1075,10 @@ class CampaignService:
 
         tasks = [
             laposte_service.get_token_info(
-                t["chain_id"], t["address"], t["is_native"], t["original_chain_id"]
+                t["chain_id"],
+                t["address"],
+                t["is_native"],
+                t["original_chain_id"],
             )
             for t in all_tokens_to_fetch
         ]
@@ -1042,7 +1113,9 @@ class CampaignService:
                     receipt_token_infos.append(token_info)
 
         if receipt_token_infos:
-            await laposte_service.enrich_token_prices(receipt_token_infos, chain_id)
+            await laposte_service.enrich_token_prices(
+                receipt_token_infos, chain_id
+            )
 
         if native_token_infos:
             # Mainnet prices are generally more liquid/reliable
@@ -1062,7 +1135,9 @@ class CampaignService:
 
             reward_token_lower = reward_token.lower()
             native_token = token_mapping.get(reward_token, reward_token)
-            native_token_lower = native_token.lower() if native_token else reward_token_lower
+            native_token_lower = (
+                native_token.lower() if native_token else reward_token_lower
+            )
 
             receipt_info = token_info_cache.get(
                 reward_token_lower,
@@ -1077,7 +1152,9 @@ class CampaignService:
             )
 
             if native_token_lower != reward_token_lower:
-                native_info = token_info_cache.get(native_token_lower, receipt_info)
+                native_info = token_info_cache.get(
+                    native_token_lower, receipt_info
+                )
             else:
                 native_info = receipt_info
 
@@ -1111,14 +1188,18 @@ class CampaignService:
 
         try:
             # Build mapping and fetch plan
-            token_mapping = await self._build_token_mapping(chain_id, unique_tokens)
+            token_mapping = await self._build_token_mapping(
+                chain_id, unique_tokens
+            )
             native_tokens = [token_mapping[t] for t in unique_tokens]
             all_tokens_to_fetch = self._build_all_tokens_to_fetch(
                 chain_id, unique_tokens, native_tokens
             )
 
             # Fetch token infos and enrich prices
-            token_info_cache = await self._fetch_token_info_cache(all_tokens_to_fetch)
+            token_info_cache = await self._fetch_token_info_cache(
+                all_tokens_to_fetch
+            )
             await self._enrich_token_prices(
                 token_info_cache, all_tokens_to_fetch, chain_id
             )

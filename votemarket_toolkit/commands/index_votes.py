@@ -10,8 +10,8 @@ from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.votes.services.votes_service import votes_service
 
 
-async def index_votes(protocol: str, gauge_address: str):
-    web3_service = Web3Service(1, "https://eth.llamarpc.com")
+async def index_votes(protocol: str, gauge_address: str, chain_id: int = 1):
+    web3_service = Web3Service.get_instance(chain_id)
     # Current block number
     block_number = web3_service.get_latest_block()["number"]
 
@@ -57,7 +57,7 @@ async def main():
         "--protocol",
         type=str,
         required=True,
-        help="Protocol name",
+        help="Protocol name (curve, balancer, fxn, pendle, frax, yb)",
     )
 
     parser.add_argument(
@@ -67,9 +67,16 @@ async def main():
         help="Gauge address",
     )
 
+    parser.add_argument(
+        "--chain-id",
+        type=int,
+        default=1,
+        help="Chain ID (default: 1 for Ethereum)",
+    )
+
     args = parser.parse_args()
 
-    await index_votes(args.protocol, args.gauge_address)
+    await index_votes(args.protocol, args.gauge_address, args.chain_id)
 
 
 if __name__ == "__main__":

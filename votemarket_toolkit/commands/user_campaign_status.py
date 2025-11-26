@@ -13,8 +13,6 @@ import time
 from typing import Any, Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
-
-MAX_UINT256 = (2**256) - 1
 from rich import print as rprint
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -32,6 +30,8 @@ from votemarket_toolkit.utils.interactive import (
     select_chain,
     select_platform,
 )
+
+MAX_UINT256 = (2**256) - 1
 
 
 def _create_period_status_table(
@@ -160,7 +160,11 @@ async def list_user_voted_campaigns(
 
     web3_service = campaign_service.get_web3_service(chain_id)
     # Use protocol-specific ABI for gauge controller
-    abi_name = "yb_gauge_controller" if protocol.lower() == "yb" else "gauge_controller"
+    abi_name = (
+        "yb_gauge_controller"
+        if protocol.lower() == "yb"
+        else "gauge_controller"
+    )
     gauge_controller = web3_service.get_contract(
         to_checksum_address(gauge_controller_address.lower()),
         abi_name,
@@ -170,22 +174,28 @@ async def list_user_voted_campaigns(
     now = int(time.time())
     is_yb = protocol.lower() == "yb"
 
-    async def fetch_vote_data(campaign: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def fetch_vote_data(
+        campaign: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
         gauge_address = campaign["campaign"]["gauge"]
 
         def _call_contracts():
             # YB vote_user_slopes returns 4 values: (slope, bias, power, end)
             # Standard returns 3 values: (slope, power, end)
             if is_yb:
-                slope, bias, power, end = gauge_controller.functions.vote_user_slopes(
-                    to_checksum_address(user_address),
-                    to_checksum_address(gauge_address),
-                ).call()
+                slope, bias, power, end = (
+                    gauge_controller.functions.vote_user_slopes(
+                        to_checksum_address(user_address),
+                        to_checksum_address(gauge_address),
+                    ).call()
+                )
             else:
-                slope, power, end = gauge_controller.functions.vote_user_slopes(
-                    to_checksum_address(user_address),
-                    to_checksum_address(gauge_address),
-                ).call()
+                slope, power, end = (
+                    gauge_controller.functions.vote_user_slopes(
+                        to_checksum_address(user_address),
+                        to_checksum_address(gauge_address),
+                    ).call()
+                )
                 bias = 0
             last_vote = gauge_controller.functions.last_user_vote(
                 to_checksum_address(user_address),
@@ -225,7 +235,8 @@ async def list_user_voted_campaigns(
             "power": vote_data["power"],
             "end": vote_data["end"],
             "last_vote": vote_data["last_vote"],
-            "is_active_vote": vote_data["end"] > now or vote_data["end"] == MAX_UINT256,
+            "is_active_vote": vote_data["end"] > now
+            or vote_data["end"] == MAX_UINT256,
         }
 
     tasks = [fetch_vote_data(campaign) for campaign in campaigns]
@@ -265,9 +276,7 @@ async def list_user_voted_campaigns(
             status = "[dim]CLOSED[/dim]"
 
         vote_end = (
-            format_timestamp(campaign["end"])
-            if campaign["end"] > 0
-            else "N/A"
+            format_timestamp(campaign["end"]) if campaign["end"] > 0 else "N/A"
         )
         last_vote = (
             format_timestamp(campaign["last_vote"])
@@ -275,7 +284,9 @@ async def list_user_voted_campaigns(
             else "N/A"
         )
         active_vote = (
-            "[green]Yes[/green]" if campaign["is_active_vote"] else "[dim]No[/dim]"
+            "[green]Yes[/green]"
+            if campaign["is_active_vote"]
+            else "[dim]No[/dim]"
         )
 
         table.add_row(
@@ -298,7 +309,7 @@ async def list_user_voted_campaigns(
 
 
 def _prompt_campaign_from_available(
-    available_campaigns: List[Dict[str, Any]]
+    available_campaigns: List[Dict[str, Any]],
 ) -> int:
     """Prompt the user to choose a campaign from the pre-filtered list."""
     if not available_campaigns:
@@ -306,7 +317,9 @@ def _prompt_campaign_from_available(
 
     default_choice = str(available_campaigns[0]["id"])
     rprint("\n[cyan]Select a campaign to inspect in detail:[/cyan]")
-    rprint("[dim]Enter a campaign ID or the row number from the table above.[/dim]")
+    rprint(
+        "[dim]Enter a campaign ID or the row number from the table above.[/dim]"
+    )
 
     while True:
         try:
@@ -610,17 +623,15 @@ def main():
                 )
                 chain_id = select_chain()
             elif args.format == "table" and not args.brief:
-                chain_names = {
-                    1: "Ethereum",
-                    42161: "Arbitrum",
-                    10: "Optimism",
-                    137: "Polygon",
-                    8453: "Base",
-                }
-                chain_name = chain_names.get(chain_id, f"Chain {chain_id}")
+                chain_names = registry.get_supported_chains()
+                chain_name = chain_names.get(
+                    chain_id, f"Chain {chain_id}"
+                ).title()
                 rprint(f"[dim]Auto-detected chain: {chain_name}[/dim]")
 
-        platform_metadata = _resolve_platform_metadata(chain_id, platform_address)
+        platform_metadata = _resolve_platform_metadata(
+            chain_id, platform_address
+        )
 
     platform_protocol = (
         platform_metadata.get("protocol") if platform_metadata else None
@@ -712,9 +723,13 @@ def main():
             sys.exit(1)
     else:
         if available_campaigns:
-            campaign_ids = [_prompt_campaign_from_available(available_campaigns)]
+            campaign_ids = [
+                _prompt_campaign_from_available(available_campaigns)
+            ]
         else:
-            campaign_id = asyncio.run(select_campaign(chain_id, platform_address))
+            campaign_id = asyncio.run(
+                select_campaign(chain_id, platform_address)
+            )
             campaign_ids = [campaign_id]
 
     # Run the async function

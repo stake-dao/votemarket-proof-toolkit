@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 import httpx
 from dotenv import load_dotenv
+
 from votemarket_toolkit.shared.services.http_client import get_client
 
 load_dotenv()
@@ -143,7 +144,7 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
 
     max_retries = 5
     client = get_client()
-    
+
     for _ in range(max_retries):
         try:
             response = client.get(url)
@@ -173,9 +174,8 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
         except httpx.RequestError as e:
             logging.error(f"Error fetching {request_type}: {str(e)}")
             raise e
-        
-    client.close_client()
 
+    client.close_client()
 
     raise Exception("Max retries reached")
 

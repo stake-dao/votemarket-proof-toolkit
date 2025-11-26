@@ -178,7 +178,6 @@ def get_erc20_prices_in_usd(
 
         client.close_client()
 
-
         if "coins" not in all_prices or not all_prices["coins"]:
             # API returned no data
             for i in range(len(results)):
@@ -216,5 +215,5 @@ def get_erc20_prices_in_usd(
         print(f"Error fetching prices from DefiLlama: {e}")
         for i in range(len(results)):
             if results[i] is None:
-                results[i] = ("0.00", 0)    
+                results[i] = ("0.00", 0)
     return results

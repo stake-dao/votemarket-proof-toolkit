@@ -176,11 +176,7 @@ class ContractRegistry:
         137: "0x105694FC5204787eD571842671d1262A54a8135B",
     }
 
-<<<<<<< HEAD:votemarket_toolkit/shared/constants.py
-    VOTEMARKET_YB = {
-=======
     YB = {
->>>>>>> origin/main:src/votemarket_toolkit/shared/constants.py
         1: None,
         42161: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
         10: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
@@ -188,12 +184,6 @@ class ContractRegistry:
         137: "0x9Babb77562AeBDD19930b5bd9396B06636f6dDd6",
     }
 
-<<<<<<< HEAD:votemarket_toolkit/shared/constants.py
-    # Available protocols
-    PROTOCOLS = ["curve", "balancer", "frax", "fxn", "pendle", "yb"]
-
-=======
->>>>>>> origin/main:src/votemarket_toolkit/shared/constants.py
     @staticmethod
     def get_matching_contracts(base_name: str) -> list:
         """Get all contract names that match the base name pattern"""

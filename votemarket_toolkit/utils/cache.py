@@ -109,10 +109,7 @@ class TTLCache:
 
             try:
                 # Create JSON-serializable representation
-                data = {
-                    "value": entry.value,
-                    "expiry_time": entry.expiry_time
-                }
+                data = {"value": entry.value, "expiry_time": entry.expiry_time}
                 with open(cache_path, "w", encoding="utf-8") as f:
                     json.dump(data, f)
             except (TypeError, json.JSONEncodeError, Exception):

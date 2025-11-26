@@ -69,4 +69,3 @@ def close_client() -> None:
     if _sync_client is not None:
         _sync_client.close()
         _sync_client = None
-

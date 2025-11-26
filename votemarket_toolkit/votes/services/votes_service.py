@@ -10,9 +10,9 @@ from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.services.etherscan_service import (
     get_logs_by_address_and_topics,
 )
+from votemarket_toolkit.shared.services.http_client import get_async_client
 from votemarket_toolkit.votes.models.data_types import GaugeVotes, VoteLog
 from votemarket_toolkit.votes.services.parquet_service import ParquetService
-from votemarket_toolkit.shared.services.http_client import get_async_client
 
 console = Console()
 

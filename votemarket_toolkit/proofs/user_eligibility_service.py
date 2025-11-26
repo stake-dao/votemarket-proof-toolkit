@@ -15,10 +15,11 @@ import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, TypedDict
+
 from eth_utils import to_checksum_address
 
-from votemarket_toolkit.campaigns.service import CampaignService
 from votemarket_toolkit.campaigns.models import CampaignStatus
+from votemarket_toolkit.campaigns.service import CampaignService
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.logging import get_logger
@@ -54,7 +55,7 @@ class CampaignEligibilityResult(TypedDict):
 
 class UserEligibilityService:
     """Service for checking user eligibility with parallel processing."""
-    
+
     # Base URLs
     PROOF_BASE_URL = (
         "https://raw.githubusercontent.com/stake-dao/api/main/api/votemarket"
@@ -69,7 +70,9 @@ class UserEligibilityService:
     def __init__(self):
         self.campaign_service = CampaignService()
         self._proof_cache: Dict[str, dict] = {}  # Cache proof data by URL
-        self._directory_cache: Dict[str, Set[str]] = {}  # Cache directory listings
+        self._directory_cache: Dict[
+            str, Set[str]
+        ] = {}  # Cache directory listings
         self._log = get_logger(__name__)
 
         # Allow tuning via env for easier ops/debugging
@@ -149,7 +152,9 @@ class UserEligibilityService:
                         else:
                             proof_data = None
                     except Exception as exc:
-                        self._log.debug("Proof fetch failed %s: %s", url, str(exc))
+                        self._log.debug(
+                            "Proof fetch failed %s: %s", url, str(exc)
+                        )
                         proof_data = None
 
                 # Build result
@@ -161,7 +166,7 @@ class UserEligibilityService:
                     "claimable": False,
                     "reason": "Proofs not yet available",
                 }
-                
+
                 if proof_data:
                     users = proof_data.get("users", {})
                     if isinstance(users, dict) and (
@@ -185,7 +190,7 @@ class UserEligibilityService:
         user_address: str,
         protocol: str,
         chain_id: int,
-        platform_address: str
+        platform_address: str,
     ) -> List[CampaignEligibilityResult]:
         """Check eligibility for multiple campaigns in parallel."""
         current_time = int(datetime.now(timezone.utc).timestamp())
@@ -193,7 +198,9 @@ class UserEligibilityService:
 
         # Prepare all requests
         all_requests = []
-        campaign_request_map = defaultdict(list)  # Map campaign to its requests
+        campaign_request_map = defaultdict(
+            list
+        )  # Map campaign to its requests
 
         for campaign in campaigns:
             if not campaign.get("periods"):
@@ -222,7 +229,7 @@ class UserEligibilityService:
                         "gauge_address": gauge_address,
                         "user_address": user_address,
                     }
-                    
+
                     all_requests.append(request)
                     campaign_request_map[campaign["id"]].append(
                         len(all_requests) - 1
@@ -278,9 +285,7 @@ class UserEligibilityService:
                         "id": campaign["id"],
                         "gauge": campaign["campaign"]["gauge"],
                         "manager": campaign["campaign"]["manager"],
-                        "reward_token": campaign["campaign"][
-                            "reward_token"
-                        ],
+                        "reward_token": campaign["campaign"]["reward_token"],
                         "is_closed": campaign["is_closed"],
                         "periods": sorted(
                             periods_data, key=lambda x: x["period"]
@@ -301,7 +306,7 @@ class UserEligibilityService:
         protocol: str,
         chain_id: Optional[int] = None,
         gauge_address: Optional[str] = None,
-        status_filter: str = "all"
+        status_filter: str = "all",
     ) -> Dict:
         """
         Fast check of user eligibility using parallel processing.
@@ -353,16 +358,18 @@ class UserEligibilityService:
             try:
                 # Use optimized method for active campaigns when appropriate
                 if status_filter == "active" and not gauge_address:
-                    campaigns = await self.campaign_service.get_active_campaigns(
-                        chain_id=chain_id,
-                        platform_address=platform_address,
-                        check_proofs=False
+                    campaigns = (
+                        await self.campaign_service.get_active_campaigns(
+                            chain_id=chain_id,
+                            platform_address=platform_address,
+                            check_proofs=False,
+                        )
                     )
                 else:
                     campaigns = await self.campaign_service.get_campaigns(
                         chain_id=chain_id,
                         platform_address=platform_address,
-                        active_only=False
+                        active_only=False,
                     )
 
                 # Filter out closable campaigns (unless looking for closed)
@@ -374,7 +381,7 @@ class UserEligibilityService:
                                 filtered.append(c)
                         elif c.get("status_info", {}).get("status") not in [
                             CampaignStatus.CLOSABLE_BY_MANAGER.value,
-                            CampaignStatus.CLOSABLE_BY_EVERYONE.value
+                            CampaignStatus.CLOSABLE_BY_EVERYONE.value,
                         ]:
                             filtered.append(c)
                     campaigns = filtered
@@ -405,29 +412,25 @@ class UserEligibilityService:
                     user_address=user,
                     protocol=protocol,
                     chain_id=chain_id,
-                    platform_address=platform_address
+                    platform_address=platform_address,
                 )
 
                 # Update results
-                results["summary"]["total_campaigns_checked"] += len(
-                    campaigns
-                )
+                results["summary"]["total_campaigns_checked"] += len(campaigns)
 
                 if eligible_campaigns:
                     results["chains"][chain_id] = {
                         "campaigns": eligible_campaigns,
                         "summary": {
                             "total_campaigns": len(campaigns),
-                            "eligible_campaigns": len(
-                                eligible_campaigns
-                            ),
+                            "eligible_campaigns": len(eligible_campaigns),
                             "claimable_periods": sum(
                                 c["summary"]["claimable_periods"]
                                 for c in eligible_campaigns
                             ),
                         },
                     }
-                    
+
                     results["summary"]["campaigns_with_eligibility"] += len(
                         eligible_campaigns
                     )

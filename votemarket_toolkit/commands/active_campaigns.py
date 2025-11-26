@@ -1,14 +1,12 @@
 import argparse
 import asyncio
 import json
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rich import print as rprint
-from rich.table import Table
 
 from votemarket_toolkit.campaigns import CampaignService
 from votemarket_toolkit.commands.validation import (
@@ -23,7 +21,9 @@ from votemarket_toolkit.utils.campaign_utils import (
     get_closability_info,
 )
 from votemarket_toolkit.utils.formatters import (
+    add_campaign_to_table,
     console,
+    create_campaigns_table,
     format_address,
     generate_timestamped_filename,
     save_json_output,
@@ -292,9 +292,7 @@ async def _generate_missing_gauge_proofs_for_campaign(
         if not epoch:
             continue
 
-        filename = (
-            f"campaign_{campaign_entry['campaign_id']}_epoch_{epoch}_gauge_proof.json"
-        )
+        filename = f"campaign_{campaign_entry['campaign_id']}_epoch_{epoch}_gauge_proof.json"
         filepath = proofs_path / filename
         proof_payload: Optional[Dict[str, Any]] = None
 
@@ -509,28 +507,18 @@ async def get_all_active_campaigns(
                         token_price_cache[cache_key] = price
 
     # Display results split by platform
-    for chain_id, platform, campaigns, platform_protocol in platforms_with_campaigns:
+    for (
+        chain_id,
+        platform,
+        campaigns,
+        platform_protocol,
+    ) in platforms_with_campaigns:
         # Create a table for this platform
         rprint(
             f"\n[bold magenta]━━━ Platform: {format_address(platform)} | Chain: {chain_id} | Total: {len(campaigns)} ━━━[/bold magenta]"
         )
 
-        table = Table(
-            show_header=True,
-            header_style="bold cyan",
-            show_lines=False,
-            pad_edge=False,
-            box=None,
-        )
-
-        # Simplified columns
-        table.add_column("ID", width=4, justify="right")
-        table.add_column("Gauge", width=12)
-        table.add_column("Token", width=12)
-        table.add_column("Status", width=10, justify="center")
-        table.add_column("Periods", width=8, justify="center")
-        table.add_column("Total", width=10, justify="right")
-        table.add_column("Closable", width=22)
+        table = create_campaigns_table()
 
         # Only show first 10 campaigns per platform to avoid clutter
         campaigns_to_show = (
@@ -541,57 +529,8 @@ async def get_all_active_campaigns(
             status = get_campaign_status(c)
             closability = get_closability_info(c)
 
-            # Format amounts in readable format
-            total_reward = f"{c['campaign']['total_reward_amount'] / 1e18:.2f}"
-
-            # Count updated vs total periods
-            updated_periods = sum(
-                1 for p in c.get("periods", []) if p["updated"]
-            )
-            total_periods = len(c.get("periods", []))
-            periods_display = f"{updated_periods}/{total_periods}"
-
-            # Format closability status for display - shortened
-            if closability["is_closable"]:
-                if closability["can_be_closed_by"] == "Anyone":
-                    # Extract days overdue
-                    match = re.search(
-                        r"(\d+)d", closability["closability_status"]
-                    )
-                    days = match.group(1) if match else "?"
-                    closable_display = (
-                        f"[bold yellow]Anyone ({days}d)[/bold yellow]"
-                    )
-                else:
-                    # Manager closable
-                    match = re.search(
-                        r"(\d+)d", closability["closability_status"]
-                    )
-                    days = match.group(1) if match else "?"
-                    closable_display = f"[cyan]Manager ({days}d)[/cyan]"
-            elif "Active" in closability["closability_status"]:
-                match = re.search(r"(\d+)d", closability["closability_status"])
-                days = match.group(1) if match else "?"
-                closable_display = f"[green]Active ({days}d)[/green]"
-            elif "Claim Period" in closability["closability_status"]:
-                match = re.search(r"(\d+)d", closability["closability_status"])
-                days = match.group(1) if match else "?"
-                closable_display = f"[dim]Claim ({days}d)[/dim]"
-            else:
-                closable_display = (
-                    f"[dim]{closability['closability_status'][:20]}[/dim]"
-                )
-
-            # Add to table (without chain_id since it's in the header)
-            table.add_row(
-                str(c["id"]),
-                format_address(c["campaign"]["gauge"]),
-                format_address(c["campaign"]["reward_token"]),
-                status,
-                periods_display,
-                total_reward[:10],  # Truncate large numbers
-                closable_display,
-            )
+            # Add row using helper function
+            add_campaign_to_table(table, c, status, closability)
 
             # Get token price for USD calculations
             reward_token = c["campaign"].get("reward_token", "").lower()
@@ -617,7 +556,10 @@ async def get_all_active_campaigns(
             )
 
             if generate_missing_proofs:
-                generated, errors = await _generate_missing_gauge_proofs_for_campaign(
+                (
+                    generated,
+                    errors,
+                ) = await _generate_missing_gauge_proofs_for_campaign(
                     campaign_entry,
                     platform_protocol or protocol,
                     proofs_output_dir,
@@ -659,13 +601,18 @@ async def get_all_active_campaigns(
                 )
 
                 if generate_missing_proofs:
-                    generated, errors = await _generate_missing_gauge_proofs_for_campaign(
+                    (
+                        generated,
+                        errors,
+                    ) = await _generate_missing_gauge_proofs_for_campaign(
                         campaign_entry,
                         platform_protocol or protocol,
                         proofs_output_dir,
                         proof_service_cache,
                     )
-                    output_data["summary"]["gauge_proofs_generated"] += generated
+                    output_data["summary"]["gauge_proofs_generated"] += (
+                        generated
+                    )
                     output_data["summary"]["gauge_proof_errors"] += errors
 
                 output_data["campaigns"].append(campaign_entry)

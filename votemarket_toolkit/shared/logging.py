@@ -9,7 +9,6 @@ import logging
 import os
 from typing import Optional
 
-
 _DEFAULT_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
@@ -32,4 +31,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         logger.setLevel(level)
 
     return logger
-

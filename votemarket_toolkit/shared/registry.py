@@ -218,15 +218,35 @@ class Registry:
         # Map of protocol to controller location in registry
         # Format: internal_name -> (registry_path, internal_name)
         controller_paths = {
-            "curve": (["curve", "ethereum", "protocol", "GAUGE_CONTROLLER"], "curve"),
+            "curve": (
+                ["curve", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+                "curve",
+            ),
             "balancer": (
                 ["balancer", "ethereum", "protocol", "GAUGE_CONTROLLER"],
                 "balancer",
             ),
-            "frax": (["frax", "ethereum", "protocol", "GAUGE_CONTROLLER"], "frax"),
-            "fxn": (["fxn", "ethereum", "protocol", "GAUGE_CONTROLLER"], "fxn"),
-            "pendle": (["pendle", "ethereum", "protocol", "GAUGE_CONTROLLER"], "pendle"),
-            "yb": (["yieldbasis", "ethereum", "yieldbasisprotocol", "GAUGE_CONTROLLER"], "yb"),
+            "frax": (
+                ["frax", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+                "frax",
+            ),
+            "fxn": (
+                ["fxn", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+                "fxn",
+            ),
+            "pendle": (
+                ["pendle", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+                "pendle",
+            ),
+            "yb": (
+                [
+                    "yieldbasis",
+                    "ethereum",
+                    "yieldbasisprotocol",
+                    "GAUGE_CONTROLLER",
+                ],
+                "yb",
+            ),
         }
 
         for protocol, (path, internal_name) in controller_paths.items():
