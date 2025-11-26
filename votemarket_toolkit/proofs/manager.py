@@ -20,6 +20,7 @@ class VoteMarketProofs:
         rpc_url = GlobalConstants.get_rpc_url(chain_id)
 
         self.chain_id = chain_id
+        self.yb_gauges = None
         if not rpc_url:
             raise ValueError(
                 f"RPC URL environment variable for {chain_id} is not set"
@@ -135,15 +136,17 @@ class VoteMarketProofs:
                 return False
             elif protocol == "yb":
                 # YB gauge controller uses gauges(uint256) and n_gauges()
-                gauge_controller_contract = self.web3_service.get_contract(
-                    gauge_controller_address, "yb_gauge_controller"
-                )
-                n_gauges = gauge_controller_contract.functions.n_gauges().call()
-                for i in range(n_gauges):
-                    gauge_addr = gauge_controller_contract.functions.gauges(i).call()
-                    if gauge_addr.lower() == gauge.lower():
-                        return True
-                return False
+                # Cache gauge list for efficiency
+                if self.yb_gauges is None:
+                    self.yb_gauges = {}
+                    gauge_controller_contract = self.web3_service.get_contract(
+                        gauge_controller_address, "yb_gauge_controller"
+                    )
+                    nb_gauges = gauge_controller_contract.functions.n_gauges().call()
+                    for i in range(nb_gauges):
+                        gauge_address = gauge_controller_contract.functions.gauges(i).call()
+                        self.yb_gauges[gauge_address.lower()] = True
+                return gauge.lower() in self.yb_gauges
             else:
                 gauge_controller_contract = self.web3_service.get_contract(
                     gauge_controller_address, "gauge_controller"
