@@ -31,12 +31,17 @@ def is_campaign_active(campaign: dict) -> bool:
     """Check if a campaign is active and should be processed."""
     current_timestamp = int(datetime.now().timestamp())
 
-    # Campaign structure from decode_campaign_data
-    return (
-        not campaign.get("is_closed", False)
-        and campaign["campaign"]["end_timestamp"] > current_timestamp
-        and campaign.get("remaining_periods", 0) > 0
+    is_closed = campaign.get("is_closed", False)
+    end_timestamp = campaign["campaign"]["end_timestamp"]
+    remaining_periods = campaign.get("remaining_periods", 0)
+
+    is_active = (
+        not is_closed
+        and end_timestamp > current_timestamp
+        and remaining_periods > 0
     )
+
+    return is_active
 
 
 async def process_gauge(
@@ -413,6 +418,11 @@ def write_protocol_data(
 
 
 async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
+    # Clear cache to ensure fresh campaign data
+
+    campaign_service.clear_cache()
+
+    
     console.print(
         f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
     )

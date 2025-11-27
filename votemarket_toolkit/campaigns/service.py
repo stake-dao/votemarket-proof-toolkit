@@ -172,6 +172,16 @@ class CampaignService:
             if cache_path.exists():
                 cache_path.unlink(missing_ok=True)
 
+
+    def clear_cache(self) -> None:
+        """Clear all campaign cache files."""
+        cache_dir = Path(".cache")
+        if cache_dir.exists():
+            # Remove all cache files with the campaigns: prefix
+            import hashlib
+            for cache_file in cache_dir.glob("*.cache"):
+                cache_file.unlink(missing_ok=True)
+
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
         Get all VoteMarket platform addresses for a specific protocol.
@@ -198,17 +208,18 @@ class CampaignService:
     ) -> int:
         """Determine batch size for generic campaign fetching.
 
-        Mirrors the sizing logic used in get_campaigns.
+        Ultra-conservative sizing to avoid 'max code size exceeded' errors.
+        Bytecode size grows with batch size, so we keep batches very small.
         """
         if total_campaigns > 400:
-            return 30
+            return 5  # Ultra conservative for large sets
         if total_campaigns > 200:
-            return 25
+            return 6
         if total_campaigns > 100:
-            return 20
+            return 8
         if total_campaigns > 50:
-            return 15
-        return max(1, min(10, total_campaigns))
+            return 10
+        return max(1, min(15, total_campaigns))
 
     def _determine_active_ids_batch_size(self, total_campaigns: int) -> int:
         """Determine batch size for active campaign id discovery.
@@ -354,6 +365,48 @@ class CampaignService:
     # -----------------------------
     # Campaign fetching helpers
     # -----------------------------
+    async def _fetch_single_campaign_safe(
+        self,
+        web3_service: Web3Service,
+        bytecode_data: Dict[str, Any],
+        platform_address: str,
+        campaign_id: int,
+        max_retries: int = 5,
+    ) -> Optional[Dict]:
+        """Safely fetch a single campaign with aggressive retry.
+
+        Args:
+            web3_service: Web3 service instance
+            bytecode_data: Bytecode for campaign fetching
+            platform_address: Platform contract address
+            campaign_id: Campaign ID to fetch
+            max_retries: Maximum retry attempts
+
+        Returns:
+            Campaign dict or None if all retries fail
+        """
+        for attempt in range(max_retries):
+            try:
+                tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
+                    bytecode_data,
+                    [platform_address, campaign_id, 1],
+                )
+                result = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    web3_service.w3.eth.call,
+                    tx,
+                )
+                campaigns = self.contract_reader.decode_campaign_data(result)
+                if campaigns:
+                    return campaigns[0]
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    print(f"Failed to fetch campaign {campaign_id} after {max_retries} attempts: {str(e)[:50]}")
+                else:
+                    # Exponential backoff: 0.5s, 1s, 2s, 4s, 8s
+                    await asyncio.sleep(0.5 * (2 ** attempt))
+        return None
+
     async def _fetch_campaign_batches(
         self,
         web3_service: Web3Service,
@@ -368,6 +421,7 @@ class CampaignService:
         Returns tuple of (campaigns, errors_count).
         """
         errors_count = 0
+        failed_ranges: List[Tuple[int, int]] = []  # Track failed (start, limit)
 
         async def fetch_batch(
             start_idx: int, limit: int, retry_count: int = 0
@@ -383,9 +437,41 @@ class CampaignService:
                     web3_service.w3.eth.call,
                     tx,  # type: ignore
                 )
-                return self.contract_reader.decode_campaign_data(result)
-            except Exception:
-                if retry_count < 2 and limit > 1:
+                campaigns = self.contract_reader.decode_campaign_data(result)
+
+                # Verify expected count for single campaign fetches
+                if limit == 1 and len(campaigns) == 0:
+                    raise Exception(f"Campaign {start_idx} returned empty")
+
+                return campaigns
+            except Exception as e:
+                error_str = str(e)
+
+                # Log error details for debugging
+                if retry_count == 0:
+                    print(f"Batch fetch error [{start_idx}:{start_idx+limit}]: {error_str[:100]}")
+
+                # Handle "max code size exceeded" - split immediately without delay
+                is_code_size_error = "max code size" in error_str.lower() or "code size" in error_str.lower()
+
+                if is_code_size_error and limit > 1:
+                    # Split into smaller chunks immediately
+                    if limit > 5:
+                        # For larger batches, split into thirds for faster recovery
+                        chunk_size = limit // 3
+                        results1 = await fetch_batch(start_idx, chunk_size, retry_count + 1)
+                        results2 = await fetch_batch(start_idx + chunk_size, chunk_size, retry_count + 1)
+                        results3 = await fetch_batch(start_idx + 2 * chunk_size, limit - 2 * chunk_size, retry_count + 1)
+                        return results1 + results2 + results3
+                    else:
+                        # For small batches, split in half
+                        mid_point = limit // 2
+                        results1 = await fetch_batch(start_idx, mid_point, retry_count + 1)
+                        results2 = await fetch_batch(start_idx + mid_point, limit - mid_point, retry_count + 1)
+                        return results1 + results2
+
+                # For other errors, try normal retry with smaller batches
+                if retry_count < 3 and limit > 1:
                     mid_point = limit // 2
                     results1 = await fetch_batch(
                         start_idx, mid_point, retry_count + 1
@@ -396,7 +482,15 @@ class CampaignService:
                         retry_count + 1,
                     )
                     return results1 + results2
+
+                # Final retry with exponential backoff (for transient errors)
+                if retry_count < 3 and not is_code_size_error:
+                    await asyncio.sleep(2 ** retry_count)  # 1s, 2s, 4s
+                    return await fetch_batch(start_idx, limit, retry_count + 1)
+
+                # Mark as failed after all retries
                 errors_count += 1
+                failed_ranges.append((start_idx, limit))
                 return []
 
         tasks: List[Any] = []
@@ -419,6 +513,25 @@ class CampaignService:
             for result in results:
                 if isinstance(result, list):
                     all_campaigns.extend(result)
+                elif isinstance(result, Exception):
+                    errors_count += 1
+
+        # Retry failed ranges individually with minimal batch size
+        if failed_ranges and campaign_id is None:
+            print(f"Retrying {len(failed_ranges)} failed ranges individually...")
+            retry_tasks = []
+            for start_idx, limit in failed_ranges:
+                for idx in range(start_idx, start_idx + limit):
+                    retry_tasks.append(fetch_batch(idx, 1, retry_count=0))
+
+            # Process retries with lower parallelism
+            retry_parallel = min(5, parallel_requests)
+            for i in range(0, len(retry_tasks), retry_parallel):
+                chunk = retry_tasks[i : i + retry_parallel]
+                results = await asyncio.gather(*chunk, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, list):
+                        all_campaigns.extend(result)
 
         return all_campaigns, errors_count
 
@@ -543,12 +656,12 @@ class CampaignService:
         2. Uses adaptive parallelism based on total campaign count
         3. Optionally checks proof insertion status via oracle
 
-        Batch Size Strategy (conservative for better reliability):
-        - >400 campaigns: batch_size=50
-        - >200 campaigns: batch_size=40
-        - >100 campaigns: batch_size=30
-        - >50 campaigns: batch_size=25
-        - <=50 campaigns: batch_size=20 or less
+        Batch Size Strategy (ultra-conservative to avoid 'max code size exceeded'):
+        - >400 campaigns: batch_size=5
+        - >200 campaigns: batch_size=6
+        - >100 campaigns: batch_size=8
+        - >50 campaigns: batch_size=10
+        - <=50 campaigns: batch_size=15 or less
 
         Parallelism is controlled by the parallel_requests parameter (default: 16).
         Failed batches are automatically retried by splitting them in half.
@@ -579,7 +692,7 @@ class CampaignService:
             ...     check_proofs=True
             ... )
             >>> for campaign in campaigns:
-            >>>     print(f"Campaign {campaign['campaign']['id']}: {campaign['status_info']['status']}")
+            >>>     print(f"Campaign {campaign['id']}: {campaign['status_info']['status']}")
         """
         # Check cache for full campaign fetches (not specific IDs or proof checks)
         if campaign_id is None and not check_proofs:
@@ -678,19 +791,114 @@ class CampaignService:
                 campaign_id=campaign_id,
                 parallel_requests=parallel_requests,
             )
-            # Only log if there were errors
-            success_count = len(all_campaigns)
+
+            # Validate we got all campaigns (unless fetching single campaign)
+            chain_name = {
+                1: "Ethereum",
+                10: "Optimism",
+                137: "Polygon",
+                8453: "Base",
+                42161: "Arbitrum",
+            }.get(chain_id, f"Chain {chain_id}")
+
+            # Track whether fetch was complete for cache decision
+            has_missing_campaigns = False
+
+            if campaign_id is None:
+                # Validate against on-chain campaignCount
+                # Note: campaignCount() returns total count (active + inactive + ended)
+                expected_count = total_campaigns
+                actual_count = len(all_campaigns)
+
+                # Build set of fetched campaign IDs to check for gaps
+                # Filter out malformed campaigns without proper structure
+                # Note: ID is at root level (c["id"]), not nested in campaign object
+                fetched_ids = {
+                    c["id"]
+                    for c in all_campaigns
+                    if "id" in c
+                }
+                valid_campaign_count = len(fetched_ids)
+
+                # Missing IDs are those in range [0, campaignCount) that we didn't fetch
+                missing_ids = [
+                    i for i in range(expected_count) if i not in fetched_ids
+                ]
+
+                # Only show warning if we're actually missing campaigns
+                if missing_ids:
+                    has_missing_campaigns = True
+                    print(
+                        f"⚠️  Campaign count mismatch on {chain_name}:"
+                    )
+                    print(f"   Expected (from campaignCount): {expected_count}")
+                    print(f"   Actually fetched (valid): {valid_campaign_count}")
+                    if actual_count != valid_campaign_count:
+                        malformed_count = actual_count - valid_campaign_count
+                        print(f"   Total returned (including malformed): {actual_count}")
+                        print(f"   Malformed campaigns (failed validation): {malformed_count}")
+                    print(f"   Missing: {len(missing_ids)} campaigns")
+
+                    if len(missing_ids) <= 20:
+                        print(f"   Missing campaign IDs: {missing_ids}")
+                    else:
+                        print(f"   Missing campaign IDs: {missing_ids[:20]}... (showing first 20)")
+
+                    # Show diagnostic info about the fetched campaigns
+                    if actual_count > 0 and actual_count != valid_campaign_count:
+                        print(f"   Diagnostic: Showing structure of campaigns that failed validation:")
+                        malformed_campaigns = [c for c in all_campaigns if "id" not in c]
+                        if malformed_campaigns:
+                            print(f"     Found {len(malformed_campaigns)} campaigns without 'id' field")
+                            for i, campaign in enumerate(malformed_campaigns[:3]):  # Show first 3
+                                print(f"     Malformed campaign {i}: keys = {list(campaign.keys())}")
+                        else:
+                            print(f"     All campaigns have 'id' field (unexpected error)")
+                            first_campaign = all_campaigns[0]
+                            print(f"     Sample campaign structure: {list(first_campaign.keys())}")
+
+                    # Final attempt: fetch missing campaigns one by one
+                    if missing_ids:
+                        print(f"   Attempting recovery of {len(missing_ids)} missing campaigns...")
+                        recovery_tasks = [
+                            self._fetch_single_campaign_safe(
+                                web3_service, bytecode_data, platform_address, cid
+                            )
+                            for cid in missing_ids
+                        ]
+                        # Use conservative parallelism for recovery
+                        recovery_results = []
+                        for i in range(0, len(recovery_tasks), 5):
+                            chunk = recovery_tasks[i : i + 5]
+                            results = await asyncio.gather(*chunk, return_exceptions=True)
+                            recovery_results.extend(results)
+
+                        recovered_count = 0
+                        for result in recovery_results:
+                            if isinstance(result, dict):
+                                all_campaigns.append(result)
+                                recovered_count += 1
+
+                        if recovered_count > 0:
+                            print(f"   ✓ Recovered {recovered_count}/{len(missing_ids)} missing campaigns")
+
+                        # Final validation - recount valid campaigns
+                        final_valid_ids = {
+                            c["id"]
+                            for c in all_campaigns
+                            if "id" in c
+                        }
+                        final_count = len(final_valid_ids)
+                        if final_count == expected_count:
+                            has_missing_campaigns = False
+                            print(f"   ✓ All campaigns successfully fetched ({final_count}/{expected_count})")
+                        else:
+                            still_missing = expected_count - final_count
+                            print(f"   ⚠️  Still missing {still_missing} campaigns after recovery")
+
             if errors_count > 0:
-                chain_name = {
-                    1: "Ethereum",
-                    10: "Optimism",
-                    137: "Polygon",
-                    8453: "Base",
-                    42161: "Arbitrum",
-                }.get(chain_id, f"Chain {chain_id}")
                 print(
-                    f"Warning: Fetched {success_count}/{total_campaigns} campaigns from {chain_name} "
-                    f"({errors_count} failed batches, will retry)"
+                    f"Warning: {errors_count} failed batches during fetch from {chain_name}"
                 )
 
             # Optionally check proof insertion status for reward claiming
@@ -716,12 +924,31 @@ class CampaignService:
                     and c.get("remaining_periods", 0) > 0
                 ]
 
-            # Cache the result for full fetches
-            if campaign_id is None and not check_proofs and all_campaigns:
+            # Cache the result for full fetches only when complete
+            # Skip cache writes if:
+            # - errors_count > 0 (failed batches)
+            # - has_missing_campaigns (incomplete data after recovery)
+            should_cache = (
+                campaign_id is None
+                and not check_proofs
+                and all_campaigns
+                and errors_count == 0
+                and not has_missing_campaigns
+            )
+
+            if should_cache:
                 cache_key = f"campaigns:{chain_id}:{platform_address}"
                 if active_only:
                     cache_key += ":active"
                 self._set_ttl_cache(cache_key, all_campaigns)
+            elif campaign_id is None and all_campaigns and (errors_count > 0 or has_missing_campaigns):
+                # Log why we're not caching
+                reasons = []
+                if errors_count > 0:
+                    reasons.append(f"{errors_count} failed batches")
+                if has_missing_campaigns:
+                    reasons.append("missing campaigns")
+                print(f"   Skipping cache write due to: {', '.join(reasons)}")
 
             return all_campaigns
 

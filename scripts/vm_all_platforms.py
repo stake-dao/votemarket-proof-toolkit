@@ -74,6 +74,7 @@ async def process_protocol(
 
     rprint(f"Processing protocol: [blue]{protocol}[/blue]")
     platforms = campaign_service.get_all_platforms(protocol)
+
     rprint(
         f"Found [green]{len(platforms)}[/green] platforms for"
         f" [blue]{protocol}[/blue]"

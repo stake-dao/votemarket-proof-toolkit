@@ -142,30 +142,60 @@ class ContractReader:
 
             # Convert to extended campaign data with all periods
             campaigns = []
-            for data in raw_data:
-                # Extract all periods
-                periods = []
-                for period_data in data[7]:
-                    periods.append(
-                        {
-                            "timestamp": period_data[0],
-                            "reward_per_period": period_data[1][0],
-                            "reward_per_vote": period_data[1][1],
-                            "leftover": period_data[1][2],
-                            "updated": period_data[1][3],
-                            "point_data_inserted": False,  # This would need to be checked separately
-                        }
-                    )
+            for idx, data in enumerate(raw_data):
+                try:
+                    # Validate data structure before processing
+                    if not data or len(data) < 8:
+                        print(f"Warning: Campaign at index {idx} has insufficient data fields (got {len(data) if data else 0}, expected >= 8)")
+                        continue
 
-                campaigns.append(
-                    {
-                        "id": data[0],
+                    # Validate nested campaign struct
+                    if not data[1] or len(data[1]) < 11:
+                        print(f"Warning: Campaign at index {idx} has malformed campaign struct (got {len(data[1]) if data[1] else 0}, expected 11 fields)")
+                        continue
+
+                    # Extract campaign metadata first to validate against periods
+                    number_of_periods = data[1][4]
+                    campaign_id = data[0]
+
+                    # Extract all periods
+                    periods = []
+                    for period_idx, period_data in enumerate(data[7]):
+                        try:
+                            if not period_data or len(period_data) < 2:
+                                # Malformed period data - treat as decode failure
+                                raise ValueError(f"Period {period_idx} has insufficient data fields")
+
+                            periods.append(
+                                {
+                                    "timestamp": period_data[0],
+                                    "reward_per_period": period_data[1][0],
+                                    "reward_per_vote": period_data[1][1],
+                                    "leftover": period_data[1][2],
+                                    "updated": period_data[1][3],
+                                    "point_data_inserted": False,  # This would need to be checked separately
+                                }
+                            )
+                        except (IndexError, TypeError) as e:
+                            # Period decode error - treat as decode failure
+                            raise ValueError(f"Period {period_idx} decode error: {str(e)}")
+
+                    # Validate period count matches expected number_of_periods
+                    # This catches truncated responses from "max code size" errors
+                    if len(periods) != number_of_periods:
+                        raise ValueError(
+                            f"Period count mismatch: expected {number_of_periods}, got {len(periods)}. "
+                            "This indicates a truncated response, likely from 'max code size exceeded' error."
+                        )
+
+                    campaign = {
+                        "id": campaign_id,
                         "campaign": {
                             "chain_id": data[1][0],
                             "gauge": data[1][1],
                             "manager": data[1][2],
                             "reward_token": data[1][3],
-                            "number_of_periods": data[1][4],
+                            "number_of_periods": number_of_periods,
                             "max_reward_per_vote": data[1][5],
                             "total_reward_amount": data[1][6],
                             "total_distributed": data[1][7],
@@ -180,13 +210,24 @@ class ContractReader:
                         "remaining_periods": data[6],
                         "periods": periods,
                     }
-                )
+
+                    # Validate final campaign structure
+                    if "id" not in campaign or "campaign" not in campaign:
+                        print(f"Warning: Campaign at index {idx} missing required fields after decode")
+                        continue
+
+                    campaigns.append(campaign)
+
+                except (IndexError, TypeError, KeyError) as e:
+                    print(f"Warning: Failed to decode campaign at index {idx} (ID: {data[0] if data and len(data) > 0 else 'unknown'}): {str(e)}")
+                    continue
 
             return campaigns
 
         except Exception as e:
             print(f"Error decoding campaign data with periods: {str(e)}")
-            print(f"Raw result (hex): {result.hex()}")
+            print(f"Raw result length: {len(result)} bytes")
+            print(f"Raw result (first 200 chars): {result.hex()[:200]}")
             raise
 
     @staticmethod
