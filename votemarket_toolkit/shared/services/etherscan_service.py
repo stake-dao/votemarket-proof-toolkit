@@ -144,8 +144,9 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
 
     max_retries = 5
     client = get_client()
+    last_error = None
 
-    for _ in range(max_retries):
+    for attempt in range(max_retries):
         try:
             response = client.get(url)
             if response.status_code == 429:
@@ -172,11 +173,22 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
                 logging.error(f"Unexpected response: {data}")
                 raise Exception(data.get("message") or "Unknown error")
         except httpx.RequestError as e:
-            logging.error(f"Error fetching {request_type}: {str(e)}")
+            last_error = e
+            logging.error(
+                f"Error fetching {request_type} (attempt {attempt + 1}/{max_retries}): {str(e)}"
+            )
+            # Retry on network errors with exponential backoff
+            if attempt < max_retries - 1:
+                backoff_delay = 1000 * (2**attempt)  # 1s, 2s, 4s, 8s
+                logging.info(f"Retrying after {backoff_delay}ms...")
+                delay(backoff_delay)
+                continue
             raise e
 
     client.close_client()
 
+    if last_error:
+        raise last_error
     raise Exception("Max retries reached")
 
 
