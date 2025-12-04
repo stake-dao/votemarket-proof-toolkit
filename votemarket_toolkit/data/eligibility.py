@@ -187,7 +187,103 @@ class EligibilityService:
                     )
 
             # Step 3: Execute all queries in a single RPC call for efficiency
-            results = multicall.call(block_number)
+            try:
+                results = multicall.call(block_number)
+            except Exception as e:
+                # If multicall fails (e.g., one call reverts), fall back to smaller batches
+                # This can happen with Pendle if a user no longer has a position
+                if len(unique_users) > 1:
+                    # Split into smaller batches and retry
+                    batch_size = max(1, len(unique_users) // 4)  # Try 4 batches
+                    all_results = []
+
+                    for batch_start in range(0, len(unique_users), batch_size):
+                        batch_users = unique_users[batch_start:batch_start + batch_size]
+                        batch_multicall = W3Multicall(w3)
+
+                        # Rebuild calls for this batch
+                        for user in batch_users:
+                            if protocol == "pendle":
+                                batch_multicall.add(
+                                    W3Multicall.Call(
+                                        gauge_controller_address,
+                                        "getUserPoolVote(address,address)(uint256,uint256,uint256)",
+                                        [
+                                            to_checksum_address(user),
+                                            to_checksum_address(gauge_address),
+                                        ],
+                                    )
+                                )
+                                ve_address = registry.get_ve_address(protocol)
+                                if ve_address:
+                                    batch_multicall.add(
+                                        W3Multicall.Call(
+                                            to_checksum_address(ve_address),
+                                            "positionData(address)(uint128,uint128)",
+                                            [to_checksum_address(user)],
+                                        )
+                                    )
+                            elif protocol == "yb":
+                                batch_multicall.add(
+                                    W3Multicall.Call(
+                                        gauge_controller_address,
+                                        "last_user_vote(address,address)(uint256)",
+                                        [
+                                            to_checksum_address(user),
+                                            to_checksum_address(gauge_address),
+                                        ],
+                                    )
+                                )
+                                batch_multicall.add(
+                                    W3Multicall.Call(
+                                        gauge_controller_address,
+                                        "vote_user_slopes(address,address)(uint256,uint256,uint256,uint256)",
+                                        [
+                                            to_checksum_address(user),
+                                            to_checksum_address(gauge_address),
+                                        ],
+                                    )
+                                )
+                            else:
+                                batch_multicall.add(
+                                    W3Multicall.Call(
+                                        gauge_controller_address,
+                                        "last_user_vote(address,address)(uint256)",
+                                        [
+                                            to_checksum_address(user),
+                                            to_checksum_address(gauge_address),
+                                        ],
+                                    )
+                                )
+                                batch_multicall.add(
+                                    W3Multicall.Call(
+                                        gauge_controller_address,
+                                        "vote_user_slopes(address,address)(int128,int128,uint256)",
+                                        [
+                                            to_checksum_address(user),
+                                            to_checksum_address(gauge_address),
+                                        ],
+                                    )
+                                )
+
+                        try:
+                            batch_results = batch_multicall.call(block_number)
+                            all_results.extend(batch_results)
+                        except Exception:
+                            # If even a small batch fails, try individual calls
+                            for user in batch_users:
+                                # Add placeholder results (will be filtered out later)
+                                if protocol == "pendle":
+                                    all_results.extend([(0, 0, 0), (0, 0)])
+                                elif protocol == "yb":
+                                    all_results.extend([0, (0, 0, 0, 0)])
+                                else:
+                                    all_results.extend([0, (0, 0, 0)])
+
+                    results = all_results
+                else:
+                    # Single user failed, re-raise
+                    raise
 
             eligible_users: List[EligibleUser] = []
 

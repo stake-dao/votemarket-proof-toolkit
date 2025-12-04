@@ -28,17 +28,31 @@ vm_eligibility = EligibilityService(1)
 
 
 def is_campaign_active(campaign: dict) -> bool:
-    """Check if a campaign is active and should be processed."""
+    """
+    Check if a campaign should be processed for proof generation.
+
+    A campaign should be included if:
+    1. It's currently active (end_timestamp > now AND has remaining_periods)
+    2. OR it ended within the current epoch (same week) - because we still need
+       proofs for votes cast during this epoch
+
+    This ensures campaigns that ended today or this week still generate proofs,
+    allowing users to claim rewards for the current epoch's voting period.
+    """
     current_timestamp = int(datetime.now().timestamp())
+    current_epoch = get_rounded_epoch(current_timestamp)
 
     is_closed = campaign.get("is_closed", False)
     end_timestamp = campaign["campaign"]["end_timestamp"]
+    end_epoch = get_rounded_epoch(end_timestamp)
     remaining_periods = campaign.get("remaining_periods", 0)
 
-    is_active = (
-        not is_closed
-        and end_timestamp > current_timestamp
-        and remaining_periods > 0
+    # Campaign is active if it's not closed AND either:
+    # 1. Still running (end_timestamp in future with remaining periods)
+    # 2. Ended within current epoch (same week - proofs still needed)
+    is_active = not is_closed and (
+        (end_timestamp > current_timestamp and remaining_periods > 0)
+        or (end_epoch == current_epoch)
     )
 
     return is_active

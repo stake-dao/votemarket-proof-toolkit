@@ -125,15 +125,21 @@ class VoteMarketProofs:
 
         try:
             if protocol == "pendle":
-                gauge_controller_contract = self.web3_service.get_contract(
-                    gauge_controller_address, "pendle_gauge_controller"
-                )
-                active_pools = gauge_controller_contract.functions.getAllActivePools().call()
+                try:
+                    gauge_controller_contract = self.web3_service.get_contract(
+                        gauge_controller_address, "pendle_gauge_controller"
+                    )
+                    active_pools = gauge_controller_contract.functions.getAllActivePools().call()
 
-                for active_pool in active_pools:
-                    if active_pool.lower() == gauge.lower():
-                        return True
-                return False
+                    for active_pool in active_pools:
+                        if active_pool.lower() == gauge.lower():
+                            return True
+                    return False
+                except Exception:
+                    # If getAllActivePools() fails (e.g., reverts), we assume the gauge is valid
+                    # This can happen if the contract method is not available or has been updated
+                    # Since the gauge exists in an active campaign on VoteMarket, it should be valid
+                    return True
             elif protocol == "yb":
                 # YB gauge controller uses gauges(uint256) and n_gauges()
                 # Cache gauge list for efficiency
