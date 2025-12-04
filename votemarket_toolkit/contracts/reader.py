@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, Dict, List, Optional, TypeVar
 
 from eth_abi.abi import decode, encode
@@ -236,13 +237,29 @@ class ContractReader:
                     # Validate period count matches expected number_of_periods
                     # This catches truncated responses from "max code size" errors
                     if len(periods) != number_of_periods:
-                        # Log warning but continue with whatever data we have
-                        # This allows us to at least get basic campaign info even if period data is truncated
-                        print(
-                            f"Warning: Campaign {campaign_id} period count mismatch: "
-                            f"expected {number_of_periods}, got {len(periods)}. "
-                            f"Response truncated - returning campaign with available period data."
-                        )
+                        # Calculate how many periods should have occurred by now
+                        start_timestamp = data[1][8]
+                        current_time = int(time.time())
+                        PERIOD_DURATION = 604800  # Weekly periods in seconds
+
+                        expected_past_periods = 0
+                        future_periods = 0
+                        for i in range(number_of_periods):
+                            epoch = start_timestamp + (i * PERIOD_DURATION)
+                            if epoch <= current_time:
+                                expected_past_periods += 1
+                            else:
+                                future_periods += 1
+
+                        # Only warn if we're missing past periods that should exist
+                        if len(periods) < expected_past_periods:
+                            print(
+                                f"Warning: Campaign {campaign_id} period count mismatch: "
+                                f"expected {expected_past_periods} past periods, got {len(periods)}. "
+                                f"Response truncated - returning campaign with available period data. "
+                                f"({future_periods} future periods not yet started)"
+                            )
+                        # If all missing periods are in the future, this is expected - no warning needed
 
                     campaign = {
                         "id": campaign_id,

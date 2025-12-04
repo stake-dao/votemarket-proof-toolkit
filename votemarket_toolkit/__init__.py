@@ -1,6 +1,6 @@
 """VoteMarket Toolkit - Python SDK for VoteMarket campaigns and proofs."""
 
-__version__ = "1.0.6"
+__version__ = "1.0.1"
 
 from .campaigns import CampaignService
 from .proofs import VoteMarketProofs as ProofManager

@@ -223,14 +223,16 @@ class CampaignService:
     def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
         cache_path = self._get_cache_path(key)
         try:
-            with open(cache_path, "r") as f:
+            with open(cache_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             value, expiry = data["value"], data["expiry"]
             if time.time() < expiry:
                 return value
             cache_path.unlink(missing_ok=True)
-        except (FileNotFoundError, json.JSONDecodeError, KeyError):
-            pass
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, UnicodeDecodeError):
+            # If cache is corrupted or unreadable, clean it up silently
+            if cache_path.exists():
+                cache_path.unlink(missing_ok=True)
         return None
 
     def _set_ttl_cache(self, key: str, value: Any) -> None:
@@ -238,11 +240,11 @@ class CampaignService:
         cache_path = self._get_cache_path(key)
 
         try:
-            with open(cache_path, "w") as f:
+            with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(
                     {"value": value, "expiry": time.time() + self._ttl}, f
                 )
-        except (OSError, TypeError):
+        except (OSError, TypeError, UnicodeEncodeError):
             # If write fails (including non-serializable data), clean up
             if cache_path.exists():
                 cache_path.unlink(missing_ok=True)
@@ -1265,7 +1267,13 @@ class CampaignService:
                     results[platform_key] = manager_campaigns
 
             except Exception as e:
-                print(f"Error fetching from {chain_name}: {str(e)}")
+                # Use repr() to avoid UTF-8 encoding issues with exception messages
+                # that may contain binary data
+                try:
+                    error_msg = str(e)
+                except (UnicodeDecodeError, UnicodeEncodeError):
+                    error_msg = repr(e)
+                print(f"Error fetching from {chain_name}: {error_msg}")
 
         return results
 
