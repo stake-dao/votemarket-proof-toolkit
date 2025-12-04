@@ -176,7 +176,6 @@ def get_erc20_prices_in_usd(
         response.raise_for_status()
         all_prices = response.json()
 
-        client.close_client()
 
         if "coins" not in all_prices or not all_prices["coins"]:
             # API returned no data

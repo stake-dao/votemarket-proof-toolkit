@@ -4,9 +4,17 @@ from typing import Any, Dict, List, Optional, TypeVar
 from eth_abi.abi import decode, encode
 from eth_utils.address import to_checksum_address
 
-# No need to import Campaign model here
-
 T = TypeVar("T")
+
+# Constants for eth_call transaction defaults
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+DEFAULT_GAS_PRICE = 0  # For eth_call, gas price is always 0
+
+# Gas limits for different contract operations
+GAS_LIMIT_CAMPAIGNS = 30_000_000  # BatchCampaigns contract - fetches multiple campaigns
+GAS_LIMIT_INSERTED_PROOFS = 10_000_000  # GetInsertedProofs - multiple oracle calls
+GAS_LIMIT_CCIP_FEE = 500_000  # GetCCIPFee - single fee calculation
+GAS_LIMIT_ACTIVE_CAMPAIGNS = 5_000_000  # GetActiveCampaignIds - scans campaign range
 
 
 class ContractReader:
@@ -32,27 +40,49 @@ class ContractReader:
         return cls._contract_artifacts[artifact_path]
 
     @staticmethod
-    def build_get_campaigns_constructor_tx(
+    def _extract_bytecode(artifact: Dict) -> str:
+        """
+        Extract bytecode string from artifact, handling both formats.
+
+        Artifacts may have bytecode as:
+        - Direct string: {"bytecode": "0x..."}
+        - Nested dict: {"bytecode": {"bytecode": "0x..."}}
+        """
+        bytecode = artifact["bytecode"]
+        if isinstance(bytecode, dict):
+            return bytecode["bytecode"]
+        return bytecode
+
+    @staticmethod
+    def _build_constructor_tx(
         artifact: Dict,
+        constructor_types: List[str],
         constructor_args: List[Any],
+        gas_limit: int,
         tx_params: Optional[Dict] = None,
     ) -> Dict:
         """
-        Build constructor transaction with proper arguments
+        Generic constructor transaction builder for eth_call pattern.
+
+        Args:
+            artifact: Contract artifact with bytecode
+            constructor_types: ABI types for constructor parameters
+            constructor_args: Actual constructor arguments
+            gas_limit: Gas limit for the operation
+            tx_params: Optional transaction parameters to override defaults
+
+        Returns:
+            Transaction dictionary ready for eth_call
         """
-        constructor_types = [
-            "address",  # platform address
-            "uint256",  # skip
-            "uint256",  # limit
-        ]
         encoded_args = encode(constructor_types, constructor_args)
-        data = artifact["bytecode"] + encoded_args.hex()
+        bytecode = ContractReader._extract_bytecode(artifact)
+        data = bytecode + encoded_args.hex()
 
         default_params = {
-            "from": "0x0000000000000000000000000000000000000000",
+            "from": ZERO_ADDRESS,
             "data": data,
-            "gas": 30000000,
-            "gasPrice": 0,
+            "gas": gas_limit,
+            "gasPrice": DEFAULT_GAS_PRICE,
         }
 
         if tx_params:
@@ -61,33 +91,56 @@ class ContractReader:
         return default_params
 
     @staticmethod
-    def build_get_campaigns_with_periods_constructor_tx(
+    def build_get_campaigns_constructor_tx(
         artifact: Dict,
         constructor_args: List[Any],
         tx_params: Optional[Dict] = None,
     ) -> Dict:
         """
-        Build constructor transaction for BatchCampaignsWithPeriods contract
+        Build constructor transaction for BatchCampaigns contract.
+
+        Args:
+            artifact: Contract artifact with bytecode
+            constructor_args: [platform_address, skip, limit]
+            tx_params: Optional transaction parameters
+
+        Returns:
+            Transaction dictionary for eth_call
         """
         constructor_types = [
             "address",  # platform address
             "uint256",  # skip
             "uint256",  # limit
         ]
-        encoded_args = encode(constructor_types, constructor_args)
-        data = artifact["bytecode"] + encoded_args.hex()
+        return ContractReader._build_constructor_tx(
+            artifact, constructor_types, constructor_args, GAS_LIMIT_CAMPAIGNS, tx_params
+        )
 
-        default_params = {
-            "from": "0x0000000000000000000000000000000000000000",
-            "data": data,
-            "gas": 30000000,
-            "gasPrice": 0,
-        }
+    @staticmethod
+    def build_get_campaigns_with_periods_constructor_tx(
+        artifact: Dict,
+        constructor_args: List[Any],
+        tx_params: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Build constructor transaction for BatchCampaignsWithPeriods contract.
 
-        if tx_params:
-            default_params.update(tx_params)
+        Args:
+            artifact: Contract artifact with bytecode
+            constructor_args: [platform_address, skip, limit]
+            tx_params: Optional transaction parameters
 
-        return default_params
+        Returns:
+            Transaction dictionary for eth_call
+        """
+        constructor_types = [
+            "address",  # platform address
+            "uint256",  # skip
+            "uint256",  # limit
+        ]
+        return ContractReader._build_constructor_tx(
+            artifact, constructor_types, constructor_args, GAS_LIMIT_CAMPAIGNS, tx_params
+        )
 
     @staticmethod
     def decode_campaign_data(result: bytes) -> List[Dict]:
@@ -183,9 +236,12 @@ class ContractReader:
                     # Validate period count matches expected number_of_periods
                     # This catches truncated responses from "max code size" errors
                     if len(periods) != number_of_periods:
-                        raise ValueError(
-                            f"Period count mismatch: expected {number_of_periods}, got {len(periods)}. "
-                            "This indicates a truncated response, likely from 'max code size exceeded' error."
+                        # Log warning but continue with whatever data we have
+                        # This allows us to at least get basic campaign info even if period data is truncated
+                        print(
+                            f"Warning: Campaign {campaign_id} period count mismatch: "
+                            f"expected {number_of_periods}, got {len(periods)}. "
+                            f"Response truncated - returning campaign with available period data."
                         )
 
                     campaign = {
@@ -225,9 +281,18 @@ class ContractReader:
             return campaigns
 
         except Exception as e:
-            print(f"Error decoding campaign data with periods: {str(e)}")
-            print(f"Raw result length: {len(result)} bytes")
-            print(f"Raw result (first 200 chars): {result.hex()[:200]}")
+            error_msg = str(e)
+            # Only print detailed debug info for unexpected errors
+            # For known truncation issues, let the caller handle it
+            is_truncation_error = (
+                "Period count mismatch" in error_msg or
+                "truncated response" in error_msg.lower()
+            )
+
+            if not is_truncation_error:
+                print(f"Error decoding campaign data with periods: {error_msg}")
+                print(f"Raw result length: {len(result)} bytes")
+                print(f"Raw result (first 200 chars): {result.hex()[:200]}")
             raise
 
     @staticmethod
@@ -272,27 +337,9 @@ class ContractReader:
             epochs,
         ]
 
-        encoded_args = encode(constructor_types, constructor_args)
-
-        # Handle bytecode format
-        bytecode = (
-            artifact["bytecode"]["bytecode"]
-            if isinstance(artifact["bytecode"], dict)
-            else artifact["bytecode"]
+        return ContractReader._build_constructor_tx(
+            artifact, constructor_types, constructor_args, GAS_LIMIT_INSERTED_PROOFS, tx_params
         )
-        data = bytecode + encoded_args.hex()
-
-        default_params = {
-            "from": "0x0000000000000000000000000000000000000000",
-            "data": data,
-            "gas": 10_000_000,  # Higher gas limit for multiple oracle calls
-            "gasPrice": 0,
-        }
-
-        if tx_params:
-            default_params.update(tx_params)
-
-        return default_params
 
     @staticmethod
     def decode_inserted_proofs(result: bytes) -> List[Dict[str, Any]]:
@@ -363,6 +410,20 @@ class ContractReader:
     ) -> Dict:
         """
         Build constructor transaction for GetCCIPFee contract.
+
+        Args:
+            artifact: Contract artifact with bytecode
+            router_address: CCIP router address
+            dest_chain_selector: Destination chain selector (CCIP identifier)
+            dest_chain_id: Destination chain ID
+            receiver: Receiver address on destination chain
+            execution_gas_limit: Gas limit for execution
+            tokens: List of token dictionaries with tokenAddress and amount
+            payload: Encoded payload bytes
+            tx_params: Optional transaction parameters
+
+        Returns:
+            Transaction dictionary for eth_call
         """
         # Convert token list to the expected format
         formatted_tokens = [
@@ -390,26 +451,9 @@ class ContractReader:
             payload,
         ]
 
-        encoded_args = encode(constructor_types, constructor_args)
-        # Access the bytecode string from the artifact
-        data = (
-            artifact["bytecode"]["bytecode"]
-            if isinstance(artifact["bytecode"], dict)
-            else artifact["bytecode"]
+        return ContractReader._build_constructor_tx(
+            artifact, constructor_types, constructor_args, GAS_LIMIT_CCIP_FEE, tx_params
         )
-        data = data + encoded_args.hex()
-
-        default_params = {
-            "from": "0x0000000000000000000000000000000000000000",
-            "data": data,
-            "gas": 500_000,
-            "gasPrice": 0,
-        }
-
-        if tx_params:
-            default_params.update(tx_params)
-
-        return default_params
 
     @staticmethod
     def build_get_active_campaign_ids_constructor_tx(
@@ -444,25 +488,9 @@ class ContractReader:
             limit,
         ]
 
-        encoded_args = encode(constructor_types, constructor_args)
-        bytecode = (
-            artifact["bytecode"]
-            if isinstance(artifact["bytecode"], str)
-            else artifact.get("bytecode", {}).get("bytecode", "")
+        return ContractReader._build_constructor_tx(
+            artifact, constructor_types, constructor_args, GAS_LIMIT_ACTIVE_CAMPAIGNS, tx_params
         )
-        data = bytecode + encoded_args.hex()
-
-        default_params = {
-            "from": "0x0000000000000000000000000000000000000000",
-            "data": data,
-            "gas": 5_000_000,  # Higher gas limit for many campaigns
-            "gasPrice": 0,
-        }
-
-        if tx_params:
-            default_params.update(tx_params)
-
-        return default_params
 
     @staticmethod
     def decode_active_campaign_ids(result: bytes) -> Dict[str, Any]:

@@ -185,7 +185,6 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
                 continue
             raise e
 
-    client.close_client()
 
     if last_error:
         raise last_error

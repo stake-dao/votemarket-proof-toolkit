@@ -21,7 +21,6 @@ def get_closest_block_timestamp(chain: str, timestamp: int) -> int:
             f"Failed to get closest block timestamp: {response.text}"
         )
 
-    client.close_client()
 
     result: Dict[str, Any] = response.json()
     return result["height"]

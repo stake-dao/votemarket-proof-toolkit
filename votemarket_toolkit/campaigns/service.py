@@ -24,6 +24,7 @@ Technical Implementation:
 """
 
 import asyncio
+import hashlib
 import json
 import time
 from decimal import Decimal, localcontext
@@ -49,6 +50,45 @@ from votemarket_toolkit.utils.campaign_utils import get_closability_info
 from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
 
 
+# Module-level constants
+PERIOD_DURATION = 604800  # Weekly periods in seconds
+
+CHAIN_NAMES = {
+    1: "Ethereum",
+    10: "Optimism",
+    137: "Polygon",
+    8453: "Base",
+    42161: "Arbitrum",
+}
+
+# Deprecated platform versions to exclude when filtering
+# These are old platform versions that should not be used for new campaigns
+DEPRECATED_VERSIONS = {"v2_old", "v1"}
+
+# Batch sizing configuration for campaign fetching
+# Maps minimum campaign count threshold to batch size
+# Lower batch sizes reduce "max code size exceeded" errors for large campaigns
+CAMPAIGN_BATCH_THRESHOLDS = [
+    (400, 5),   # Ultra conservative for very large sets
+    (200, 6),   # Large sets
+    (100, 8),   # Medium-large sets
+    (50, 10),   # Medium sets
+    (0, 15),    # Small sets (default max)
+]
+
+# Active campaign ID discovery batch sizes
+ACTIVE_ID_BATCH_THRESHOLDS = [
+    (300, 100),
+    (100, 150),
+]
+
+# Concurrency and parallelism limits
+MAX_PERIODS_FOR_PROOF_CHECK = 10  # Limit epochs in proof checks to reduce RPC load
+MAX_CONCURRENT_CAMPAIGN_FETCHES = 50  # Semaphore limit for parallel campaign fetches
+RECOVERY_PARALLELISM = 5  # Parallel requests during campaign recovery
+DEFAULT_PARALLEL_REQUESTS = 16  # Default parallel request limit
+
+
 class CampaignService:
     """
     Service for fetching and managing VoteMarket campaign data.
@@ -62,18 +102,10 @@ class CampaignService:
         web3_services: Cache of Web3Service instances per chain
     """
 
-    def __init__(self):
-        """Initialize the campaign service with contract reader and service cache."""
-        self.contract_reader = ContractReader()
-        self.web3_services: Dict[int, Web3Service] = {}
-        # Simple TTL cache (1 hour)
-        self._ttl_cache: Dict[str, tuple] = {}
-        self._ttl = 3600  # 1 hour
-
-        # Protocol configurations for efficiency calculations
-        # Based on VoteMarket V2 UI metadata files
-        self.PROTOCOL_CONFIG = {
-            "curve": {
+    # Protocol configurations for efficiency calculations
+    # Based on VoteMarket V2 UI metadata files
+    _PROTOCOL_CONFIG = {
+        "curve": {
                 "controller": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
                 "emission_token": "0xD533a949740bb3306d119CC777fa900bA034cd52",  # CRV
                 "controller_method": "get_total_weight",
@@ -116,7 +148,15 @@ class CampaignService:
                 "chain_id": 1,
                 "fixed_weekly_rate": 0,  # FRAX emissions have ended
             },
-        }
+    }
+
+    def __init__(self):
+        """Initialize the campaign service with contract reader and service cache."""
+        self.contract_reader = ContractReader()
+        self.web3_services: Dict[int, Web3Service] = {}
+        # Simple TTL cache (1 hour)
+        self._ttl_cache: Dict[str, tuple] = {}
+        self._ttl = 3600  # 1 hour
 
     def get_web3_service(self, chain_id: int) -> Web3Service:
         """
@@ -134,10 +174,45 @@ class CampaignService:
             self.web3_services[chain_id] = Web3Service.get_instance(chain_id)
         return self.web3_services[chain_id]
 
+    async def _get_oracle_address(
+        self,
+        web3_service: Web3Service,
+        platform_contract,
+        use_async: bool = True
+    ) -> str:
+        """Get oracle address through lens contract.
+
+        Args:
+            web3_service: Web3 service instance
+            platform_contract: Platform contract instance
+            use_async: Whether to use async executor (default True)
+
+        Returns:
+            Oracle address
+        """
+        if use_async:
+            loop = asyncio.get_running_loop()
+            oracle_lens_address = await loop.run_in_executor(
+                None, platform_contract.functions.ORACLE().call
+            )
+        else:
+            oracle_lens_address = platform_contract.functions.ORACLE().call()
+
+        oracle_lens_contract = web3_service.get_contract(
+            to_checksum_address(oracle_lens_address), "lens_oracle"
+        )
+
+        if use_async:
+            oracle_address = await loop.run_in_executor(
+                None, oracle_lens_contract.functions.oracle().call
+            )
+        else:
+            oracle_address = oracle_lens_contract.functions.oracle().call()
+
+        return oracle_address
+
     def _get_cache_path(self, key: str):
         """Get the file path for a cache key."""
-        import hashlib
-
         cache_dir = Path(".cache")
         cache_dir.mkdir(exist_ok=True)
 
@@ -178,7 +253,6 @@ class CampaignService:
         cache_dir = Path(".cache")
         if cache_dir.exists():
             # Remove all cache files with the campaigns: prefix
-            import hashlib
             for cache_file in cache_dir.glob("*.cache"):
                 cache_file.unlink(missing_ok=True)
 
@@ -210,26 +284,23 @@ class CampaignService:
 
         Ultra-conservative sizing to avoid 'max code size exceeded' errors.
         Bytecode size grows with batch size, so we keep batches very small.
+
+        Uses CAMPAIGN_BATCH_THRESHOLDS configuration.
         """
-        if total_campaigns > 400:
-            return 5  # Ultra conservative for large sets
-        if total_campaigns > 200:
-            return 6
-        if total_campaigns > 100:
-            return 8
-        if total_campaigns > 50:
-            return 10
-        return max(1, min(15, total_campaigns))
+        for threshold, batch_size in CAMPAIGN_BATCH_THRESHOLDS:
+            if total_campaigns > threshold:
+                return batch_size
+        # Fallback for very small campaigns
+        return max(1, min(CAMPAIGN_BATCH_THRESHOLDS[-1][1], total_campaigns))
 
     def _determine_active_ids_batch_size(self, total_campaigns: int) -> int:
         """Determine batch size for active campaign id discovery.
 
-        Mirrors the sizing logic used in get_active_campaigns.
+        Uses ACTIVE_ID_BATCH_THRESHOLDS configuration.
         """
-        if total_campaigns > 300:
-            return 100
-        if total_campaigns > 100:
-            return 150
+        for threshold, batch_size in ACTIVE_ID_BATCH_THRESHOLDS:
+            if total_campaigns > threshold:
+                return batch_size
         return total_campaigns
 
     # -----------------------------
@@ -253,15 +324,8 @@ class CampaignService:
 
         try:
             # Get oracle address through lens contract
-            oracle_lens_address = await loop.run_in_executor(
-                None, platform_contract.functions.ORACLE().call
-            )
-            oracle_lens_contract = web3_service.get_contract(
-                to_checksum_address(oracle_lens_address),
-                "lens_oracle",
-            )
-            oracle_address = await loop.run_in_executor(
-                None, oracle_lens_contract.functions.oracle().call
+            oracle_address = await self._get_oracle_address(
+                web3_service, platform_contract, use_async=True
             )
             oracle_contract = web3_service.get_contract(
                 to_checksum_address(oracle_address),
@@ -279,8 +343,8 @@ class CampaignService:
                     continue
 
                 gauge = campaign["campaign"]["gauge"]
-                # Limit epochs to first 10 to reduce RPC load
-                epochs = [p["timestamp"] for p in campaign["periods"][:10]]
+                # Limit epochs to reduce RPC load
+                epochs = [p["timestamp"] for p in campaign["periods"][:MAX_PERIODS_FOR_PROOF_CHECK]]
                 if not epochs:
                     continue
 
@@ -365,6 +429,64 @@ class CampaignService:
     # -----------------------------
     # Campaign fetching helpers
     # -----------------------------
+    async def _fetch_periods_individually(
+        self,
+        web3_service: Web3Service,
+        platform_contract,
+        campaign_data: Dict,
+        campaign_id: int,
+    ) -> List[Dict]:
+        """Fetch periods individually when batch fetch fails due to size.
+
+        Args:
+            web3_service: Web3 service instance
+            platform_contract: Platform contract instance
+            campaign_data: Basic campaign data with start/end timestamps
+            campaign_id: Campaign ID
+
+        Returns:
+            List of period dicts with timestamp and data
+        """
+        periods = []
+        number_of_periods = campaign_data.get("number_of_periods", 0)
+        start_ts = campaign_data.get("start_timestamp", 0)
+
+        if number_of_periods == 0:
+            return periods
+
+        # Calculate epochs for each period
+        current_time = int(time.time())
+
+        for i in range(number_of_periods):
+            epoch = start_ts + (i * PERIOD_DURATION)
+
+            # Skip future periods - only fetch periods that have already occurred
+            if epoch > current_time:
+                print(f"  Skipping future period {i} (epoch {epoch}) for campaign {campaign_id}")
+                continue
+
+            try:
+                # Fetch period using getPeriodPerCampaign
+                period_data = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    platform_contract.functions.getPeriodPerCampaign(campaign_id, epoch).call
+                )
+
+                periods.append({
+                    "timestamp": epoch,
+                    "reward_per_period": period_data[0],
+                    "reward_per_vote": period_data[1],
+                    "leftover": period_data[2],
+                    "updated": period_data[3],
+                    "point_data_inserted": False,
+                })
+            except Exception as e:
+                print(f"Warning: Failed to fetch period {i} (epoch {epoch}) for campaign {campaign_id}: {str(e)[:50]}")
+                # Continue fetching other periods even if one fails
+                continue
+
+        return periods
+
     async def _fetch_single_campaign_safe(
         self,
         web3_service: Web3Service,
@@ -447,12 +569,47 @@ class CampaignService:
             except Exception as e:
                 error_str = str(e)
 
-                # Log error details for debugging
-                if retry_count == 0:
+                # Check if this is a "campaign doesn't exist" error
+                # Panic error 0x11 (arithmetic overflow) typically means accessing non-existent array index
+                is_not_found_error = (
+                    "Panic error 0x11" in error_str or
+                    "arithmetic overflow" in error_str.lower() or
+                    "arithmetic underflow" in error_str.lower()
+                )
+
+                # Log error details for debugging (but be silent about expected "not found" and truncation errors)
+                # Check for truncation errors early
+                is_truncation_for_logging = (
+                    "Period count mismatch" in error_str or
+                    "truncated response" in error_str.lower()
+                )
+
+                if retry_count == 0 and not is_not_found_error and not is_truncation_for_logging:
                     print(f"Batch fetch error [{start_idx}:{start_idx+limit}]: {error_str[:100]}")
+                elif retry_count == 0 and (is_not_found_error or is_truncation_for_logging) and limit == 1:
+                    # Silent skip for single campaign not found or truncated (expected)
+                    pass
 
                 # Handle "max code size exceeded" - split immediately without delay
-                is_code_size_error = "max code size" in error_str.lower() or "code size" in error_str.lower()
+                # Also treat "Period count mismatch" as code size error (indicates truncated response)
+                is_code_size_error = (
+                    "max code size" in error_str.lower() or
+                    "code size" in error_str.lower() or
+                    "Period count mismatch" in error_str or
+                    "truncated response" in error_str.lower()
+                )
+
+                # Special case: single campaign is too large to fetch with periods
+                if is_code_size_error and limit == 1:
+                    if retry_count == 0:
+                        print(
+                            f"Campaign {start_idx} data exceeds max code size - "
+                            f"unable to fetch complete period data. This campaign may need to be "
+                            f"fetched using alternative methods or have fewer active periods."
+                        )
+                    errors_count += 1
+                    failed_ranges.append((start_idx, limit))
+                    return []
 
                 if is_code_size_error and limit > 1:
                     # Split into smaller chunks immediately
@@ -469,6 +626,12 @@ class CampaignService:
                         results1 = await fetch_batch(start_idx, mid_point, retry_count + 1)
                         results2 = await fetch_batch(start_idx + mid_point, limit - mid_point, retry_count + 1)
                         return results1 + results2
+
+                # Don't retry if campaign doesn't exist - just fail fast
+                if is_not_found_error:
+                    errors_count += 1
+                    failed_ranges.append((start_idx, limit))
+                    return []
 
                 # For other errors, try normal retry with smaller batches
                 if retry_count < 3 and limit > 1:
@@ -525,7 +688,7 @@ class CampaignService:
                     retry_tasks.append(fetch_batch(idx, 1, retry_count=0))
 
             # Process retries with lower parallelism
-            retry_parallel = min(5, parallel_requests)
+            retry_parallel = min(RECOVERY_PARALLELISM, parallel_requests)
             for i in range(0, len(retry_tasks), retry_parallel):
                 chunk = retry_tasks[i : i + retry_parallel]
                 results = await asyncio.gather(*chunk, return_exceptions=True)
@@ -614,7 +777,7 @@ class CampaignService:
         )
 
         # Use semaphore to limit concurrency instead of custom ThreadPoolExecutor
-        semaphore = asyncio.Semaphore(50)
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_CAMPAIGN_FETCHES)
 
         async def fetch_one(campaign_id: int) -> Optional[Dict]:
             async with semaphore:
@@ -645,7 +808,7 @@ class CampaignService:
         platform_address: str,
         campaign_id: Optional[int] = None,
         check_proofs: bool = False,
-        parallel_requests: int = 16,
+        parallel_requests: int = DEFAULT_PARALLEL_REQUESTS,
         active_only: bool = False,
     ) -> List[Campaign]:
         """
@@ -731,58 +894,7 @@ class CampaignService:
                 "BatchCampaignsWithPeriods"
             )
 
-            # Track errors for reporting
-            errors_count = 0
-
-            # Helper function for fetching a single batch of campaigns
-            async def fetch_batch(
-                start_idx: int, limit: int, retry_count: int = 0
-            ) -> List[Dict]:
-                """
-                Fetch a batch of campaigns from the blockchain with retry logic.
-
-                Args:
-                    start_idx: Starting campaign ID
-                    limit: Number of campaigns to fetch
-                    retry_count: Current retry attempt
-
-                Returns:
-                    List of decoded campaign data or empty list on error
-                """
-                nonlocal errors_count
-                try:
-                    # Build constructor transaction with bytecode and parameters
-                    tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
-                        bytecode_data,
-                        [platform_address, start_idx, limit],
-                    )
-                    # Execute call asynchronously to avoid blocking
-                    result = await asyncio.get_running_loop().run_in_executor(
-                        None,
-                        web3_service.w3.eth.call,
-                        tx,  # type: ignore
-                    )
-                    # Decode the raw result into structured campaign data
-                    return self.contract_reader.decode_campaign_data(result)
-                except Exception:
-                    # If we have retries left and batch size > 1, try splitting the batch
-                    if retry_count < 2 and limit > 1:
-                        # Split batch in half and try again
-                        mid_point = limit // 2
-                        results1 = await fetch_batch(
-                            start_idx, mid_point, retry_count + 1
-                        )
-                        results2 = await fetch_batch(
-                            start_idx + mid_point,
-                            limit - mid_point,
-                            retry_count + 1,
-                        )
-                        return results1 + results2
-                    else:
-                        errors_count += 1
-                        return []
-
-            # Fetch all campaigns via helper
+            # Fetch all campaigns using the helper method
             all_campaigns, errors_count = await self._fetch_campaign_batches(
                 web3_service=web3_service,
                 bytecode_data=bytecode_data,
@@ -793,13 +905,7 @@ class CampaignService:
             )
 
             # Validate we got all campaigns (unless fetching single campaign)
-            chain_name = {
-                1: "Ethereum",
-                10: "Optimism",
-                137: "Polygon",
-                8453: "Base",
-                42161: "Arbitrum",
-            }.get(chain_id, f"Chain {chain_id}")
+            chain_name = CHAIN_NAMES.get(chain_id, f"Chain {chain_id}")
 
             # Track whether fetch was complete for cache decision
             has_missing_campaigns = False
@@ -868,8 +974,8 @@ class CampaignService:
                         ]
                         # Use conservative parallelism for recovery
                         recovery_results = []
-                        for i in range(0, len(recovery_tasks), 5):
-                            chunk = recovery_tasks[i : i + 5]
+                        for i in range(0, len(recovery_tasks), RECOVERY_PARALLELISM):
+                            chunk = recovery_tasks[i : i + RECOVERY_PARALLELISM]
                             results = await asyncio.gather(*chunk, return_exceptions=True)
                             recovery_results.extend(results)
 
@@ -896,10 +1002,58 @@ class CampaignService:
                             still_missing = expected_count - final_count
                             print(f"   ⚠️  Still missing {still_missing} campaigns after recovery")
 
-            if errors_count > 0:
+            # Only show warning if we have errors and either:
+            # 1. We're fetching multiple campaigns (campaign_id is None), or
+            # 2. We actually found the campaign but had errors in other operations
+            if errors_count > 0 and (campaign_id is None or all_campaigns):
                 print(
                     f"Warning: {errors_count} failed batches during fetch from {chain_name}"
                 )
+
+            # Fix campaigns with truncated period data by fetching periods individually
+            # Only consider campaigns truncated if they're missing periods that should have occurred
+            current_time = int(time.time())
+
+            truncated_campaigns = []
+            for c in all_campaigns:
+                campaign_data = c.get("campaign", {})
+                number_of_periods = campaign_data.get("number_of_periods", 0)
+                start_ts = campaign_data.get("start_timestamp", 0)
+                actual_periods = len(c.get("periods", []))
+
+                # Calculate how many periods should have occurred by now
+                expected_past_periods = 0
+                for i in range(number_of_periods):
+                    epoch = start_ts + (i * PERIOD_DURATION)
+                    if epoch <= current_time:
+                        expected_past_periods += 1
+
+                # Only consider it truncated if we're missing periods that should exist
+                if actual_periods < expected_past_periods:
+                    truncated_campaigns.append(c)
+
+            if truncated_campaigns:
+                print(f"Fetching periods individually for {len(truncated_campaigns)} campaigns with truncated data...")
+                for campaign in truncated_campaigns:
+                    campaign_id_to_fix = campaign["id"]
+                    expected_periods = campaign["campaign"]["number_of_periods"]
+                    actual_periods = len(campaign.get("periods", []))
+
+                    print(f"  Campaign {campaign_id_to_fix}: fetching periods (had {actual_periods}, total {expected_periods})...")
+
+                    try:
+                        periods = await self._fetch_periods_individually(
+                            web3_service,
+                            platform_contract,
+                            campaign["campaign"],
+                            campaign_id_to_fix,
+                        )
+
+                        # Update campaign with fetched periods
+                        campaign["periods"] = periods
+                        print(f"  ✓ Fetched {len(periods)} periods for campaign {campaign_id_to_fix} (skipped future periods)")
+                    except Exception as e:
+                        print(f"  ✗ Failed to fetch periods for campaign {campaign_id_to_fix}: {str(e)[:100]}")
 
             # Optionally check proof insertion status for reward claiming
             # This verifies if the oracle has received the necessary proofs
@@ -960,7 +1114,7 @@ class CampaignService:
         self,
         chain_id: int,
         platform_address: str,
-        parallel_requests: int = 16,
+        parallel_requests: int = DEFAULT_PARALLEL_REQUESTS,
         check_proofs: bool = False,
     ) -> List[Campaign]:
         """
@@ -1070,48 +1224,25 @@ class CampaignService:
             >>> for platform, campaigns in results.items():
             ...     print(f"{platform}: {len(campaigns)} campaigns")
         """
-        from votemarket_toolkit.shared import registry
-
         results = {}
         manager_lower = manager_address.lower()
 
         # Get all platforms for the protocol
         platforms = registry.get_all_platforms(protocol)
 
-        # Filter to active platforms if requested
+        # Filter to active platforms if requested (exclude deprecated versions)
         if active_only:
-            # Active platforms based on current data
-            active_platforms = {
-                (
-                    42161,
-                    "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9",
-                ),  # Arbitrum v2
-                (
-                    42161,
-                    "0x5e5C0056c6aBa37c49c5DEB0C5550AEc5C14f81e5",
-                ),  # Arbitrum v2_old
-                (8453, "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"),  # Base
-            }
             platforms = [
                 p
                 for p in platforms
-                if (p["chain_id"], p["address"]) in active_platforms
+                if p.get("version", "") not in DEPRECATED_VERSIONS
             ]
-
-        # Chain names for display
-        chain_names = {
-            1: "Ethereum",
-            10: "Optimism",
-            137: "Polygon",
-            8453: "Base",
-            42161: "Arbitrum",
-        }
 
         # Fetch from each platform
         for platform in platforms:
             chain_id = platform["chain_id"]
             platform_address = platform["address"]
-            chain_name = chain_names.get(chain_id, f"Chain {chain_id}")
+            chain_name = CHAIN_NAMES.get(chain_id, f"Chain {chain_id}")
 
             try:
                 # Fetch all campaigns (will use cache if available)
@@ -1143,7 +1274,7 @@ class CampaignService:
         protocol: str,
         chain_id: int,
         check_proofs: bool = False,
-        parallel_requests: int = 16,
+        parallel_requests: int = DEFAULT_PARALLEL_REQUESTS,
     ) -> List[Campaign]:
         """
         Get active campaigns for a specific protocol and chain.
@@ -1503,12 +1634,9 @@ class CampaignService:
             )
 
             # Get oracle through lens
-            oracle_lens_address = platform_contract.functions.ORACLE().call()
-            oracle_lens_contract = web3_service.get_contract(
-                to_checksum_address(oracle_lens_address),
-                "lens_oracle",
+            oracle_address = await self._get_oracle_address(
+                web3_service, platform_contract, use_async=False
             )
-            oracle_address = oracle_lens_contract.functions.oracle().call()
 
             # Get gauge from campaign
             gauge = campaign["campaign"]["gauge"]
@@ -1659,10 +1787,10 @@ class CampaignService:
         Returns:
             float: Token emissions per veToken per week
         """
-        if protocol not in self.PROTOCOL_CONFIG:
+        if protocol not in self._PROTOCOL_CONFIG:
             raise ValueError(f"Protocol {protocol} not supported")
 
-        config = self.PROTOCOL_CONFIG[protocol]
+        config = self._PROTOCOL_CONFIG[protocol]
         web3_service = self.get_web3_service(config["chain_id"])
         w3 = web3_service.w3
 
@@ -1840,10 +1968,10 @@ class CampaignService:
         Returns:
             Tuple of (emission_value, token_per_vetoken, token_price)
         """
-        if protocol not in self.PROTOCOL_CONFIG:
+        if protocol not in self._PROTOCOL_CONFIG:
             raise ValueError(f"Protocol {protocol} not supported")
 
-        config = self.PROTOCOL_CONFIG[protocol]
+        config = self._PROTOCOL_CONFIG[protocol]
 
         # Get tokenPerVeToken for this protocol
         token_per_vetoken = self.get_token_per_vetoken(protocol)
