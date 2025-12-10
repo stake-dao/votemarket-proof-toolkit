@@ -235,7 +235,7 @@ class Registry:
                 "fxn",
             ),
             "pendle": (
-                ["pendle", "ethereum", "protocol", "GAUGE_CONTROLLER"],
+                ["pendle", "ethereum", "locker", "VOTING_CONTROLLER"],
                 "pendle",
             ),
             "yb": (

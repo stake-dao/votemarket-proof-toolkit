@@ -1,6 +1,6 @@
 [project]
 name = "votemarket-toolkit"
-version = "1.0.1"
+version = "1.0.8"
 description = "Python SDK for VoteMarket - campaign management, proofs, and analytics"
 authors = [{name = "Stake DAO", email = "admin@stakedao.org"}]
 readme = "README.md"
@@ -36,6 +36,9 @@ dependencies = [
 dev = [
     "ruff>=0.7.4",
     "black>=24.1.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
 ]
 
 [project.urls]
@@ -107,3 +110,26 @@ python-preference = "only-managed"
 
 [tool.black]
 line-length = 79
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: mark test as integration test",
+    "slow: mark test as slow-running",
+]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["votemarket_toolkit", "scripts"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+]
