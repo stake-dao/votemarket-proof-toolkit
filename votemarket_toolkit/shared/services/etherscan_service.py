@@ -203,7 +203,7 @@ def _is_rate_limit_error(data: Dict[str, Any]) -> bool:
     """
     return data["message"] == "NOTOK" and (
         data["result"] == "Max rate limit reached"
-        or data["result"] == "Max calls per sec rate limit reached (5/sec)"
+        or data["result"] == "Max calls per sec rate limit reached"
     )
 
 
