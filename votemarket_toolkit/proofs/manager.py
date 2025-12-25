@@ -130,16 +130,19 @@ class VoteMarketProofs:
         except Exception:
             raise VoteMarketProofsException("Error getting block info")
 
-    def is_valid_gauge(self, protocol: str, gauge: str) -> bool:
+    def is_valid_gauge(
+        self, protocol: str, gauge: str, max_retries: int = 3
+    ) -> bool:
         """
-        Check if a gauge is valid for a given protocol.
+        Check if a gauge is valid for a given protocol with retry logic.
 
         Args:
             protocol (str): The protocol name.
             gauge (str): The gauge address.
+            max_retries (int): Number of retry attempts for RPC calls.
 
         Returns:
-        bool: True if the gauge is valid, False otherwise.
+            bool: True if the gauge is valid, False otherwise.
         """
 
         # Get gauge controller address
@@ -147,13 +150,15 @@ class VoteMarketProofs:
         if not gauge_controller_address:
             return False
 
-        try:
+        def _validate_gauge() -> bool:
             if protocol == "pendle":
                 try:
                     gauge_controller_contract = self.web3_service.get_contract(
                         gauge_controller_address, "pendle_gauge_controller"
                     )
-                    active_pools = gauge_controller_contract.functions.getAllActivePools().call()
+                    active_pools = (
+                        gauge_controller_contract.functions.getAllActivePools().call()
+                    )
 
                     for active_pool in active_pools:
                         if active_pool.lower() == gauge.lower():
@@ -177,9 +182,7 @@ class VoteMarketProofs:
                     )
                     for i in range(nb_gauges):
                         gauge_address = (
-                            gauge_controller_contract.functions.gauges(
-                                i
-                            ).call()
+                            gauge_controller_contract.functions.gauges(i).call()
                         )
                         self.yb_gauges[gauge_address.lower()] = True
                 return gauge.lower() in self.yb_gauges
@@ -191,14 +194,23 @@ class VoteMarketProofs:
                     to_checksum_address(gauge)
                 ).call()
                 return True
+
+        try:
+            return retry_sync_operation(
+                _validate_gauge,
+                max_attempts=max_retries,
+                base_delay=1.0,
+                operation_name=f"validate_gauge_{gauge[:10]}",
+            )
         except Exception:
+            # After all retries exhausted, return False
             return False
 
     def validate_gauge(
-        self, protocol: str, gauge: str
+        self, protocol: str, gauge: str, max_retries: int = 3
     ) -> Result[GaugeValidationResult]:
         """
-        Validate a gauge with detailed error information.
+        Validate a gauge with detailed error information and retry logic.
 
         This is the Result-returning version of is_valid_gauge() that provides
         detailed information about why validation failed.
@@ -206,6 +218,7 @@ class VoteMarketProofs:
         Args:
             protocol: The protocol name
             gauge: The gauge address
+            max_retries: Number of retry attempts for RPC calls
 
         Returns:
             Result[GaugeValidationResult]: Success with validation result, or failure with error
@@ -222,13 +235,15 @@ class VoteMarketProofs:
                 )
             )
 
-        try:
+        def _do_validation() -> Result[GaugeValidationResult]:
             if protocol == "pendle":
                 try:
                     gauge_controller_contract = self.web3_service.get_contract(
                         gauge_controller_address, "pendle_gauge_controller"
                     )
-                    active_pools = gauge_controller_contract.functions.getAllActivePools().call()
+                    active_pools = (
+                        gauge_controller_contract.functions.getAllActivePools().call()
+                    )
 
                     for active_pool in active_pools:
                         if active_pool.lower() == gauge.lower():
@@ -276,9 +291,7 @@ class VoteMarketProofs:
                     )
                     for i in range(nb_gauges):
                         gauge_address = (
-                            gauge_controller_contract.functions.gauges(
-                                i
-                            ).call()
+                            gauge_controller_contract.functions.gauges(i).call()
                         )
                         self.yb_gauges[gauge_address.lower()] = True
 
@@ -309,11 +322,18 @@ class VoteMarketProofs:
                     )
                 )
 
+        try:
+            return retry_sync_operation(
+                _do_validation,
+                max_attempts=max_retries,
+                base_delay=1.0,
+                operation_name=f"validate_gauge_{gauge[:10]}",
+            )
         except Exception as e:
             return Result.ok(
                 GaugeValidationResult(
                     is_valid=False,
-                    reason=f"Validation error: {str(e)}",
+                    reason=f"Validation error after {max_retries} retries: {str(e)}",
                     protocol=protocol,
                     gauge=gauge,
                 )

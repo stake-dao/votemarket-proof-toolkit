@@ -254,7 +254,22 @@ async def process_protocol(
                 gauge_address = campaign["campaign"]["gauge"].lower()
                 listed_users = campaign.get("addresses", [])
 
-                if not vm_proofs.is_valid_gauge(protocol, gauge_address):
+                # Validate gauge with detailed logging
+                validation_result = vm_proofs.validate_gauge(protocol, gauge_address)
+                if validation_result.success and validation_result.data:
+                    gauge_validation = validation_result.data
+                    if not gauge_validation.is_valid:
+                        console.print(
+                            f"[yellow]Skipping campaign {campaign['id']} - gauge {gauge_address} "
+                            f"failed validation: {gauge_validation.reason}[/yellow]"
+                        )
+                        continue
+                elif not validation_result.success:
+                    error_msg = validation_result.errors[0].message if validation_result.errors else "Unknown error"
+                    console.print(
+                        f"[red]Skipping campaign {campaign['id']} - gauge validation error: "
+                        f"{error_msg}[/red]"
+                    )
                     continue
 
                 composite_campaign_id = (
