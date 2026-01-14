@@ -21,18 +21,19 @@ from votemarket_toolkit.campaigns.service import CampaignService
 
 async def _fetch_platform_campaigns(
     service: CampaignService, platform
-) -> Tuple[Any, Optional[List[Dict[str, Any]]], Optional[Exception]]:
+) -> Tuple[Any, Optional[List[Dict[str, Any]]], Optional[str]]:
     print(
         f"Fetching {platform.protocol} {platform.version} on chain {platform.chain_id}..."
     )
 
-    try:
-        campaigns = await service.get_campaigns(
-            chain_id=platform.chain_id, platform_address=platform.address
-        )
-        return platform, campaigns, None
-    except Exception as exc:
-        return platform, None, exc
+    result = await service.get_campaigns(
+        chain_id=platform.chain_id, platform_address=platform.address
+    )
+    if result.success:
+        return platform, result.data, None
+    else:
+        error_msg = result.errors[0].message if result.errors else "Unknown error"
+        return platform, None, error_msg
 
 
 async def main():

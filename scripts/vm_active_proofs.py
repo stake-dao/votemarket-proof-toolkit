@@ -88,7 +88,7 @@ async def process_gauge(
         gauge_address=gauge_address,
         current_epoch=current_epoch,
         block_number=block_number,
-    )
+    ).unwrap()
     gauge_proof_data = {
         "point_data_proof": "0x" + gauge_proofs["point_data_proof"].hex(),
         "users": {},
@@ -98,9 +98,10 @@ async def process_gauge(
     console.print(
         f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
     )
-    eligible_users = await vm_eligibility.get_eligible_users(
+    eligible_users_result = await vm_eligibility.get_eligible_users(
         protocol, gauge_address, current_epoch, block_number
     )
+    eligible_users = eligible_users_result.unwrap()
     console.print(
         f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]"
     )
@@ -117,7 +118,7 @@ async def process_gauge(
                 gauge_address=gauge_address,
                 user=user_address,
                 block_number=block_number,
-            )
+            ).unwrap()
             user_proofs_cache[cache_key] = {
                 "storage_proof": "0x" + user_proofs["storage_proof"].hex(),
                 "last_vote": user["last_vote"],
@@ -160,7 +161,7 @@ def process_listed_users(
             gauge_address=gauge_address,
             user=listed_user,
             block_number=block_number,
-        )
+        ).unwrap()
         listed_users_data[listed_user.lower()] = {
             "storage_proof": "0x" + user_proofs["storage_proof"].hex()
         }
@@ -212,7 +213,7 @@ async def process_protocol(
                 gauge_address="0x0000000000000000000000000000000000000000",
                 current_epoch=current_epoch,
                 block_number=block_number,
-            )
+            ).unwrap()
             output_data["chains"][chain_id]["gauge_controller_proof"] = (
                 "0x" + gauge_controller["gauge_controller_proof"].hex()
             )
@@ -237,9 +238,9 @@ async def process_protocol(
                 f"[magenta]Querying active campaigns for platform {platform_address} on chain {chain_id}...[/magenta]"
             ):
                 campaign_svc = CampaignService()
-                all_campaigns = await campaign_svc.get_campaigns(
+                all_campaigns = (await campaign_svc.get_campaigns(
                     chain_id, platform_address
-                )
+                )).unwrap()
                 active_campaigns = [
                     c for c in all_campaigns if is_campaign_active(c)
                 ]
@@ -254,22 +255,8 @@ async def process_protocol(
                 gauge_address = campaign["campaign"]["gauge"].lower()
                 listed_users = campaign.get("addresses", [])
 
-                # Validate gauge with detailed logging
-                validation_result = vm_proofs.validate_gauge(protocol, gauge_address)
-                if validation_result.success and validation_result.data:
-                    gauge_validation = validation_result.data
-                    if not gauge_validation.is_valid:
-                        console.print(
-                            f"[yellow]Skipping campaign {campaign['id']} - gauge {gauge_address} "
-                            f"failed validation: {gauge_validation.reason}[/yellow]"
-                        )
-                        continue
-                elif not validation_result.success:
-                    error_msg = validation_result.errors[0].message if validation_result.errors else "Unknown error"
-                    console.print(
-                        f"[red]Skipping campaign {campaign['id']} - gauge validation error: "
-                        f"{error_msg}[/red]"
-                    )
+                validation = vm_proofs.is_valid_gauge(protocol, gauge_address)
+                if not validation.success or not validation.data.is_valid:
                     continue
 
                 composite_campaign_id = (

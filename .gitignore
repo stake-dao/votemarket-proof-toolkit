@@ -24,6 +24,7 @@ env/
 cache/
 .cache/
 temp/
+.tmp/
 tmp/
 node_modules/
 .venv

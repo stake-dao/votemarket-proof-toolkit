@@ -6,8 +6,6 @@ This service provides efficient checking of user eligibility by:
 2. Filtering out closable campaigns automatically
 3. Caching proof data to avoid redundant requests
 4. Batching HTTP requests for optimal performance
-
-The service is used by CLI commands, Streamlit UI, and can be imported in scripts.
 """
 
 import asyncio
@@ -81,7 +79,10 @@ class UserEligibilityService:
             if max_conc > 0:
                 self.MAX_CONCURRENT_REQUESTS = max_conc
         except ValueError:
-            pass
+            self._log.warning(
+                "Invalid VM_MAX_CONCURRENCY value, using default %d",
+                self.MAX_CONCURRENT_REQUESTS,
+            )
 
         # Reuse shared AsyncClient for connection pooling
         self._client = get_async_client()
@@ -358,19 +359,27 @@ class UserEligibilityService:
             try:
                 # Use optimized method for active campaigns when appropriate
                 if status_filter == "active" and not gauge_address:
-                    campaigns = (
-                        await self.campaign_service.get_active_campaigns(
-                            chain_id=chain_id,
-                            platform_address=platform_address,
-                            check_proofs=False,
-                        )
+                    result = await self.campaign_service.get_active_campaigns(
+                        chain_id=chain_id,
+                        platform_address=platform_address,
+                        check_proofs=False,
                     )
                 else:
-                    campaigns = await self.campaign_service.get_campaigns(
+                    result = await self.campaign_service.get_campaigns(
                         chain_id=chain_id,
                         platform_address=platform_address,
                         active_only=False,
                     )
+
+                if not result.success:
+                    self._log.warning(
+                        "Failed to fetch campaigns for %s: %s",
+                        platform_address,
+                        result.errors[0].message if result.errors else "Unknown error",
+                    )
+                    continue
+
+                campaigns = result.data
 
                 # Filter out closable campaigns (unless looking for closed)
                 if status_filter != "closed":

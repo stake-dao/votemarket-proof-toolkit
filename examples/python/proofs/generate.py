@@ -57,43 +57,41 @@ async def generate_gauge_proof(
 
     proof_manager = VoteMarketProofs(chain_id=chain_id)
 
-    try:
-        gauge_proof = proof_manager.get_gauge_proof(
-            protocol=protocol,
-            gauge_address=gauge_address,
-            current_epoch=epoch_timestamp,
-            block_number=block_number,
-        )
+    result = proof_manager.get_gauge_proof(
+        protocol=protocol,
+        gauge_address=gauge_address,
+        current_epoch=epoch_timestamp,
+        block_number=block_number,
+    )
 
-        print("  ✅ Gauge proof generated successfully!")
-
-        # Convert bytes to hex strings for JSON serialization
-        def convert_proof(proof):
-            if isinstance(proof, list):
-                return [
-                    "0x" + p.hex() if isinstance(p, bytes) else p
-                    for p in proof
-                ]
-            elif isinstance(proof, bytes):
-                return "0x" + proof.hex()
-            return proof
-
-        return {
-            "protocol": protocol,
-            "gauge": gauge_address,
-            "epoch": rounded_epoch,
-            "block": block_number,
-            "gauge_controller_proof": convert_proof(
-                gauge_proof["gauge_controller_proof"]
-            ),
-            "point_data_proof": convert_proof(gauge_proof["point_data_proof"]),
-        }
-
-    except (ContractLogicError, ValueError, RuntimeError) as exc:
-        print(f"  ❌ Error: {str(exc)[:100]}")
+    if not result.success:
+        print(f"  ❌ Error: {result.errors[0].message[:100]}")
         return None
-    except Exception:
-        raise
+
+    gauge_proof = result.data
+    print("  ✅ Gauge proof generated successfully!")
+
+    # Convert bytes to hex strings for JSON serialization
+    def convert_proof(proof):
+        if isinstance(proof, list):
+            return [
+                "0x" + p.hex() if isinstance(p, bytes) else p
+                for p in proof
+            ]
+        elif isinstance(proof, bytes):
+            return "0x" + proof.hex()
+        return proof
+
+    return {
+        "protocol": protocol,
+        "gauge": gauge_address,
+        "epoch": rounded_epoch,
+        "block": block_number,
+        "gauge_controller_proof": convert_proof(
+            gauge_proof["gauge_controller_proof"]
+        ),
+        "point_data_proof": convert_proof(gauge_proof["point_data_proof"]),
+    }
 
 
 async def generate_user_proof(
@@ -123,41 +121,39 @@ async def generate_user_proof(
 
     proof_manager = VoteMarketProofs(chain_id=chain_id)
 
-    try:
-        user_proof = proof_manager.get_user_proof(
-            protocol=protocol,
-            gauge_address=gauge_address,
-            user=user_address,
-            block_number=block_number,
-        )
+    result = proof_manager.get_user_proof(
+        protocol=protocol,
+        gauge_address=gauge_address,
+        user=user_address,
+        block_number=block_number,
+    )
 
-        print("  ✅ User proof generated successfully!")
-
-        # Convert bytes to hex strings for JSON serialization
-        def convert_proof(proof):
-            if isinstance(proof, list):
-                return [
-                    "0x" + p.hex() if isinstance(p, bytes) else p
-                    for p in proof
-                ]
-            elif isinstance(proof, bytes):
-                return "0x" + proof.hex()
-            return proof
-
-        return {
-            "protocol": protocol,
-            "user": user_address,
-            "gauge": gauge_address,
-            "block": block_number,
-            "account_proof": convert_proof(user_proof["account_proof"]),
-            "storage_proof": convert_proof(user_proof["storage_proof"]),
-        }
-
-    except (ContractLogicError, ValueError, RuntimeError) as exc:
-        print(f"  ❌ Error: {str(exc)[:100]}")
+    if not result.success:
+        print(f"  ❌ Error: {result.errors[0].message[:100]}")
         return None
-    except Exception:
-        raise
+
+    user_proof = result.data
+    print("  ✅ User proof generated successfully!")
+
+    # Convert bytes to hex strings for JSON serialization
+    def convert_proof(proof):
+        if isinstance(proof, list):
+            return [
+                "0x" + p.hex() if isinstance(p, bytes) else p
+                for p in proof
+            ]
+        elif isinstance(proof, bytes):
+            return "0x" + proof.hex()
+        return proof
+
+    return {
+        "protocol": protocol,
+        "user": user_address,
+        "gauge": gauge_address,
+        "block": block_number,
+        "account_proof": convert_proof(user_proof["account_proof"]),
+        "storage_proof": convert_proof(user_proof["storage_proof"]),
+    }
 
 
 async def get_block_for_epoch(

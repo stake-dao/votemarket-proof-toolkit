@@ -19,8 +19,7 @@ Available Protocols:
 """
 
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from eth_utils.address import to_checksum_address
 
@@ -33,7 +32,12 @@ from votemarket_toolkit.analytics.models import (
     VoteBreakdown,
 )
 from votemarket_toolkit.campaigns.service import CampaignService
+from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.utils.cache import SyncCacheManager
 from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
+
+_logger = get_logger(__name__)
 
 
 class AnalyticsService:
@@ -56,10 +60,9 @@ class AnalyticsService:
 
     def __init__(self):
         """Initialize the analytics service with caching."""
-        self._cache: Dict[str, Any] = {}
-        # TTL cache for expensive operations (1 hour)
-        self._ttl_cache: Dict[str, Tuple] = {}
-        self._ttl = 3600  # 1 hour
+        self._cache: Dict[str, Any] = {}  # In-memory HTTP response cache
+        # File-based TTL cache for expensive operations
+        self._file_cache = SyncCacheManager("analytics")
 
     async def close(self):
         """No-op: uses shared HTTP client managed globally."""
@@ -396,52 +399,6 @@ class AnalyticsService:
 
         return None
 
-    def _get_cache_path(self, key: str) -> Path:
-        """Get the file path for a cache key."""
-        import hashlib
-
-        cache_dir = Path(".cache")
-        cache_dir.mkdir(exist_ok=True)
-
-        # Create safe filename from key
-        safe_key = hashlib.sha256(f"analytics:{key}".encode()).hexdigest()
-        return cache_dir / f"{safe_key}.cache"
-
-    def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
-        """Get value from TTL cache if not expired."""
-
-        cache_path = self._get_cache_path(key)
-
-        if cache_path.exists():
-            try:
-                with open(cache_path, "rb") as f:
-                    data = f.read()
-
-                value, expiry = data
-                if time.time() < expiry:
-                    return value
-                else:
-                    # Remove expired file
-                    cache_path.unlink()
-            except Exception:
-                # If file is corrupted, remove it
-                if cache_path.exists():
-                    cache_path.unlink()
-
-        return None
-
-    def _set_ttl_cache(self, key: str, value: Any) -> None:
-        """Set value in TTL cache."""
-        cache_path = self._get_cache_path(key)
-
-        try:
-            with open(cache_path, "wb") as f:
-                f.write((value, time.time() + self._ttl))
-        except Exception:
-            # If write fails, try to clean up
-            if cache_path.exists():
-                cache_path.unlink()
-
     async def get_current_market_snapshot(
         self,
         protocol: str,
@@ -486,37 +443,29 @@ class AnalyticsService:
         """
         # Check cache first
         cache_key = f"market_snapshot:{protocol}:{chain_id}:{platform_address}"
-        cached_result = self._get_ttl_cache_key(cache_key)
+        cached_result = self._file_cache.get(cache_key)
         if cached_result is not None:
-            print(f"Using cached market snapshot for {protocol.upper()}")
+            _logger.info("Using cached market snapshot for %s", protocol.upper())
             return cached_result
 
         # Show what we're fetching
         if platform_address and chain_id:
-            chain_name = {
-                1: "Ethereum",
-                10: "Optimism",
-                137: "Polygon",
-                8453: "Base",
-                42161: "Arbitrum",
-            }.get(chain_id, f"Chain {chain_id}")
-            print(
-                f"\nFetching {protocol.upper()} market snapshot from {chain_name} [{platform_address[:6]}...{platform_address[-4:]}]"
+            chain_name = registry.get_chain_name(chain_id)
+            _logger.info(
+                "Fetching %s market snapshot from %s [%s...%s]",
+                protocol.upper(),
+                chain_name,
+                platform_address[:6],
+                platform_address[-4:],
             )
         elif chain_id:
-            chain_name = {
-                1: "Ethereum",
-                10: "Optimism",
-                137: "Polygon",
-                8453: "Base",
-                42161: "Arbitrum",
-            }.get(chain_id, f"Chain {chain_id}")
-            print(
-                f"\nFetching {protocol.upper()} market snapshot from {chain_name}"
+            chain_name = registry.get_chain_name(chain_id)
+            _logger.info(
+                "Fetching %s market snapshot from %s", protocol.upper(), chain_name
             )
         else:
-            print(
-                f"\nFetching {protocol.upper()} market snapshot from ALL chains"
+            _logger.info(
+                "Fetching %s market snapshot from ALL chains", protocol.upper()
             )
 
         campaign_service = CampaignService()
@@ -595,41 +544,31 @@ class AnalyticsService:
 
         # Show summary of what will be fetched
         if len(platforms_to_query) > 1:
-            print(
-                f"Will fetch from {len(platforms_to_query)} platforms across multiple chains:"
+            _logger.info(
+                "Will fetch from %d platforms across multiple chains",
+                len(platforms_to_query),
             )
             for cid, platform in platforms_to_query:
-                chain_name = {
-                    1: "Ethereum",
-                    10: "Optimism",
-                    137: "Polygon",
-                    8453: "Base",
-                    42161: "Arbitrum",
-                }.get(cid, f"Chain {cid}")
-                print(f"  • {chain_name}: {platform[:6]}...{platform[-4:]}")
+                chain_name = registry.get_chain_name(cid)
+                _logger.info("  %s: %s...%s", chain_name, platform[:6], platform[-4:])
 
         # Fetch campaigns from all platforms concurrently
         async def fetch_platform_campaigns(chain_id: int, platform: str):
-            try:
-                return (
-                    chain_id,
-                    platform,
-                    await campaign_service.get_active_campaigns(
-                        chain_id=chain_id,
-                        platform_address=platform,
-                        check_proofs=False,
-                    ),
-                )
-            except Exception as e:
-                chain_name = {
-                    1: "Ethereum",
-                    10: "Optimism",
-                    137: "Polygon",
-                    8453: "Base",
-                    42161: "Arbitrum",
-                }.get(chain_id, f"Chain {chain_id}")
-                print(
-                    f"Warning: Failed to fetch campaigns for {chain_name} [{platform[:6]}...{platform[-4:]}]: {e}"
+            result = await campaign_service.get_active_campaigns(
+                chain_id=chain_id,
+                platform_address=platform,
+                check_proofs=False,
+            )
+            if result.success:
+                return (chain_id, platform, result.data)
+            else:
+                chain_name = registry.get_chain_name(chain_id)
+                _logger.warning(
+                    "Failed to fetch campaigns for %s [%s...%s]: %s",
+                    chain_name,
+                    platform[:6],
+                    platform[-4:],
+                    result.errors[0].message,
                 )
                 return (chain_id, platform, [])
 
@@ -706,9 +645,7 @@ class AnalyticsService:
                         cache_key = f"{cid}:{token.lower()}"
                         token_price_cache[cache_key] = price_float
                 except Exception as e:
-                    print(
-                        f"Warning: Failed to fetch prices for chain {cid}: {e}"
-                    )
+                    _logger.warning("Failed to fetch prices for chain %d: %s", cid, e)
 
         # Calculate $/vote for each campaign
         campaign_data = []
@@ -864,7 +801,7 @@ class AnalyticsService:
         }
 
         # Cache the result
-        self._set_ttl_cache(cache_key, result)
+        self._file_cache.set(cache_key, result)
 
         return result
 

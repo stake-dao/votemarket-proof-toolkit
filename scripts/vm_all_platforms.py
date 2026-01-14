@@ -46,7 +46,7 @@ def get_block_data(block_number: int) -> Dict[str, Any]:
         Dict[str, Any]: A dictionary containing block data.
     """
     vm_proofs = VoteMarketProofs(1)
-    block_info = vm_proofs.get_block_info(block_number)
+    block_info = vm_proofs.get_block_info(block_number).unwrap()
     return {
         "block_number": block_info["block_number"],
         "block_hash": block_info["block_hash"],

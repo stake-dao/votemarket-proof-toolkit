@@ -60,22 +60,25 @@ async def find_campaign_by_id(
         console.print(f"  Checking {chain_name}...")
 
         try:
-            campaigns = await campaign_service.get_campaigns(
+            result = await campaign_service.get_campaigns(
                 chain_id=chain_id,
                 platform_address=platform_address,
                 campaign_id=campaign_id,
                 check_proofs=True,
             )
 
-            if campaigns:
-                campaign = campaigns[0]
+            if result.success and result.data:
+                campaign = result.data[0]
                 console.print(
                     f"  [green]✓ Found campaign {campaign_id} on {chain_name}![/green]"
                 )
                 return (campaign, chain_id, platform_address)
-            else:
+            elif result.success:
                 # Campaign not found on this chain - continue searching
                 console.print(f"  [dim]Campaign {campaign_id} not found on {chain_name}[/dim]")
+            else:
+                # Error occurred
+                console.print(f"  [yellow]Warning: {result.errors[0].message[:100]}[/yellow]")
 
         except Exception as e:
             # Only show warnings for unexpected errors
@@ -89,14 +92,14 @@ async def find_campaign_by_id(
                     )
                     try:
                         # Try fetching without checking proofs and let it handle partial data
-                        campaigns = await campaign_service.get_campaigns(
+                        retry_result = await campaign_service.get_campaigns(
                             chain_id=chain_id,
                             platform_address=platform_address,
                             campaign_id=campaign_id,
                             check_proofs=False,  # Disable proof checking for large campaigns
                         )
-                        if campaigns:
-                            campaign = campaigns[0]
+                        if retry_result.success and retry_result.data:
+                            campaign = retry_result.data[0]
                             console.print(
                                 f"  [green]✓ Found campaign {campaign_id} on {chain_name} (partial data)![/green]"
                             )
@@ -264,27 +267,28 @@ async def generate_proofs_for_period(
 
     # Generate gauge proof (includes point data proof)
     console.print("  Generating gauge proof...")
-    try:
-        gauge_proof = vm_proofs.get_gauge_proof(
-            protocol=protocol,
-            gauge_address=gauge,
-            current_epoch=epoch,
-            block_number=block_number,
-        )
-        console.print("  [green]✓ Gauge proof generated[/green]")
-    except Exception as e:
-        console.print(f"  [red]✗ Failed to generate gauge proof: {str(e)}[/red]")
+    gauge_result = vm_proofs.get_gauge_proof(
+        protocol=protocol,
+        gauge_address=gauge,
+        current_epoch=epoch,
+        block_number=block_number,
+    )
+    if not gauge_result.success:
+        console.print(f"  [red]✗ Failed to generate gauge proof: {gauge_result.errors[0].message}[/red]")
         return None
+    gauge_proof = gauge_result.data
+    console.print("  [green]✓ Gauge proof generated[/green]")
 
     # Get eligible users
     console.print("  Finding eligible users...")
-    try:
-        eligible_users = await vm_eligibility.get_eligible_users(
-            protocol, gauge, epoch, block_number
-        )
+    eligible_result = await vm_eligibility.get_eligible_users(
+        protocol, gauge, epoch, block_number
+    )
+    if eligible_result.success:
+        eligible_users = eligible_result.data
         console.print(f"  [green]✓ Found {len(eligible_users)} eligible users[/green]")
-    except Exception as e:
-        console.print(f"  [red]✗ Failed to get eligible users: {str(e)}[/red]")
+    else:
+        console.print(f"  [red]✗ Failed to get eligible users: {eligible_result.errors[0].message}[/red]")
         eligible_users = []
 
     # Generate user proofs
@@ -294,13 +298,14 @@ async def generate_proofs_for_period(
 
         for i, user in enumerate(eligible_users[:10], 1):  # Limit to first 10 for speed
             user_address = user["user"]
-            try:
-                user_proof = vm_proofs.get_user_proof(
-                    protocol=protocol,
-                    gauge_address=gauge,
-                    user=user_address,
-                    block_number=block_number,
-                )
+            user_result = vm_proofs.get_user_proof(
+                protocol=protocol,
+                gauge_address=gauge,
+                user=user_address,
+                block_number=block_number,
+            )
+            if user_result.success:
+                user_proof = user_result.data
                 user_proofs[user_address] = {
                     "storage_proof": "0x" + user_proof["storage_proof"].hex(),
                     "account_proof": "0x" + user_proof["account_proof"].hex(),
@@ -312,8 +317,8 @@ async def generate_proofs_for_period(
                     },
                 }
                 console.print(f"    [{i}/{min(len(eligible_users), 10)}] {user_address[:10]}...")
-            except Exception as e:
-                console.print(f"    [red]✗ Failed for {user_address}: {str(e)[:50]}[/red]")
+            else:
+                console.print(f"    [red]✗ Failed for {user_address}: {user_result.errors[0].message[:50]}[/red]")
 
         if len(eligible_users) > 10:
             console.print(f"    [yellow]... and {len(eligible_users) - 10} more users[/yellow]")

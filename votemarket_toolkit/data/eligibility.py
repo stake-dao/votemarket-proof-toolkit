@@ -11,8 +11,16 @@ from eth_utils import to_checksum_address
 from w3multicall.multicall import W3Multicall
 
 from votemarket_toolkit.shared import registry
-from votemarket_toolkit.shared.exceptions import VoteMarketDataException
+from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.results import (
+    ErrorSeverity,
+    ProcessingError,
+    Result,
+)
+from votemarket_toolkit.shared.retry import RPC_RETRY_CONFIG, retry_sync_operation
 from votemarket_toolkit.shared.services.web3_service import Web3Service
+
+_logger = get_logger(__name__)
 from votemarket_toolkit.shared.types import EligibleUser
 from votemarket_toolkit.utils.blockchain import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
@@ -46,7 +54,7 @@ class EligibilityService:
         block_number: int,
         chain_id: Optional[int] = None,
         platform: Optional[str] = None,
-    ) -> List[EligibleUser]:
+    ) -> Result[List[EligibleUser]]:
         """
         Identify users who are eligible to claim rewards for a gauge/epoch.
 
@@ -64,21 +72,28 @@ class EligibilityService:
             platform: Optional - VoteMarket platform address for oracle lookup
 
         Returns:
-            List[EligibleUser]: Users who can claim rewards
-
-        Raises:
-            VoteMarketDataException: If blockchain data retrieval fails
+            Result[List[EligibleUser]]: Success with eligible users, or failure with error
 
         Example:
-            >>> eligible = await service.get_eligible_users(
+            >>> result = await service.get_eligible_users(
             ...     protocol="curve",
             ...     gauge_address="0x7E1444BA99dcdFfE8fBdb42C02fb0DA4",
             ...     current_epoch=1699920000,
             ...     block_number=18500000
             ... )
+            >>> if result.success:
+            ...     for user in result.data:
+            ...         print(user)
         """
         # Always round epoch to the day for consistency
         current_epoch = get_rounded_epoch(current_epoch)
+
+        context = {
+            "protocol": protocol,
+            "gauge": gauge_address,
+            "epoch": current_epoch,
+            "block": block_number,
+        }
 
         try:
             w3 = self.web3_service.w3
@@ -93,8 +108,13 @@ class EligibilityService:
                 )
                 block_number = epoch_blocks[current_epoch]
                 if block_number == 0:
-                    raise VoteMarketDataException(
-                        f"No block set for epoch {current_epoch}"
+                    return Result.fail(
+                        ProcessingError(
+                            source="eligibility_service",
+                            message=f"No block set for epoch {current_epoch}",
+                            severity=ErrorSeverity.ERROR,
+                            context=context,
+                        )
                     )
 
             # Initialize multicall for efficient batch queries
@@ -103,8 +123,13 @@ class EligibilityService:
             # Get the gauge controller contract address for this protocol
             gauge_controller = registry.get_gauge_controller(protocol)
             if not gauge_controller:
-                raise VoteMarketDataException(
-                    f"No gauge controller found for protocol: {protocol}"
+                return Result.fail(
+                    ProcessingError(
+                        source="eligibility_service",
+                        message=f"No gauge controller found for protocol: {protocol}",
+                        severity=ErrorSeverity.ERROR,
+                        context=context,
+                    )
                 )
             gauge_controller_address = to_checksum_address(gauge_controller)
 
@@ -187,8 +212,16 @@ class EligibilityService:
                     )
 
             # Step 3: Execute all queries in a single RPC call for efficiency
+            # Use retry for transient RPC failures
             try:
-                results = multicall.call(block_number)
+                results = retry_sync_operation(
+                    multicall.call,
+                    block_number,
+                    max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                    base_delay=RPC_RETRY_CONFIG.base_delay,
+                    max_delay=RPC_RETRY_CONFIG.max_delay,
+                    operation_name="eligibility_multicall",
+                )
             except Exception as e:
                 # If multicall fails (e.g., one call reverts), fall back to smaller batches
                 # This can happen with Pendle if a user no longer has a position
@@ -267,10 +300,22 @@ class EligibilityService:
                                 )
 
                         try:
-                            batch_results = batch_multicall.call(block_number)
+                            batch_results = retry_sync_operation(
+                                batch_multicall.call,
+                                block_number,
+                                max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                                base_delay=RPC_RETRY_CONFIG.base_delay,
+                                max_delay=RPC_RETRY_CONFIG.max_delay,
+                                operation_name=f"eligibility_batch_{batch_start}",
+                            )
                             all_results.extend(batch_results)
-                        except Exception:
-                            # If even a small batch fails, try individual calls
+                        except Exception as batch_err:
+                            _logger.debug(
+                                "Batch multicall failed for batch %d: %s",
+                                batch_start,
+                                batch_err,
+                            )
+                            # If even a small batch fails after retries, use placeholder results
                             for user in batch_users:
                                 # Add placeholder results (will be filtered out later)
                                 if protocol == "pendle":
@@ -341,8 +386,14 @@ class EligibilityService:
                         )
                     )
 
-            return eligible_users
+            return Result.ok(eligible_users)
         except Exception as e:
-            raise VoteMarketDataException(
-                f"Error getting eligible users: {str(e)}"
+            return Result.fail(
+                ProcessingError(
+                    source="eligibility_service",
+                    message=f"Error getting eligible users: {str(e)}",
+                    severity=ErrorSeverity.ERROR,
+                    context=context,
+                    exception=e,
+                )
             )

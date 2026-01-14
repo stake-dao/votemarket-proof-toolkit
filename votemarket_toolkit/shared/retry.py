@@ -3,6 +3,11 @@ Retry utilities for handling transient failures.
 
 This module provides decorators and utilities for retrying operations
 with configurable backoff strategies.
+
+Exception Handling:
+- By default, retries on RetryableException and its subclasses
+- NonRetryableException is never retried (propagates immediately)
+- Can customize retryable_exceptions per operation
 """
 
 import asyncio
@@ -11,12 +16,15 @@ import time
 from functools import wraps
 from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
+from votemarket_toolkit.shared.exceptions import RetryableException
+
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
-# Default retryable exceptions (network/RPC related)
+# Default retryable exceptions (network/RPC related + RetryableException hierarchy)
 DEFAULT_RETRYABLE_EXCEPTIONS: Tuple[Type[Exception], ...] = (
+    RetryableException,  # Includes VoteMarketProofsException, APIException
     ConnectionError,
     TimeoutError,
     OSError,
@@ -51,7 +59,7 @@ def with_retry(
             ...
     """
     if retryable_exceptions is None:
-        retryable_exceptions = (Exception,)
+        retryable_exceptions = DEFAULT_RETRYABLE_EXCEPTIONS
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -120,7 +128,7 @@ def retry_sync(
             ...
     """
     if retryable_exceptions is None:
-        retryable_exceptions = (Exception,)
+        retryable_exceptions = DEFAULT_RETRYABLE_EXCEPTIONS
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -201,7 +209,7 @@ async def retry_async_operation(
         )
     """
     if retryable_exceptions is None:
-        retryable_exceptions = (Exception,)
+        retryable_exceptions = DEFAULT_RETRYABLE_EXCEPTIONS
 
     name = operation_name or getattr(operation, "__name__", "operation")
     last_exception: Optional[Exception] = None
@@ -264,7 +272,7 @@ def retry_sync_operation(
         Result of the operation
     """
     if retryable_exceptions is None:
-        retryable_exceptions = (Exception,)
+        retryable_exceptions = DEFAULT_RETRYABLE_EXCEPTIONS
 
     name = operation_name or getattr(operation, "__name__", "operation")
     last_exception: Optional[Exception] = None
@@ -314,7 +322,7 @@ class RetryConfig:
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.exponential = exponential
-        self.retryable_exceptions = retryable_exceptions or (Exception,)
+        self.retryable_exceptions = retryable_exceptions or DEFAULT_RETRYABLE_EXCEPTIONS
 
     def decorator(self) -> Callable:
         """Create a with_retry decorator using this config."""
