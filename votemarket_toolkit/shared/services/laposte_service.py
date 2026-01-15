@@ -6,6 +6,14 @@ from typing import Dict, List, Optional
 from eth_utils import to_checksum_address
 
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.retry import (
+    HTTP_RETRY_CONFIG,
+    RPC_RETRY_CONFIG,
+    retry_async_operation,
+)
+
+_logger = get_logger(__name__)
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
@@ -61,16 +69,21 @@ class LaPosteService:
             ).hex()
         }
 
-        try:
-            # Use executor to avoid blocking the event loop
+        async def _do_rpc_call():
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None, web3_service.w3.eth.call, tx
             )
-            # Decode the result
-            native_tokens = web3_service.w3.codec.decode(
-                ["address[]"], result
-            )[0]
+            return web3_service.w3.codec.decode(["address[]"], result)[0]
+
+        try:
+            native_tokens = await retry_async_operation(
+                _do_rpc_call,
+                max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                base_delay=RPC_RETRY_CONFIG.base_delay,
+                max_delay=RPC_RETRY_CONFIG.max_delay,
+                operation_name="get_native_tokens",
+            )
 
             # If native token is 0x0, it means the token is not wrapped
             return [
@@ -81,6 +94,34 @@ class LaPosteService:
             # If TokenFactory doesn't exist or fails, assume tokens are not wrapped
             # This is common on chains without LaPoste
             return wrapped_tokens
+
+    async def _fetch_token_metadata(
+        self, web3_service: "Web3Service", token_address: str
+    ) -> tuple:
+        """
+        Fetch token metadata (name, symbol, decimals) using parallel RPC calls.
+
+        Args:
+            web3_service: Web3Service instance for the target chain
+            token_address: Token contract address
+
+        Returns:
+            Tuple of (name, symbol, decimals)
+        """
+        token_contract = web3_service.get_contract(token_address, "erc20")
+
+        loop = asyncio.get_running_loop()
+        name_future = loop.run_in_executor(
+            None, token_contract.functions.name().call
+        )
+        symbol_future = loop.run_in_executor(
+            None, token_contract.functions.symbol().call
+        )
+        decimals_future = loop.run_in_executor(
+            None, token_contract.functions.decimals().call
+        )
+
+        return await asyncio.gather(name_future, symbol_future, decimals_future)
 
     async def get_token_info(
         self,
@@ -122,24 +163,9 @@ class LaPosteService:
         web3_service = Web3Service.get_instance(fetch_chain_id)
 
         try:
-            # Get token metadata - make RPC calls async to avoid blocking
-            token_contract = web3_service.get_contract(token_address, "erc20")
-
-            # Run all RPC calls in parallel using executor
-            loop = asyncio.get_running_loop()
-            name_future = loop.run_in_executor(
-                None, token_contract.functions.name().call
-            )
-            symbol_future = loop.run_in_executor(
-                None, token_contract.functions.symbol().call
-            )
-            decimals_future = loop.run_in_executor(
-                None, token_contract.functions.decimals().call
-            )
-
-            # Wait for all to complete
-            name, symbol, decimals = await asyncio.gather(
-                name_future, symbol_future, decimals_future
+            # Fetch token metadata using helper
+            name, symbol, decimals = await self._fetch_token_metadata(
+                web3_service, token_address
             )
 
             # Price will be fetched in batch later, default to 0.0
@@ -160,24 +186,8 @@ class LaPosteService:
             if is_native and fetch_chain_id == 1 and chain_id != 1:
                 try:
                     web3_service = Web3Service.get_instance(chain_id)
-                    token_contract = web3_service.get_contract(
-                        token_address, "erc20"
-                    )
-
-                    # Run all RPC calls in parallel
-                    loop = asyncio.get_running_loop()
-                    name_future = loop.run_in_executor(
-                        None, token_contract.functions.name().call
-                    )
-                    symbol_future = loop.run_in_executor(
-                        None, token_contract.functions.symbol().call
-                    )
-                    decimals_future = loop.run_in_executor(
-                        None, token_contract.functions.decimals().call
-                    )
-
-                    name, symbol, decimals = await asyncio.gather(
-                        name_future, symbol_future, decimals_future
+                    name, symbol, decimals = await self._fetch_token_metadata(
+                        web3_service, token_address
                     )
 
                     token_info = {
@@ -191,8 +201,13 @@ class LaPosteService:
 
                     self.cache[cache_key] = token_info
                     return token_info
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug(
+                        "L2 token fetch fallback failed for %s on chain %d: %s",
+                        token_address,
+                        chain_id,
+                        e,
+                    )
 
             # Fallback to unknown
             return {
@@ -220,14 +235,8 @@ class LaPosteService:
         try:
             import aiohttp
 
-            chain_names = {
-                1: "ethereum",
-                42161: "arbitrum",
-                10: "optimism",
-                137: "polygon",
-                8453: "base",
-            }
-            chain_name = chain_names.get(chain_id, "ethereum")
+            # Use lowercase chain names for DefiLlama API
+            chain_name = registry.get_supported_chains().get(chain_id, "ethereum")
 
             # Build list of tokens to fetch prices for
             coins_param = ",".join(
@@ -237,27 +246,34 @@ class LaPosteService:
             # Batch fetch all prices in one request
             price_url = f"https://coins.llama.fi/prices/current/{coins_param}"
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    price_url, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if "coins" in data:
-                            # Update each token with its price
-                            for token_info in token_infos:
-                                coin_key = (
-                                    f"{chain_name}:{token_info['address']}"
-                                )
-                                if coin_key in data["coins"]:
-                                    token_info["price"] = float(
-                                        data["coins"][coin_key]["price"]
-                                    )
+            async def _fetch_prices():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        price_url, timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        return None
 
-        except Exception:
-            # Silently fail on price fetching - prices will remain 0.0
-            # print(f"Warning: Failed to fetch prices: {str(e)}")
-            pass
+            data = await retry_async_operation(
+                _fetch_prices,
+                max_attempts=HTTP_RETRY_CONFIG.max_attempts,
+                base_delay=HTTP_RETRY_CONFIG.base_delay,
+                max_delay=HTTP_RETRY_CONFIG.max_delay,
+                operation_name="defi_llama_prices",
+            )
+
+            if data and "coins" in data:
+                # Update each token with its price
+                for token_info in token_infos:
+                    coin_key = f"{chain_name}:{token_info['address']}"
+                    if coin_key in data["coins"]:
+                        token_info["price"] = float(
+                            data["coins"][coin_key]["price"]
+                        )
+
+        except Exception as e:
+            _logger.debug("Failed to fetch token prices from DefiLlama: %s", e)
 
 
 # Singleton instance

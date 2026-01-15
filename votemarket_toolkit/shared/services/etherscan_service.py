@@ -2,17 +2,18 @@
 Etherscan service module for interacting with the Etherscan API.
 
 This module provides functions to fetch logs and token transfers from the Ethereum blockchain
-using the Etherscan API. It includes rate limiting and error handling mechanisms.
+using the Etherscan API. It uses the shared retry framework for error handling.
 """
 
 import logging
 import os
-import time
 from typing import Any, Dict, List
 
 import httpx
 from dotenv import load_dotenv
 
+from votemarket_toolkit.shared.exceptions import APIException
+from votemarket_toolkit.shared.retry import retry_sync_operation
 from votemarket_toolkit.shared.services.http_client import get_client
 
 load_dotenv()
@@ -20,54 +21,13 @@ load_dotenv()
 # Read once; validate lazily in call sites to avoid import-time failures
 EXPLORER_KEY = os.getenv("EXPLORER_KEY")
 
-
-class RateLimiter:
-    """
-    A simple rate limiter to control concurrent API requests.
-
-    Attributes:
-        max_concurrent (int): Maximum number of concurrent requests allowed.
-        queue (list): Queue of pending requests.
-        running (int): Number of currently running requests.
-    """
-
-    def __init__(self, max_concurrent: int):
-        self.max_concurrent = max_concurrent
-        self.queue = []
-        self.running = 0
-
-    def add(self, fn):
-        """
-        Add a function to be executed under rate limiting.
-
-        Args:
-            fn (callable): Function to be executed.
-
-        Returns:
-            Any: Result of the executed function.
-        """
-        while self.running >= self.max_concurrent:
-            time.sleep(0.1)
-        self.running += 1
-        try:
-            return fn()
-        finally:
-            self.running -= 1
-            if self.queue:
-                self.queue.pop(0)()
-
-
-rate_limiter = RateLimiter(5)
-
-
-def delay(ms: int):
-    """
-    Introduce a delay in milliseconds.
-
-    Args:
-        ms (int): Delay in milliseconds.
-    """
-    time.sleep(ms / 1000)
+# Retryable exceptions for Etherscan API calls
+ETHERSCAN_RETRYABLE_EXCEPTIONS = (
+    APIException,
+    httpx.RequestError,
+    ConnectionError,
+    TimeoutError,
+)
 
 
 def get_logs_by_address_and_topics(
@@ -123,9 +83,60 @@ def get_logs_by_address_and_topics(
     return all_logs
 
 
+def _do_single_request(url: str, request_type: str) -> Dict[str, Any]:
+    """
+    Make a single API request (no retry logic).
+
+    Args:
+        url (str): API endpoint URL.
+        request_type (str): Type of request (e.g., "logs", "transfers").
+
+    Returns:
+        Dict[str, Any]: API response data.
+
+    Raises:
+        APIException: For rate limits and transient errors (will be retried).
+        ValueError: For configuration errors (won't be retried).
+        Exception: For permanent API errors (won't be retried).
+    """
+    if not EXPLORER_KEY:
+        raise ValueError(
+            "EXPLORER_KEY is not set (required for Etherscan API calls)"
+        )
+
+    client = get_client()
+    response = client.get(url)
+
+    # HTTP 429 rate limit
+    if response.status_code == 429:
+        raise APIException("Rate limit reached (HTTP 429)")
+
+    data = response.json()
+
+    # Success
+    if data.get("status") == "1":
+        return data["result"]
+
+    # No records found - not an error
+    if (
+        data.get("status") == "0"
+        and data.get("message") == f"No {request_type} found"
+    ):
+        logging.info(f"No {request_type} found for the given parameters")
+        return {} if request_type == "logs" else []
+
+    # API rate limit error
+    if _is_rate_limit_error(data):
+        raise APIException(f"Rate limit reached: {data.get('result')}")
+
+    # Other API errors - not retryable
+    logging.error(f"Unexpected response: {data}")
+    raise Exception(data.get("message") or "Unknown error")
+
+
 def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
     """
-    Make an API request with retry logic.
+    Make an API request with retry logic using shared retry framework.
 
     Args:
         url (str): API endpoint URL.
@@ -137,58 +148,17 @@ def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
     Raises:
         Exception: If max retries are reached or an unexpected error occurs.
     """
-    if not EXPLORER_KEY:
-        raise ValueError(
-            "EXPLORER_KEY is not set (required for Etherscan API calls)"
-        )
-
-    max_retries = 5
-    client = get_client()
-    last_error = None
-
-    for attempt in range(max_retries):
-        try:
-            response = client.get(url)
-            if response.status_code == 429:
-                logging.info("Rate limit reached, retrying after delay...")
-                delay(1000)
-                continue
-
-            data = response.json()
-
-            if data.get("status") == "1":
-                return data["result"]
-            elif (
-                data.get("status") == "0"
-                and data.get("message") == f"No {request_type} found"
-            ):
-                logging.info(
-                    f"No {request_type} found for the given parameters"
-                )
-                return {} if request_type == "logs" else []
-            elif _is_rate_limit_error(data):
-                logging.info("Rate limit reached, retrying after delay...")
-                delay(1000)
-            else:
-                logging.error(f"Unexpected response: {data}")
-                raise Exception(data.get("message") or "Unknown error")
-        except httpx.RequestError as e:
-            last_error = e
-            logging.error(
-                f"Error fetching {request_type} (attempt {attempt + 1}/{max_retries}): {str(e)}"
-            )
-            # Retry on network errors with exponential backoff
-            if attempt < max_retries - 1:
-                backoff_delay = 1000 * (2**attempt)  # 1s, 2s, 4s, 8s
-                logging.info(f"Retrying after {backoff_delay}ms...")
-                delay(backoff_delay)
-                continue
-            raise e
-
-
-    if last_error:
-        raise last_error
-    raise Exception("Max retries reached")
+    return retry_sync_operation(
+        _do_single_request,
+        url,
+        request_type,
+        max_attempts=5,
+        base_delay=1.0,
+        max_delay=8.0,
+        exponential=True,
+        retryable_exceptions=ETHERSCAN_RETRYABLE_EXCEPTIONS,
+        operation_name=f"etherscan_{request_type}",
+    )
 
 
 def _is_rate_limit_error(data: Dict[str, Any]) -> bool:

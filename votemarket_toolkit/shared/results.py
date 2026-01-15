@@ -133,6 +133,16 @@ class Result(Generic[T]):
         """Get all error messages as strings."""
         return [e.message for e in self.errors]
 
+    def unwrap(self) -> T:
+        """Return data or raise if failed."""
+        if not self.success:
+            msg = self.errors[0].message if self.errors else "Unknown error"
+            exc = self.errors[0].exception if self.errors else None
+            if exc:
+                raise exc
+            raise RuntimeError(msg)
+        return self.data  # type: ignore
+
 
 @dataclass
 class ProofGenerationSummary:

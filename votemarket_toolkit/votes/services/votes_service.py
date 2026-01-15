@@ -7,6 +7,10 @@ from rich import print as rprint
 from rich.console import Console
 
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.retry import HTTP_RETRY_CONFIG, retry_async_operation
+
+_logger = get_logger(__name__)
 from votemarket_toolkit.shared.services.etherscan_service import (
     get_logs_by_address_and_topics,
 )
@@ -45,21 +49,32 @@ class VotesService:
             self.cache_dir, self.votes_cache_file.format(protocol=protocol)
         )
 
-        try:
+        async def _do_fetch():
             client = get_async_client()
             response = await client.get(remote_file)
             response.raise_for_status()
+            return response.content
+
+        try:
+            content = await retry_async_operation(
+                _do_fetch,
+                max_attempts=HTTP_RETRY_CONFIG.max_attempts,
+                base_delay=HTTP_RETRY_CONFIG.base_delay,
+                max_delay=HTTP_RETRY_CONFIG.max_delay,
+                operation_name=f"parquet_{protocol}",
+            )
 
             # Ensure cache directory exists
             os.makedirs(self.cache_dir, exist_ok=True)
 
             # Write the downloaded file
             with open(cache_file, "wb") as f:
-                f.write(response.content)
+                f.write(content)
             rprint(
                 "[green]Successfully downloaded votes cache from stake-dao/api[/green]"
             )
         except Exception as e:
+            _logger.debug("Failed to fetch remote parquet for %s: %s", protocol, e)
             rprint(f"[red]Failed to fetch remote parquet file: {str(e)}[/red]")
             # If file doesn't exist locally, create empty cache
             if not os.path.exists(cache_file):

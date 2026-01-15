@@ -485,3 +485,19 @@ def get_supported_protocols() -> List[str]:
 def get_supported_chains() -> Dict[int, str]:
     """Get supported chains."""
     return Registry.CHAIN_NAMES.copy()
+
+
+def get_chain_name(chain_id: int) -> str:
+    """
+    Get the display name for a chain ID.
+
+    Args:
+        chain_id: The chain ID (e.g., 1, 42161)
+
+    Returns:
+        Human-readable chain name in title case (e.g., "Ethereum", "Arbitrum")
+    """
+    name = Registry.CHAIN_NAMES.get(chain_id)
+    if name:
+        return name.title()
+    return f"Chain {chain_id}"

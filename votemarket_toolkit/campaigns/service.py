@@ -24,11 +24,8 @@ Technical Implementation:
 """
 
 import asyncio
-import hashlib
-import json
 import time
 from decimal import Decimal, localcontext
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from eth_utils.address import to_checksum_address
@@ -41,25 +38,27 @@ from votemarket_toolkit.campaigns.models import (
 )
 from votemarket_toolkit.contracts.reader import ContractReader
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.results import (
+    ErrorSeverity,
+    ProcessingError,
+    Result,
+)
+from votemarket_toolkit.shared.retry import RPC_RETRY_CONFIG
 from votemarket_toolkit.shared.services.laposte_service import laposte_service
+
+_logger = get_logger(__name__)
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
 from votemarket_toolkit.shared.services.web3_service import Web3Service
+from votemarket_toolkit.utils.cache import SyncCacheManager
 from votemarket_toolkit.utils.campaign_utils import get_closability_info
 from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
 
 
 # Module-level constants
 PERIOD_DURATION = 604800  # Weekly periods in seconds
-
-CHAIN_NAMES = {
-    1: "Ethereum",
-    10: "Optimism",
-    137: "Polygon",
-    8453: "Base",
-    42161: "Arbitrum",
-}
 
 # Deprecated platform versions to exclude when filtering
 # These are old platform versions that should not be used for new campaigns
@@ -154,9 +153,8 @@ class CampaignService:
         """Initialize the campaign service with contract reader and service cache."""
         self.contract_reader = ContractReader()
         self.web3_services: Dict[int, Web3Service] = {}
-        # Simple TTL cache (1 hour)
-        self._ttl_cache: Dict[str, tuple] = {}
-        self._ttl = 3600  # 1 hour
+        # Use shared cache manager with "campaigns" namespace
+        self._cache = SyncCacheManager("campaigns")
 
     def get_web3_service(self, chain_id: int) -> Web3Service:
         """
@@ -211,52 +209,9 @@ class CampaignService:
 
         return oracle_address
 
-    def _get_cache_path(self, key: str):
-        """Get the file path for a cache key."""
-        cache_dir = Path(".cache")
-        cache_dir.mkdir(exist_ok=True)
-
-        # Create safe filename from key
-        safe_key = hashlib.sha256(f"campaigns:{key}".encode()).hexdigest()
-        return cache_dir / f"{safe_key}.cache"
-
-    def _get_ttl_cache_key(self, key: str) -> Optional[Any]:
-        cache_path = self._get_cache_path(key)
-        try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            value, expiry = data["value"], data["expiry"]
-            if time.time() < expiry:
-                return value
-            cache_path.unlink(missing_ok=True)
-        except (FileNotFoundError, json.JSONDecodeError, KeyError, UnicodeDecodeError):
-            # If cache is corrupted or unreadable, clean it up silently
-            if cache_path.exists():
-                cache_path.unlink(missing_ok=True)
-        return None
-
-    def _set_ttl_cache(self, key: str, value: Any) -> None:
-        """Set value in TTL cache."""
-        cache_path = self._get_cache_path(key)
-
-        try:
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"value": value, "expiry": time.time() + self._ttl}, f
-                )
-        except (OSError, TypeError, UnicodeEncodeError):
-            # If write fails (including non-serializable data), clean up
-            if cache_path.exists():
-                cache_path.unlink(missing_ok=True)
-
-
     def clear_cache(self) -> None:
-        """Clear all campaign cache files."""
-        cache_dir = Path(".cache")
-        if cache_dir.exists():
-            # Remove all cache files with the campaigns: prefix
-            for cache_file in cache_dir.glob("*.cache"):
-                cache_file.unlink(missing_ok=True)
+        """Clear all campaign cache files (namespace-aware)."""
+        self._cache.clear()
 
     def get_all_platforms(self, protocol: str) -> List[Platform]:
         """
@@ -464,7 +419,10 @@ class CampaignService:
 
             # Skip future periods - only fetch periods that have already occurred
             if epoch > current_time:
-                print(f"  Skipping future period {i} (epoch {epoch}) for campaign {campaign_id}")
+                _logger.debug(
+                    "Skipping future period %d (epoch %d) for campaign %d",
+                    i, epoch, campaign_id
+                )
                 continue
 
             try:
@@ -483,13 +441,16 @@ class CampaignService:
                     "point_data_inserted": False,
                 })
             except Exception as e:
-                print(f"Warning: Failed to fetch period {i} (epoch {epoch}) for campaign {campaign_id}: {str(e)[:50]}")
+                _logger.warning(
+                    "Failed to fetch period %d (epoch %d) for campaign %d: %s",
+                    i, epoch, campaign_id, str(e)[:50]
+                )
                 # Continue fetching other periods even if one fails
                 continue
 
         return periods
 
-    async def _fetch_single_campaign_safe(
+    async def _fetch_single_campaign(
         self,
         web3_service: Web3Service,
         bytecode_data: Dict[str, Any],
@@ -525,7 +486,10 @@ class CampaignService:
                     return campaigns[0]
             except Exception as e:
                 if attempt == max_retries - 1:
-                    print(f"Failed to fetch campaign {campaign_id} after {max_retries} attempts: {str(e)[:50]}")
+                    _logger.warning(
+                        "Failed to fetch campaign %d after %d attempts: %s",
+                        campaign_id, max_retries, str(e)[:50]
+                    )
                 else:
                     # Exponential backoff: 0.5s, 1s, 2s, 4s, 8s
                     await asyncio.sleep(0.5 * (2 ** attempt))
@@ -587,7 +551,10 @@ class CampaignService:
                 )
 
                 if retry_count == 0 and not is_not_found_error and not is_truncation_for_logging:
-                    print(f"Batch fetch error [{start_idx}:{start_idx+limit}]: {error_str[:100]}")
+                    _logger.debug(
+                        "Batch fetch error [%d:%d]: %s",
+                        start_idx, start_idx + limit, error_str[:100]
+                    )
                 elif retry_count == 0 and (is_not_found_error or is_truncation_for_logging) and limit == 1:
                     # Silent skip for single campaign not found or truncated (expected)
                     pass
@@ -717,7 +684,7 @@ class CampaignService:
             tasks = []
 
             async def check_batch(start: int, size: int) -> List[int]:
-                try:
+                async def _do_rpc_call():
                     tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
                         {"bytecode": active_ids_bytecode},
                         platform_address,
@@ -733,7 +700,23 @@ class CampaignService:
                         self.contract_reader.decode_active_campaign_ids(result)
                     )
                     return batch_data["campaign_ids"]
-                except Exception:
+
+                try:
+                    from votemarket_toolkit.shared.retry import retry_async_operation
+                    return await retry_async_operation(
+                        _do_rpc_call,
+                        max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                        base_delay=RPC_RETRY_CONFIG.base_delay,
+                        max_delay=RPC_RETRY_CONFIG.max_delay,
+                        operation_name=f"active_ids_batch_{start}",
+                    )
+                except Exception as e:
+                    _logger.debug(
+                        "Failed to fetch active campaign IDs batch (start=%d, size=%d): %s",
+                        start,
+                        size,
+                        e,
+                    )
                     return []
 
             for start_id in range(0, total_campaigns, batch_size):
@@ -743,7 +726,7 @@ class CampaignService:
             for batch_ids in results:
                 active_campaign_ids.extend(batch_ids)
         else:
-            try:
+            async def _do_single_batch_rpc():
                 tx = self.contract_reader.build_get_active_campaign_ids_constructor_tx(
                     {"bytecode": active_ids_bytecode},
                     platform_address,
@@ -758,8 +741,23 @@ class CampaignService:
                 batch_data = self.contract_reader.decode_active_campaign_ids(
                     result
                 )
-                active_campaign_ids = batch_data["campaign_ids"]
-            except Exception:
+                return batch_data["campaign_ids"]
+
+            try:
+                from votemarket_toolkit.shared.retry import retry_async_operation
+                active_campaign_ids = await retry_async_operation(
+                    _do_single_batch_rpc,
+                    max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                    base_delay=RPC_RETRY_CONFIG.base_delay,
+                    max_delay=RPC_RETRY_CONFIG.max_delay,
+                    operation_name="active_ids_all",
+                )
+            except Exception as e:
+                _logger.debug(
+                    "Failed to fetch active campaign IDs for platform %s: %s",
+                    platform_address,
+                    e,
+                )
                 return []
 
         return active_campaign_ids
@@ -783,7 +781,7 @@ class CampaignService:
 
         async def fetch_one(campaign_id: int) -> Optional[Dict]:
             async with semaphore:
-                try:
+                async def _do_rpc_call():
                     tx = self.contract_reader.build_get_campaigns_with_periods_constructor_tx(
                         bytecode_data,
                         [platform_address, campaign_id, 1],
@@ -797,7 +795,23 @@ class CampaignService:
                         result
                     )
                     return campaigns[0] if campaigns else None
-                except Exception:
+
+                try:
+                    from votemarket_toolkit.shared.retry import retry_async_operation
+                    return await retry_async_operation(
+                        _do_rpc_call,
+                        max_attempts=RPC_RETRY_CONFIG.max_attempts,
+                        base_delay=RPC_RETRY_CONFIG.base_delay,
+                        max_delay=RPC_RETRY_CONFIG.max_delay,
+                        operation_name=f"campaign_{campaign_id}",
+                    )
+                except Exception as e:
+                    _logger.debug(
+                        "Failed to fetch campaign %d from %s: %s",
+                        campaign_id,
+                        platform_address,
+                        e,
+                    )
                     return None
 
         tasks = [fetch_one(cid) for cid in campaign_ids]
@@ -812,7 +826,7 @@ class CampaignService:
         check_proofs: bool = False,
         parallel_requests: int = DEFAULT_PARALLEL_REQUESTS,
         active_only: bool = False,
-    ) -> List[Campaign]:
+    ) -> Result[List[Campaign]]:
         """
         Get campaigns with periods and optional proof checking.
 
@@ -839,7 +853,8 @@ class CampaignService:
             parallel_requests: Maximum number of concurrent requests (default 32)
 
         Returns:
-            List[Campaign]: List of campaign objects, each containing:
+            Result[List[Campaign]]: Success with campaign list, or failure with error.
+            Each campaign contains:
                 - campaign: Core campaign data (gauge, manager, rewards, etc.)
                 - periods: List of period data with timestamps and amounts
                 - remaining_periods: Number of undistributed periods
@@ -847,30 +862,40 @@ class CampaignService:
                 - status_info: Calculated lifecycle status
                 - point_data_inserted (if check_proofs=True): Proof status
 
-        Raises:
-            Exception: If web3 service unavailable or contract calls fail
-
         Example:
-            >>> campaigns = await service.get_campaigns(
+            >>> result = await service.get_campaigns(
             ...     chain_id=1,
             ...     platform_address="0x...",
             ...     check_proofs=True
             ... )
-            >>> for campaign in campaigns:
-            >>>     print(f"Campaign {campaign['id']}: {campaign['status_info']['status']}")
+            >>> if result.success:
+            ...     for campaign in result.data:
+            ...         print(f"Campaign {campaign['id']}: {campaign['status_info']['status']}")
         """
         # Check cache for full campaign fetches (not specific IDs or proof checks)
         if campaign_id is None and not check_proofs:
-            cache_key = f"campaigns:{chain_id}:{platform_address}"
-            cached_result = self._get_ttl_cache_key(cache_key)
+            cache_key = f"{chain_id}:{platform_address}"
+            cached_result = self._cache.get(cache_key)
             if cached_result is not None:
-                return cached_result
+                return Result.ok(cached_result)
+
+        context = {
+            "chain_id": chain_id,
+            "platform": platform_address,
+            "campaign_id": campaign_id,
+        }
 
         try:
             web3_service = self.get_web3_service(chain_id)
             if not web3_service:
-                print(f"Web3 service not available for chain {chain_id}")
-                return []
+                return Result.fail(
+                    ProcessingError(
+                        source="campaign_service",
+                        message=f"Web3 service not available for chain {chain_id}",
+                        severity=ErrorSeverity.ERROR,
+                        context=context,
+                    )
+                )
 
             platform_contract = web3_service.get_contract(
                 to_checksum_address(platform_address.lower()),
@@ -887,7 +912,7 @@ class CampaignService:
                     platform_contract.functions.campaignCount().call()
                 )
                 if total_campaigns == 0:
-                    return []
+                    return Result.ok([])
 
             # Load bytecode once for batch fetching
             # This bytecode deploys a temporary contract that reads multiple campaigns
@@ -907,7 +932,7 @@ class CampaignService:
             )
 
             # Validate we got all campaigns (unless fetching single campaign)
-            chain_name = CHAIN_NAMES.get(chain_id, f"Chain {chain_id}")
+            chain_name = registry.get_chain_name(chain_id)
 
             # Track whether fetch was complete for cache decision
             has_missing_campaigns = False
@@ -969,7 +994,7 @@ class CampaignService:
                     if missing_ids:
                         print(f"   Attempting recovery of {len(missing_ids)} missing campaigns...")
                         recovery_tasks = [
-                            self._fetch_single_campaign_safe(
+                            self._fetch_single_campaign(
                                 web3_service, bytecode_data, platform_address, cid
                             )
                             for cid in missing_ids
@@ -1093,10 +1118,10 @@ class CampaignService:
             )
 
             if should_cache:
-                cache_key = f"campaigns:{chain_id}:{platform_address}"
+                cache_key = f"{chain_id}:{platform_address}"
                 if active_only:
                     cache_key += ":active"
-                self._set_ttl_cache(cache_key, all_campaigns)
+                self._cache.set(cache_key, all_campaigns)
             elif campaign_id is None and all_campaigns and (errors_count > 0 or has_missing_campaigns):
                 # Log why we're not caching
                 reasons = []
@@ -1106,11 +1131,18 @@ class CampaignService:
                     reasons.append("missing campaigns")
                 print(f"   Skipping cache write due to: {', '.join(reasons)}")
 
-            return all_campaigns
+            return Result.ok(all_campaigns)
 
         except Exception as e:
-            print(f"Error getting campaigns: {str(e)}")
-            return []
+            return Result.fail(
+                ProcessingError(
+                    source="campaign_service",
+                    message=f"Error getting campaigns: {str(e)}",
+                    severity=ErrorSeverity.ERROR,
+                    context=context,
+                    exception=e,
+                )
+            )
 
     async def get_active_campaigns(
         self,
@@ -1118,7 +1150,7 @@ class CampaignService:
         platform_address: str,
         parallel_requests: int = DEFAULT_PARALLEL_REQUESTS,
         check_proofs: bool = False,
-    ) -> List[Campaign]:
+    ) -> Result[List[Campaign]]:
         """
         Get only active campaigns using a two-phase optimized approach.
 
@@ -1135,21 +1167,33 @@ class CampaignService:
             check_proofs: Whether to check proof insertion status
 
         Returns:
-            List of active campaigns with full details
+            Result[List[Campaign]]: Success with active campaigns, or failure with error
 
         Example:
             >>> service = CampaignService()
-            >>> active = await service.get_active_campaigns(
+            >>> result = await service.get_active_campaigns(
             ...     chain_id=42161,
             ...     platform_address="0x8c2c..."
             ... )
-            >>> print(f"Found {len(active)} active campaigns")
+            >>> if result.success:
+            ...     print(f"Found {len(result.data)} active campaigns")
         """
+        context = {
+            "chain_id": chain_id,
+            "platform": platform_address,
+        }
+
         try:
             web3_service = self.get_web3_service(chain_id)
             if not web3_service:
-                print(f"Web3 service not available for chain {chain_id}")
-                return []
+                return Result.fail(
+                    ProcessingError(
+                        source="campaign_service",
+                        message=f"Web3 service not available for chain {chain_id}",
+                        severity=ErrorSeverity.ERROR,
+                        context=context,
+                    )
+                )
 
             platform_contract = web3_service.get_contract(
                 to_checksum_address(platform_address.lower()),
@@ -1161,7 +1205,7 @@ class CampaignService:
                 platform_contract.functions.campaignCount().call()
             )
             if total_campaigns == 0:
-                return []
+                return Result.ok([])
 
             # Phase 1: Get active campaign IDs via helper
             active_campaign_ids = await self._get_active_campaign_ids(
@@ -1171,7 +1215,7 @@ class CampaignService:
             )
 
             if not active_campaign_ids:
-                return []
+                return Result.ok([])
 
             # Phase 2: Fetch full details only for active campaigns
             active_campaigns = await self._fetch_campaigns_by_ids(
@@ -1190,11 +1234,18 @@ class CampaignService:
                     active_campaigns, web3_service, platform_contract
                 )
 
-            return active_campaigns
+            return Result.ok(active_campaigns)
 
         except Exception as e:
-            print(f"Error getting active campaigns: {str(e)}")
-            return []
+            return Result.fail(
+                ProcessingError(
+                    source="campaign_service",
+                    message=f"Error getting active campaigns: {str(e)}",
+                    severity=ErrorSeverity.ERROR,
+                    context=context,
+                    exception=e,
+                )
+            )
 
     async def get_campaigns_by_manager(
         self,
@@ -1244,36 +1295,36 @@ class CampaignService:
         for platform in platforms:
             chain_id = platform["chain_id"]
             platform_address = platform["address"]
-            chain_name = CHAIN_NAMES.get(chain_id, f"Chain {chain_id}")
+            chain_name = registry.get_chain_name(chain_id)
 
-            try:
-                # Fetch all campaigns (will use cache if available)
-                all_campaigns = await self.get_campaigns(
-                    chain_id=chain_id,
-                    platform_address=platform_address,
-                    check_proofs=False,
+            # Fetch all campaigns (will use cache if available)
+            result = await self.get_campaigns(
+                chain_id=chain_id,
+                platform_address=platform_address,
+                check_proofs=False,
+            )
+
+            if not result.success:
+                _logger.warning(
+                    "Error fetching from %s: %s",
+                    chain_name,
+                    result.errors[0].message if result.errors else "Unknown error",
                 )
+                continue
 
-                # Filter by manager
-                manager_campaigns = [
-                    c
-                    for c in all_campaigns
-                    if c.get("campaign", {}).get("manager", "").lower()
-                    == manager_lower
-                ]
+            all_campaigns = result.data
 
-                if manager_campaigns:
-                    platform_key = f"{chain_name} ({platform_address[:6]}...{platform_address[-4:]})"
-                    results[platform_key] = manager_campaigns
+            # Filter by manager
+            manager_campaigns = [
+                c
+                for c in all_campaigns
+                if c.get("campaign", {}).get("manager", "").lower()
+                == manager_lower
+            ]
 
-            except Exception as e:
-                # Use repr() to avoid UTF-8 encoding issues with exception messages
-                # that may contain binary data
-                try:
-                    error_msg = str(e)
-                except (UnicodeDecodeError, UnicodeEncodeError):
-                    error_msg = repr(e)
-                print(f"Error fetching from {chain_name}: {error_msg}")
+            if manager_campaigns:
+                platform_key = f"{chain_name} ({platform_address[:6]}...{platform_address[-4:]})"
+                results[platform_key] = manager_campaigns
 
         return results
 
@@ -1322,12 +1373,13 @@ class CampaignService:
             )
 
         # Fetch active campaigns
-        return await self.get_active_campaigns(
+        result = await self.get_active_campaigns(
             chain_id=chain_id,
             platform_address=platform_address,
             parallel_requests=parallel_requests,
             check_proofs=check_proofs,
         )
+        return result.unwrap()
 
     def _enrich_status_info(self, campaigns: List[Dict]) -> None:
         """

@@ -61,13 +61,18 @@ async def check_user_campaign_status(
 
     try:
         # Get campaign with proof status
-        campaigns = await service.get_campaigns(
+        result = await service.get_campaigns(
             chain_id=chain_id,
             platform_address=platform,
             campaign_id=campaign_id,
             check_proofs=True,  # Important: enables proof checking
         )
 
+        if not result.success:
+            print(f"  ❌ Error: {result.errors[0].message if result.errors else 'Unknown error'}")
+            return
+
+        campaigns = result.data
         if not campaigns:
             print(f"  ❌ Campaign #{campaign_id} not found")
             return

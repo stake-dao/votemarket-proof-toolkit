@@ -47,9 +47,6 @@ Repository = "https://github.com/stake-dao/votemarket-proof-toolkit"
 Issues = "https://github.com/stake-dao/votemarket-proof-toolkit/issues"
 Documentation = "https://github.com/stake-dao/votemarket-proof-toolkit/tree/main/docs"
 
-[project.scripts]
-votemarket = "votemarket_toolkit.cli:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
