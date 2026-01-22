@@ -2,6 +2,8 @@ import argparse
 import asyncio
 import json
 import os
+import sys
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
@@ -25,6 +27,17 @@ console = Console()
 campaign_service = CampaignService()
 vm_proofs = VoteMarketProofs(1)
 vm_eligibility = EligibilityService(1)
+
+# Retry configuration for gauge validation
+VALIDATION_MAX_RETRIES = 3
+VALIDATION_BASE_DELAY = 2.0  # seconds
+
+# Track processing results for summary
+processing_stats: Dict[str, Dict[str, Any]] = {
+    "processed_gauges": [],
+    "skipped_invalid_gauges": [],
+    "failed_validation_gauges": [],  # RPC/network failures - these are problems
+}
 
 
 def is_campaign_active(campaign: dict) -> bool:
@@ -255,8 +268,51 @@ async def process_protocol(
                 gauge_address = campaign["campaign"]["gauge"].lower()
                 listed_users = campaign.get("addresses", [])
 
-                validation = vm_proofs.is_valid_gauge(protocol, gauge_address)
-                if not validation.success or not validation.data.is_valid:
+                # Validate gauge with script-level retry on RPC failures
+                validation = None
+                last_error = None
+                for attempt in range(VALIDATION_MAX_RETRIES):
+                    validation = vm_proofs.is_valid_gauge(protocol, gauge_address)
+                    if validation.success:
+                        break
+                    # RPC failure - retry with exponential backoff
+                    last_error = validation.error.message if validation.error else "Unknown error"
+                    if attempt < VALIDATION_MAX_RETRIES - 1:
+                        delay = VALIDATION_BASE_DELAY * (2 ** attempt)
+                        console.print(
+                            f"[yellow]Validation attempt {attempt + 1}/{VALIDATION_MAX_RETRIES} failed for gauge "
+                            f"[magenta]{gauge_address}[/magenta]: {last_error}. Retrying in {delay}s...[/yellow]"
+                        )
+                        time.sleep(delay)
+
+                # Handle validation failures explicitly - never skip silently
+                if not validation.success:
+                    # All retries exhausted - validation call failed
+                    console.print(
+                        f"[bold red]VALIDATION FAILED[/bold red] (after {VALIDATION_MAX_RETRIES} attempts) "
+                        f"for gauge [magenta]{gauge_address}[/magenta]: {last_error}"
+                    )
+                    processing_stats["failed_validation_gauges"].append({
+                        "gauge": gauge_address,
+                        "protocol": protocol,
+                        "platform": platform_address,
+                        "campaign_id": campaign["id"],
+                        "error": last_error,
+                    })
+                    continue
+
+                if not validation.data.is_valid:
+                    # Gauge is legitimately invalid (not in gauge controller)
+                    console.print(
+                        f"[yellow]Skipping invalid gauge[/yellow] [magenta]{gauge_address}[/magenta]: {validation.data.reason}"
+                    )
+                    processing_stats["skipped_invalid_gauges"].append({
+                        "gauge": gauge_address,
+                        "protocol": protocol,
+                        "platform": platform_address,
+                        "campaign_id": campaign["id"],
+                        "reason": validation.data.reason,
+                    })
                     continue
 
                 composite_campaign_id = (
@@ -298,6 +354,13 @@ async def process_protocol(
                     gauge_votes_cache[gauge_address] = {
                         "users": gauge_vote_data["users"]
                     }
+                    # Track successful processing
+                    processing_stats["processed_gauges"].append({
+                        "gauge": gauge_address,
+                        "protocol": protocol,
+                        "platform": platform_address,
+                        "users_count": len(gauge_vote_data["users"]),
+                    })
                 else:
                     gauge_proof_data = gauge_proofs_cache[gauge_address]
                     # Merge vote data if needed.
@@ -433,12 +496,66 @@ def write_protocol_data(
         json.dump(votes_index_data, f)
 
 
-async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
-    # Clear cache to ensure fresh campaign data
+def print_processing_summary() -> bool:
+    """
+    Print a summary of processing results.
 
+    Returns:
+        True if there were validation failures (script should exit with error).
+    """
+    console.print("\n" + "=" * 70)
+    console.print("[bold]PROCESSING SUMMARY[/bold]")
+    console.print("=" * 70)
+
+    processed = processing_stats["processed_gauges"]
+    skipped = processing_stats["skipped_invalid_gauges"]
+    failed = processing_stats["failed_validation_gauges"]
+
+    console.print(f"\n[green]✓ Processed gauges:[/green] {len(processed)}")
+    for g in processed:
+        console.print(f"  - {g['gauge']} ({g['protocol']}, {g['users_count']} users)")
+
+    if skipped:
+        console.print(f"\n[yellow]⊘ Skipped invalid gauges:[/yellow] {len(skipped)}")
+        for g in skipped:
+            console.print(f"  - {g['gauge']} ({g['protocol']}): {g['reason']}")
+
+    if failed:
+        console.print(f"\n[bold red]✗ VALIDATION FAILURES:[/bold red] {len(failed)}")
+        console.print("[red]These gauges could not be validated due to RPC/network errors![/red]")
+        for g in failed:
+            console.print(f"  - {g['gauge']} ({g['protocol']}, campaign {g['campaign_id']})")
+            console.print(f"    Error: {g['error']}")
+
+    console.print("\n" + "=" * 70)
+
+    if failed:
+        console.print(
+            f"[bold red]ERROR: {len(failed)} gauge(s) failed validation![/bold red]"
+        )
+        console.print(
+            "[red]Proof generation may be incomplete. Review failures above.[/red]"
+        )
+        return True
+
+    return False
+
+
+async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> bool:
+    """
+    Main entry point for active proofs generation.
+
+    Returns:
+        True if there were validation failures.
+    """
+    # Reset stats for this run
+    processing_stats["processed_gauges"] = []
+    processing_stats["skipped_invalid_gauges"] = []
+    processing_stats["failed_validation_gauges"] = []
+
+    # Clear cache to ensure fresh campaign data
     campaign_service.clear_cache()
 
-    
     console.print(
         f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
     )
@@ -453,9 +570,13 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int):
             protocol, protocol_data, current_epoch
         )
         write_protocol_data(protocol.lower(), current_epoch, processed_data)
+
     console.print(
         "[bold green]Finished generating active proofs for all protocols[/bold green]"
     )
+
+    # Print summary and check for failures
+    return print_processing_summary()
 
 
 if __name__ == "__main__":
@@ -475,7 +596,14 @@ if __name__ == "__main__":
     with open(args.all_platforms_file, "r") as f:
         all_protocols_data = json.load(f)
 
-    asyncio.run(main(all_protocols_data, args.current_epoch))
-    console.print(
-        "[bold green]Active proofs generation script completed[/bold green]"
-    )
+    had_failures = asyncio.run(main(all_protocols_data, args.current_epoch))
+
+    if had_failures:
+        console.print(
+            "[bold red]Active proofs generation completed with ERRORS[/bold red]"
+        )
+        sys.exit(1)
+    else:
+        console.print(
+            "[bold green]Active proofs generation completed successfully[/bold green]"
+        )
