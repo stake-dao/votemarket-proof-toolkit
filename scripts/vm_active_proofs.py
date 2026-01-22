@@ -276,7 +276,7 @@ async def process_protocol(
                     if validation.success:
                         break
                     # RPC failure - retry with exponential backoff
-                    last_error = validation.error.message if validation.error else "Unknown error"
+                    last_error = validation.errors[0].message if validation.errors else "Unknown error"
                     if attempt < VALIDATION_MAX_RETRIES - 1:
                         delay = VALIDATION_BASE_DELAY * (2 ** attempt)
                         console.print(
