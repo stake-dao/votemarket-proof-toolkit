@@ -22,6 +22,7 @@ from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.logging import get_logger
 from votemarket_toolkit.shared.services.http_client import get_async_client
+from votemarket_toolkit.shared.services.web3_service import Web3Service
 
 
 class PeriodEligibilityResult(TypedDict):
@@ -32,6 +33,7 @@ class PeriodEligibilityResult(TypedDict):
     status: str
     has_proof: bool
     claimable: bool
+    already_claimed: bool
     reason: str
 
 
@@ -61,6 +63,21 @@ class UserEligibilityService:
     GITHUB_API_BASE = (
         "https://api.github.com/repos/stake-dao/api/contents/api/votemarket"
     )
+
+    # ABI for checking claim status
+    CLAIMED_ABI = [
+        {
+            "inputs": [
+                {"name": "campaignId", "type": "uint256"},
+                {"name": "epoch", "type": "uint256"},
+                {"name": "account", "type": "address"},
+            ],
+            "name": "totalClaimedByAccount",
+            "outputs": [{"name": "", "type": "uint256"}],
+            "stateMutability": "view",
+            "type": "function",
+        }
+    ]
 
     # Concurrency limits
     MAX_CONCURRENT_REQUESTS = 50  # Process up to 50 requests in parallel
@@ -165,6 +182,7 @@ class UserEligibilityService:
                     "status": request["period_status"],
                     "has_proof": False,
                     "claimable": False,
+                    "already_claimed": False,
                     "reason": "Proofs not yet available",
                 }
 
@@ -185,6 +203,50 @@ class UserEligibilityService:
         tasks = [check_one(req) for req in requests]
         return await asyncio.gather(*tasks)
 
+    def _check_claim_status_batch(
+        self,
+        claims_to_check: List[Dict],
+        chain_id: int,
+        platform_address: str,
+        user_address: str,
+    ) -> Dict[str, int]:
+        """
+        Check claim status for multiple (campaign_id, epoch) pairs.
+
+        Returns a dict mapping "campaign_id:epoch" to claimed amount.
+        """
+        if not claims_to_check:
+            return {}
+
+        web3_service = Web3Service.get_instance(chain_id)
+        contract = web3_service.w3.eth.contract(
+            address=to_checksum_address(platform_address),
+            abi=self.CLAIMED_ABI,
+        )
+
+        claimed_amounts: Dict[str, int] = {}
+
+        for claim in claims_to_check:
+            campaign_id = claim["campaign_id"]
+            epoch = claim["epoch"]
+            key = f"{campaign_id}:{epoch}"
+
+            try:
+                amount = contract.functions.totalClaimedByAccount(
+                    campaign_id, epoch, user_address
+                ).call()
+                claimed_amounts[key] = amount
+            except Exception as exc:
+                self._log.debug(
+                    "Failed to check claim status for campaign %d epoch %d: %s",
+                    campaign_id,
+                    epoch,
+                    str(exc),
+                )
+                claimed_amounts[key] = 0
+
+        return claimed_amounts
+
     async def check_campaigns_batch(
         self,
         campaigns: List[dict],
@@ -192,8 +254,18 @@ class UserEligibilityService:
         protocol: str,
         chain_id: int,
         platform_address: str,
+        check_claimed: bool = True,
     ) -> List[CampaignEligibilityResult]:
-        """Check eligibility for multiple campaigns in parallel."""
+        """Check eligibility for multiple campaigns in parallel.
+
+        Args:
+            campaigns: List of campaign data dictionaries
+            user_address: User address to check eligibility for
+            protocol: Protocol name (e.g., "curve")
+            chain_id: Chain ID
+            platform_address: Platform contract address
+            check_claimed: If True, filter out already claimed periods
+        """
         current_time = int(datetime.now(timezone.utc).timestamp())
         eligible_campaigns = []
 
@@ -247,6 +319,43 @@ class UserEligibilityService:
         )
         results = await self._check_proof_batch(all_requests)
 
+        # Check claim status for periods with proofs
+        claimed_amounts: Dict[str, int] = {}
+        if check_claimed:
+            claims_to_check = []
+            for i, result in enumerate(results):
+                if result["has_proof"]:
+                    request = all_requests[i]
+                    claims_to_check.append(
+                        {
+                            "campaign_id": request["campaign"]["id"],
+                            "epoch": result["epoch"],
+                        }
+                    )
+
+            if claims_to_check:
+                self._log.info(
+                    "Checking claim status for %d periods...",
+                    len(claims_to_check),
+                )
+                claimed_amounts = self._check_claim_status_batch(
+                    claims_to_check,
+                    chain_id,
+                    platform_address,
+                    user_address,
+                )
+
+                # Update results with claim status
+                for i, result in enumerate(results):
+                    if result["has_proof"]:
+                        request = all_requests[i]
+                        key = f"{request['campaign']['id']}:{result['epoch']}"
+                        amount = claimed_amounts.get(key, 0)
+                        if amount > 0:
+                            result["already_claimed"] = True
+                            result["claimable"] = False
+                            result["reason"] = "Already claimed"
+
         # Group results by campaign
         for campaign_id, request_indices in campaign_request_map.items():
             campaign = next(c for c in campaigns if c["id"] == campaign_id)
@@ -265,6 +374,7 @@ class UserEligibilityService:
                             "status": "Future",
                             "has_proof": False,
                             "claimable": False,
+                            "already_claimed": False,
                             "reason": "Period hasn't started yet",
                         }
                     )
@@ -308,9 +418,18 @@ class UserEligibilityService:
         chain_id: Optional[int] = None,
         gauge_address: Optional[str] = None,
         status_filter: str = "all",
+        check_claimed: bool = True,
     ) -> Dict:
         """
         Fast check of user eligibility using parallel processing.
+
+        Args:
+            user: User address to check
+            protocol: Protocol name (e.g., "curve", "balancer")
+            chain_id: Optional chain ID to filter platforms
+            gauge_address: Optional gauge address to filter campaigns
+            status_filter: Filter campaigns by status ("all", "active", "closed")
+            check_claimed: If True, filter out already claimed periods (default True)
         """
         user = to_checksum_address(user)
         protocol = protocol.lower()
@@ -422,6 +541,7 @@ class UserEligibilityService:
                     protocol=protocol,
                     chain_id=chain_id,
                     platform_address=platform_address,
+                    check_claimed=check_claimed,
                 )
 
                 # Update results
