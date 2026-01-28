@@ -16,6 +16,14 @@ import time
 from functools import wraps
 from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
 
+from web3.exceptions import (
+    Web3Exception,
+    ContractLogicError,
+    BadFunctionCallOutput,
+    TransactionNotFound,
+    BlockNotFound,
+)
+
 from votemarket_toolkit.shared.exceptions import RetryableException
 
 T = TypeVar("T")
@@ -23,11 +31,18 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 # Default retryable exceptions (network/RPC related + RetryableException hierarchy)
+# Includes Web3 exceptions to ensure RPC failures are retried
 DEFAULT_RETRYABLE_EXCEPTIONS: Tuple[Type[Exception], ...] = (
     RetryableException,  # Includes VoteMarketProofsException, APIException
     ConnectionError,
     TimeoutError,
     OSError,
+    Web3Exception,  # Base class for most web3 errors
+    ContractLogicError,  # Contract reverts
+    BadFunctionCallOutput,  # Malformed RPC responses
+    TransactionNotFound,
+    BlockNotFound,
+    Exception,  # Catch-all for any other RPC issues - ensures we always retry
 )
 
 
