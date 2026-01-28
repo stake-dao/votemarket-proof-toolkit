@@ -28,9 +28,9 @@ campaign_service = CampaignService()
 vm_proofs = VoteMarketProofs(1)
 vm_eligibility = EligibilityService(1)
 
-# Retry configuration for gauge validation
-VALIDATION_MAX_RETRIES = 3
-VALIDATION_BASE_DELAY = 2.0  # seconds
+# Retry configuration for gauge validation - more aggressive for completeness
+VALIDATION_MAX_RETRIES = 5
+VALIDATION_BASE_DELAY = 3.0  # seconds
 
 # Track processing results for summary
 processing_stats: Dict[str, Dict[str, Any]] = {
@@ -77,9 +77,12 @@ async def process_gauge(
     current_epoch: int,
     block_number: int,
     user_proofs_cache: Dict[str, Any],
+    max_retries: int = 5,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Process a gauge by generating its proof and gathering vote details.
+
+    Resilient version: retries on failure, continues processing users even if some fail.
 
     Returns:
       - gauge_proof_data: containing proofs (e.g. point_data_proof and storage proofs for each user).
@@ -95,13 +98,30 @@ async def process_gauge(
         f"Found [yellow]{len(gauge_votes.votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]"
     )
 
+    # Retry gauge proof generation with longer delays
     console.print("Generating point data proof")
-    gauge_proofs = vm_proofs.get_gauge_proof(
-        protocol=protocol,
-        gauge_address=gauge_address,
-        current_epoch=current_epoch,
-        block_number=block_number,
-    ).unwrap()
+    gauge_proofs_result = None
+    for attempt in range(max_retries):
+        gauge_proofs_result = vm_proofs.get_gauge_proof(
+            protocol=protocol,
+            gauge_address=gauge_address,
+            current_epoch=current_epoch,
+            block_number=block_number,
+            max_retries=3,  # Internal retries per attempt
+        )
+        if gauge_proofs_result.success:
+            break
+        delay = 2.0 * (2 ** attempt)  # Exponential backoff: 2, 4, 8, 16, 32 seconds
+        console.print(
+            f"[yellow]Gauge proof attempt {attempt + 1}/{max_retries} failed. Retrying in {delay}s...[/yellow]"
+        )
+        time.sleep(delay)
+
+    if not gauge_proofs_result.success:
+        error_msg = gauge_proofs_result.errors[0].message if gauge_proofs_result.errors else "Unknown error"
+        raise Exception(f"Failed to generate gauge proof after {max_retries} attempts: {error_msg}")
+
+    gauge_proofs = gauge_proofs_result.data
     gauge_proof_data = {
         "point_data_proof": "0x" + gauge_proofs["point_data_proof"].hex(),
         "users": {},
@@ -111,14 +131,27 @@ async def process_gauge(
     console.print(
         f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
     )
-    eligible_users_result = await vm_eligibility.get_eligible_users(
-        protocol, gauge_address, current_epoch, block_number
-    )
-    eligible_users = eligible_users_result.unwrap()
+
+    # Retry eligibility check
+    eligible_users = []
+    for attempt in range(max_retries):
+        eligible_users_result = await vm_eligibility.get_eligible_users(
+            protocol, gauge_address, current_epoch, block_number
+        )
+        if eligible_users_result.success:
+            eligible_users = eligible_users_result.data or []
+            break
+        delay = 2.0 * (2 ** attempt)
+        console.print(
+            f"[yellow]Eligibility check attempt {attempt + 1}/{max_retries} failed. Retrying in {delay}s...[/yellow]"
+        )
+        time.sleep(delay)
+
     console.print(
         f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]"
     )
 
+    failed_users = []
     for user in eligible_users:
         user_address = user["user"].lower()
         cache_key = f"{gauge_address}:{user_address}"
@@ -126,12 +159,33 @@ async def process_gauge(
             console.print(
                 f"Generating proof for user: [cyan]{user_address}[/cyan]"
             )
-            user_proofs = vm_proofs.get_user_proof(
-                protocol=protocol,
-                gauge_address=gauge_address,
-                user=user_address,
-                block_number=block_number,
-            ).unwrap()
+            # Retry user proof with resilience - don't let one user fail the whole gauge
+            user_proofs_result = None
+            for attempt in range(max_retries):
+                user_proofs_result = vm_proofs.get_user_proof(
+                    protocol=protocol,
+                    gauge_address=gauge_address,
+                    user=user_address,
+                    block_number=block_number,
+                    max_retries=3,
+                )
+                if user_proofs_result.success:
+                    break
+                delay = 1.0 * (2 ** attempt)  # 1, 2, 4, 8, 16 seconds
+                if attempt < max_retries - 1:
+                    console.print(
+                        f"[yellow]User proof attempt {attempt + 1}/{max_retries} for {user_address[:10]}... failed. Retrying in {delay}s...[/yellow]"
+                    )
+                    time.sleep(delay)
+
+            if not user_proofs_result.success:
+                console.print(
+                    f"[red]Failed to generate proof for user {user_address} after {max_retries} attempts. Skipping user.[/red]"
+                )
+                failed_users.append(user_address)
+                continue  # Skip this user but continue with others
+
+            user_proofs = user_proofs_result.data
             user_proofs_cache[cache_key] = {
                 "storage_proof": "0x" + user_proofs["storage_proof"].hex(),
                 "last_vote": user["last_vote"],
@@ -151,6 +205,12 @@ async def process_gauge(
             "power": proof_info["power"],
             "end": proof_info["end"],
         }
+
+    if failed_users:
+        console.print(
+            f"[yellow]Warning: {len(failed_users)} user(s) failed for gauge {gauge_address}[/yellow]"
+        )
+
     return gauge_proof_data, gauge_vote_data
 
 
@@ -159,22 +219,44 @@ def process_listed_users(
     gauge_address: str,
     block_number: int,
     listed_users: List[str],
+    max_retries: int = 5,
 ) -> Dict[str, Any]:
     """
     Process the listed users for a campaign by generating a storage proof.
     (Listed users do not include raw vote details.)
+
+    Resilient version: retries on failure, skips individual users if they consistently fail.
     """
     listed_users_data = {}
     for listed_user in listed_users:
         console.print(
             f"Generating proof for listed user: [cyan]{listed_user}[/cyan]"
         )
-        user_proofs = vm_proofs.get_user_proof(
-            protocol=protocol,
-            gauge_address=gauge_address,
-            user=listed_user,
-            block_number=block_number,
-        ).unwrap()
+        user_proofs_result = None
+        for attempt in range(max_retries):
+            user_proofs_result = vm_proofs.get_user_proof(
+                protocol=protocol,
+                gauge_address=gauge_address,
+                user=listed_user,
+                block_number=block_number,
+                max_retries=3,
+            )
+            if user_proofs_result.success:
+                break
+            delay = 1.0 * (2 ** attempt)
+            if attempt < max_retries - 1:
+                console.print(
+                    f"[yellow]Listed user proof attempt {attempt + 1}/{max_retries} for {listed_user[:10]}... failed. Retrying in {delay}s...[/yellow]"
+                )
+                time.sleep(delay)
+
+        if not user_proofs_result.success:
+            console.print(
+                f"[red]Failed to generate proof for listed user {listed_user} after {max_retries} attempts. Skipping.[/red]"
+            )
+            continue  # Skip this user but continue with others
+
+        user_proofs = user_proofs_result.data
         listed_users_data[listed_user.lower()] = {
             "storage_proof": "0x" + user_proofs["storage_proof"].hex()
         }
@@ -221,12 +303,30 @@ async def process_protocol(
         with console.status(
             f"[cyan]Generating gauge controller proof for chain {chain_id}...[/cyan]"
         ):
-            gauge_controller = vm_proofs.get_gauge_proof(
-                protocol=protocol,
-                gauge_address="0x0000000000000000000000000000000000000000",
-                current_epoch=current_epoch,
-                block_number=block_number,
-            ).unwrap()
+            # Retry gauge controller proof with resilience
+            gauge_controller_result = None
+            for attempt in range(5):
+                gauge_controller_result = vm_proofs.get_gauge_proof(
+                    protocol=protocol,
+                    gauge_address="0x0000000000000000000000000000000000000000",
+                    current_epoch=current_epoch,
+                    block_number=block_number,
+                    max_retries=3,
+                )
+                if gauge_controller_result.success:
+                    break
+                delay = 2.0 * (2 ** attempt)
+                console.print(
+                    f"[yellow]Gauge controller proof attempt {attempt + 1}/5 failed. Retrying in {delay}s...[/yellow]"
+                )
+                time.sleep(delay)
+
+            if not gauge_controller_result.success:
+                error_msg = gauge_controller_result.errors[0].message if gauge_controller_result.errors else "Unknown"
+                console.print(f"[red]Failed to generate gauge controller proof for chain {chain_id}: {error_msg}[/red]")
+                continue  # Skip this chain but continue with others
+
+            gauge_controller = gauge_controller_result.data
             output_data["chains"][chain_id]["gauge_controller_proof"] = (
                 "0x" + gauge_controller["gauge_controller_proof"].hex()
             )
@@ -251,9 +351,27 @@ async def process_protocol(
                 f"[magenta]Querying active campaigns for platform {platform_address} on chain {chain_id}...[/magenta]"
             ):
                 campaign_svc = CampaignService()
-                all_campaigns = (await campaign_svc.get_campaigns(
-                    chain_id, platform_address
-                )).unwrap()
+                # Retry campaign fetch with resilience
+                campaigns_result = None
+                all_campaigns = []
+                for attempt in range(5):
+                    campaigns_result = await campaign_svc.get_campaigns(
+                        chain_id, platform_address
+                    )
+                    if campaigns_result.success:
+                        all_campaigns = campaigns_result.data or []
+                        break
+                    delay = 2.0 * (2 ** attempt)
+                    console.print(
+                        f"[yellow]Campaign fetch attempt {attempt + 1}/5 failed for {platform_address}. Retrying in {delay}s...[/yellow]"
+                    )
+                    time.sleep(delay)
+
+                if not campaigns_result.success:
+                    error_msg = campaigns_result.errors[0].message if campaigns_result.errors else "Unknown"
+                    console.print(f"[red]Failed to fetch campaigns for platform {platform_address}: {error_msg}. Skipping platform.[/red]")
+                    continue  # Skip this platform but continue with others
+
                 active_campaigns = [
                     c for c in all_campaigns if is_campaign_active(c)
                 ]
