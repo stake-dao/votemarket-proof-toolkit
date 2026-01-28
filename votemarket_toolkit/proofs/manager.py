@@ -278,21 +278,15 @@ class VoteMarketProofs:
                         )
                     )
                 except Exception as e:
-                    # If getAllActivePools() fails, assume valid with warning
-                    result = Result.ok(
-                        GaugeValidationResult(
-                            is_valid=True,
-                            reason=f"getAllActivePools() failed, assuming valid: {str(e)}",
-                            protocol=protocol,
-                            gauge=gauge,
-                        )
+                    # FAIL-CLOSED: Do NOT assume valid on RPC error
+                    # Invalid gauges could receive proofs, causing financial loss
+                    # Let exception propagate for retry logic to handle
+                    _logger.error(
+                        "Pendle gauge validation RPC failed for %s: %s",
+                        gauge,
+                        str(e),
                     )
-                    result.add_warning(
-                        source="gauge_validation",
-                        message=f"Could not verify Pendle gauge via getAllActivePools(): {str(e)}",
-                        context={"protocol": protocol, "gauge": gauge},
-                    )
-                    return result
+                    raise  # Propagate for retry, outer try/except handles final failure
 
             elif protocol == "yb":
                 if self.yb_gauges is None:

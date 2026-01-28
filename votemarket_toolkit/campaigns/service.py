@@ -362,11 +362,16 @@ class CampaignService:
                                         ),
                                         "block_timestamp": block_header[3],
                                     }
-                                except Exception:
-                                    block_info = {}
+                                except Exception as e:
+                                    _logger.warning(
+                                        "Failed to fetch block info for epoch %d: %s",
+                                        period["timestamp"],
+                                        str(e),
+                                    )
+                                    block_info = {"error": str(e)}
                                 block_cache[period["timestamp"]] = block_info
 
-                            if block_info:
+                            if block_info and "error" not in block_info:
                                 period["block_number"] = block_info.get(
                                     "block_number"
                                 )
@@ -376,11 +381,28 @@ class CampaignService:
                                 period["block_timestamp"] = block_info.get(
                                     "block_timestamp"
                                 )
-                except Exception:
-                    # Skip proof flags for this campaign on error
+                except Exception as e:
+                    # Log the failure and mark campaign as having unknown proof status
+                    campaign_id = campaign.get("id", "unknown")
+                    _logger.warning(
+                        "Failed to fetch proof flags for campaign %s gauge %s: %s",
+                        campaign_id,
+                        gauge,
+                        str(e),
+                    )
+                    # Mark periods as having unknown proof status
+                    for period in campaign.get("periods", []):
+                        period["proof_status_unknown"] = True
                     continue
-        except Exception:
-            # Silently ignore proof status enrichment errors
+        except Exception as e:
+            # Log the failure and mark all campaigns as having unknown proof status
+            _logger.error(
+                "Proof status enrichment failed entirely: %s",
+                str(e),
+            )
+            for campaign in campaigns:
+                for period in campaign.get("periods", []):
+                    period["proof_status_unknown"] = True
             return
 
     # -----------------------------
@@ -1809,9 +1831,17 @@ class CampaignService:
                                         "last_vote": slope_data[2],
                                         "last_update": slope_data[3],
                                     }
-                                except Exception:
-                                    # If we can't fetch the actual data, just skip
-                                    pass
+                                except Exception as e:
+                                    # Log the failure and note in status entry
+                                    _logger.debug(
+                                        "Could not fetch user slope data for user %s "
+                                        "in campaign gauge %s epoch %d: %s",
+                                        user_address,
+                                        gauge,
+                                        epoch,
+                                        str(e),
+                                    )
+                                    status_entry["slope_data_error"] = str(e)
 
                 # Determine if this period is claimable
                 status_entry["is_claimable"] = (
