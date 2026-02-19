@@ -17,6 +17,7 @@ from votemarket_toolkit.shared.results import (
     Result,
 )
 from votemarket_toolkit.shared.retry import retry_sync_operation
+from web3.exceptions import ContractLogicError
 from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils import get_rounded_epoch
 
@@ -318,17 +319,34 @@ class VoteMarketProofs:
                 gauge_controller_contract = self.web3_service.get_contract(
                     gauge_controller_address, "gauge_controller"
                 )
-                gauge_controller_contract.functions.gauge_types(
-                    to_checksum_address(gauge)
-                ).call()
-                return Result.ok(
-                    GaugeValidationResult(
-                        is_valid=True,
-                        reason="gauge_types() call succeeded",
-                        protocol=protocol,
-                        gauge=gauge,
+                try:
+                    gauge_controller_contract.functions.gauge_types(
+                        to_checksum_address(gauge)
+                    ).call()
+                    return Result.ok(
+                        GaugeValidationResult(
+                            is_valid=True,
+                            reason="gauge_types() call succeeded",
+                            protocol=protocol,
+                            gauge=gauge,
+                        )
                     )
-                )
+                except ContractLogicError:
+                    # gauge_types() reverts when gauge is not in the controller
+                    # This is expected for gauges not registered on the gauge controller
+                    _logger.info(
+                        "Gauge %s not found in %s gauge controller (gauge_types reverted)",
+                        gauge,
+                        protocol,
+                    )
+                    return Result.ok(
+                        GaugeValidationResult(
+                            is_valid=False,
+                            reason="Gauge not found in gauge controller (gauge_types reverted)",
+                            protocol=protocol,
+                            gauge=gauge,
+                        )
+                    )
 
         try:
             return retry_sync_operation(
