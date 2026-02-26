@@ -8,7 +8,10 @@ interacting with smart contracts and retrieving blockchain data.
 
 from typing import Any, Dict, List
 
+import requests
 from eth_utils import to_checksum_address
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from web3 import Web3
 
 from votemarket_toolkit.shared.constants import GlobalConstants
@@ -41,16 +44,25 @@ class Web3Service:
         self.w3 = self._initialize_web3(rpc_url)
         self._initialize_caches()
 
+    @staticmethod
+    def _create_retry_session() -> requests.Session:
+        """Create a requests session with retry logic for rate-limited RPCs."""
+        session = requests.Session()
+        retry = Retry(
+            total=5,
+            backoff_factor=1,
+            status_forcelist=[429, 502, 503, 504],
+            allowed_methods=["POST"],
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
+
     def _initialize_web3(self, rpc_url: str) -> Web3:
-        """Initialize Web3 instance with middleware if needed"""
-        w3 = Web3(Web3.HTTPProvider(rpc_url))
-
-        # Add POA middleware for non-mainnet chains
-        # if self.chain_id != 1:
-        # from web3.middleware import geth_poa_middleware
-
-        # w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-
+        """Initialize Web3 instance with retry-enabled HTTP provider."""
+        session = self._create_retry_session()
+        w3 = Web3(Web3.HTTPProvider(rpc_url, session=session))
         return w3
 
     def _initialize_caches(self):
