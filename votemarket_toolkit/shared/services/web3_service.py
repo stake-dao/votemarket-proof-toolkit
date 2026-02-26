@@ -49,8 +49,10 @@ class Web3Service:
         """Create a requests session with retry logic for rate-limited RPCs."""
         session = requests.Session()
         retry = Retry(
-            total=5,
-            backoff_factor=1,
+            total=12,
+            backoff_factor=2,
+            backoff_max=60,
+            backoff_jitter=1,
             status_forcelist=[429, 502, 503, 504],
             allowed_methods=["POST"],
         )
