@@ -11,6 +11,8 @@ from web3 import Web3
 
 load_dotenv()
 
+from votemarket_toolkit.shared import registry as _registry  # noqa: E402
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -98,6 +100,7 @@ ROUTER_ADDRESSES = {
 # Move global Web3 instances to top level
 source_w3 = None
 destination_w3 = None
+transfer_details = None
 
 
 def initialize_web3_connections(source_rpc_url=None, destination_rpc_url=None):
@@ -277,7 +280,7 @@ def get_token_balance(token_address: str, holder_address: str) -> int:
 
 def print_transfer_summary():
     """Print a summary of the transfer details"""
-    if not hasattr(print_transfer_summary, "transfer_details"):
+    if transfer_details is None:
         return
 
     details = transfer_details
@@ -453,7 +456,7 @@ def simulate_ccip_receive(
     # Get router address for destination chain (Ethereum)
     DESTINATION_ROUTER_ADDRESS = ROUTER_ADDRESSES[1]  # Ethereum Mainnet
 
-    print(f"DESTINATION_ROUTER_ADDRESS: {DESTINATION_ROUTER_ADDRESS}")
+    logger.info("DESTINATION_ROUTER_ADDRESS: %s", DESTINATION_ROUTER_ADDRESS)
 
     try:
         gas = destination_w3.eth.estimate_gas(
@@ -483,7 +486,7 @@ def simulate_ccip_receive(
         # Get router address for source chain (Arbitrum)
         SOURCE_ROUTER_ADDRESS = ROUTER_ADDRESSES[42161]  # Arbitrum
 
-        print(f"SOURCE_ROUTER_ADDRESS: {SOURCE_ROUTER_ADDRESS}")
+        logger.info("SOURCE_ROUTER_ADDRESS: %s", SOURCE_ROUTER_ADDRESS)
 
         fee = estimate_ccip_fee(
             router_address=SOURCE_ROUTER_ADDRESS,
@@ -534,8 +537,8 @@ def main():
     )
     parser.add_argument(
         "--token-factory",
-        default="0x96006425Da428E45c282008b00004a00002B345e",
-        help="TokenFactory contract address",
+        default=None,
+        help="TokenFactory contract address (default: resolved from registry)",
     )
 
     args = parser.parse_args()
@@ -547,7 +550,9 @@ def main():
     args.adapter = to_checksum_address(args.adapter)
     args.laposte = to_checksum_address(args.laposte)
     args.to_address = to_checksum_address(args.to_address)
-    args.token_factory = to_checksum_address(args.token_factory)
+    args.token_factory = to_checksum_address(
+        args.token_factory or _registry.get_token_factory_address()
+    )
     args.tokens = [to_checksum_address(token) for token in args.tokens]
 
     # If amounts not provided, query balances of wrapped tokens

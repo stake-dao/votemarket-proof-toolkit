@@ -3,9 +3,13 @@ Registry for VoteMarket addresses and configuration.
 Fetches data from the offchain-registry: https://github.com/stake-dao/offchain-registry
 """
 
-from typing import Dict, List, Optional
+import copy
+import logging
+from typing import Any, Dict, List, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class Registry:
@@ -13,16 +17,73 @@ class Registry:
 
     REGISTRY_URL = "https://raw.githubusercontent.com/stake-dao/offchain-registry/refs/heads/main/data/address-book/address-book.json"
 
-    # Chain ID mapping
+    # Chain ID mapping — includes all chains present in the address-book
     CHAIN_NAMES = {
         1: "ethereum",
         10: "optimism",
         137: "polygon",
+        252: "fraxtal",
         8453: "base",
         42161: "arbitrum",
+        42793: "etherlink",
+        146: "sonic",
+        167000: "taiko",
     }
 
-    # Fallback platform addresses (used when GitHub fetch fails)
+    # Map registry protocol keys to internal short names
+    PROTOCOL_MAPPING = {
+        "curve": "curve",
+        "balancer": "balancer",
+        "fxn": "fxn",
+        "pendle": "pendle",
+        "frax": "frax",
+        "yieldbasis": "yb",
+    }
+
+    # Controller contract name per protocol in the registry
+    CONTROLLER_CONTRACT_NAMES = {
+        "curve": "GAUGE_CONTROLLER",
+        "balancer": "GAUGE_CONTROLLER",
+        "frax": "GAUGE_CONTROLLER",
+        "fxn": "GAUGE_CONTROLLER",
+        "pendle": "VOTING_CONTROLLER",
+        "yieldbasis": "GAUGE_CONTROLLER",
+    }
+
+    # Contract category for the controller lookup — defaults to "protocol" when absent
+    CONTROLLER_CATEGORIES = {
+        "pendle": "locker",  # VOTING_CONTROLLER lives under the locker category
+    }
+
+    # VE token contract name per protocol in the registry
+    VE_CONTRACT_NAMES = {
+        "curve": "VECRV",
+        "balancer": "VEBAL",
+        "frax": "VEFXS",
+        "fxn": "VEFXN",
+        "pendle": "VEPENDLE",
+        "yieldbasis": "VE_YB",
+    }
+
+    # Emission token contract name per protocol in the registry
+    EMISSION_TOKEN_CONTRACT_NAMES = {
+        "curve": "CRV",
+        "balancer": "BAL",
+        "fxn": "FXN",
+        "frax": "FXS",
+        "pendle": "PENDLE",
+    }
+
+    # Fallback emission token addresses for protocols absent from registry (pendle)
+    FALLBACK_EMISSION_TOKENS = {
+        "curve": "0xD533a949740bb3306d119CC777fa900bA034cd52",
+        "balancer": "0xba100000625a3754423978a60c9317c58a424e3D",
+        "fxn": "0x365AccFCa291e7D3914637ABf1F7635dB165Bb09",
+        "frax": "0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0",
+        "pendle": "0x808507121B80c02388fAd14726482e061B8da827",
+    }
+
+    # Fallback platform addresses (used when GitHub fetch fails or protocol absent from registry)
     FALLBACK_PLATFORMS = {
         "curve": {
             "v2": {
@@ -72,7 +133,7 @@ class Registry:
         },
     }
 
-    # Fallback gauge controllers (used when GitHub fetch fails or not in registry)
+    # Fallback gauge controllers (used when GitHub fetch fails or protocol absent from registry)
     FALLBACK_CONTROLLERS = {
         "curve": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
         "balancer": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
@@ -82,181 +143,216 @@ class Registry:
         "yb": "0x1Be14811A3a06F6aF4fA64310a636e1Df04c1c21",
     }
 
+    # Fallback VE token addresses for protocols absent from the registry (pendle, yb)
+    FALLBACK_VE_ADDRESSES = {
+        "pendle": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210",
+    }
+
     def __init__(self):
         self._data = None
         self._platforms = {}
         self._controllers = {}
+        self._ve_addresses = {}
+        self._emission_tokens = {}
         self._load_data()
 
-    def _load_data(self):
-        # Fetch from GitHub
+    def _load_data(self) -> None:
         try:
             response = httpx.get(self.REGISTRY_URL, timeout=10)
             response.raise_for_status()
             self._data = response.json()
-            self._parse_data()
+        except (httpx.HTTPError, httpx.RequestError, OSError) as e:
+            logger.warning("Could not fetch registry from GitHub: %s", str(e)[:100])
+            logger.warning("Using fallback static registry data")
+            self._use_fallback_data()
+            return
 
+        try:
+            self._parse_data()
         except Exception as e:
-            print(
-                f"Warning: Could not fetch registry from GitHub: {str(e)[:100]}"
+            logger.error(
+                "Failed to parse registry data: %s — using fallback static data",
+                str(e)[:200],
             )
-            print("Using fallback static registry data")
             self._use_fallback_data()
 
-    def _use_fallback_data(self):
-        """Use fallback static data when GitHub fetch fails."""
-        # Copy fallback platforms
-        import copy
-
+    def _use_fallback_data(self) -> None:
         self._platforms = copy.deepcopy(self.FALLBACK_PLATFORMS)
         self._controllers = copy.deepcopy(self.FALLBACK_CONTROLLERS)
+        self._ve_addresses = copy.deepcopy(self.FALLBACK_VE_ADDRESSES)
+        self._emission_tokens = copy.deepcopy(self.FALLBACK_EMISSION_TOKENS)
 
-    def _parse_data(self):
-        """Parse platforms and controllers from the registry data."""
+    def _parse_data(self) -> None:
         if not self._data:
             return
 
-        # Parse platforms
-        self._parse_platforms()
+        protocols = self._data.get("protocols", {})
 
-        # Add known historical platforms
+        self._parse_platforms(protocols)
         self._add_historical_platforms()
+        self._parse_controllers(protocols)
+        self._parse_ve_addresses(protocols)
+        self._parse_emission_tokens(protocols)
 
-        # Parse gauge controllers
-        self._parse_controllers()
+        # Fill in any protocols absent from the live registry with fallback data
+        self._merge_fallbacks_for_missing_protocols()
 
-    def _parse_platforms(self):
-        """Parse VoteMarket platforms from registry."""
+    # -------------------------------------------------------------------------
+    # Parsing helpers
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _find_contract(
+        contracts: List[Dict[str, Any]],
+        name: str,
+        category: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the first contract matching name (and optionally category)."""
+        for c in contracts:
+            if c.get("name") != name:
+                continue
+            if category is not None and c.get("category") != category:
+                continue
+            return c
+        return None
+
+    def _get_chain_contracts(self, protocol_data: Dict[str, Any], chain_name: str) -> List[Dict[str, Any]]:
+        """Return the contracts array for a given chain inside a protocol entry."""
+        return (
+            protocol_data.get("chains", {})
+            .get(chain_name, {})
+            .get("contracts", [])
+        )
+
+    # -------------------------------------------------------------------------
+    # Platform parsing
+    # -------------------------------------------------------------------------
+
+    def _parse_platforms(self, protocols: Dict[str, Any]) -> None:
         self._platforms = {}
 
-        # Map registry protocol names to internal short names
-        protocol_mapping = {
-            "curve": "curve",
-            "balancer": "balancer",
-            "fxn": "fxn",
-            "pendle": "pendle",
-            "frax": "frax",
-            "yieldbasis": "yb",
-        }
-
-        for registry_name, internal_name in protocol_mapping.items():
-            if registry_name not in self._data:
+        for registry_name, internal_name in self.PROTOCOL_MAPPING.items():
+            if registry_name not in protocols:
                 continue
 
-            protocol_data = self._data[registry_name]
+            protocol_data = protocols[registry_name]
 
-            # Check each chain
             for chain_id, chain_name in self.CHAIN_NAMES.items():
-                if (
-                    chain_name not in protocol_data or chain_id == 1
-                ):  # Skip Ethereum mainnet (no V2)
+                contracts = self._get_chain_contracts(protocol_data, chain_name)
+                if not contracts:
                     continue
 
-                chain_data = protocol_data[chain_name]
+                platform = self._find_contract(contracts, "PLATFORM", "votemarket")
+                if platform and platform.get("address"):
+                    version = "v1" if chain_id == 1 else "v2"
+                    self._add_platform(internal_name, chain_id, platform["address"], version)
 
-                # Look for votemarket platforms
-                # Try standard "votemarket" key first, then protocol-specific key
-                vm_key = None
-                if "votemarket" in chain_data:
-                    vm_key = "votemarket"
-                elif f"{registry_name}votemarket" in chain_data:
-                    vm_key = f"{registry_name}votemarket"
+                platform_v1 = self._find_contract(contracts, "PLATFORM_V1", "votemarket")
+                if platform_v1 and platform_v1.get("address"):
+                    self._add_platform(internal_name, chain_id, platform_v1["address"], "v1")
 
-                if vm_key:
-                    vm_data = chain_data[vm_key]
-
-                    if isinstance(vm_data, dict):
-                        # Current V2 platform
-                        if "PLATFORM" in vm_data:
-                            self._add_platform(
-                                internal_name,
-                                chain_id,
-                                vm_data["PLATFORM"],
-                                "v2",
-                            )
-                        # V1 platform (might be labeled as PLATFORM_V1)
-                        if "PLATFORM_V1" in vm_data:
-                            self._add_platform(
-                                internal_name,
-                                chain_id,
-                                vm_data["PLATFORM_V1"],
-                                "v1",
-                            )
-
-    def _add_platform(
-        self, protocol: str, chain_id: int, address: str, version: str
-    ):
-        """Add a platform to the registry."""
+    def _add_platform(self, protocol: str, chain_id: int, address: str, version: str) -> None:
         if protocol not in self._platforms:
             self._platforms[protocol] = {}
         if version not in self._platforms[protocol]:
             self._platforms[protocol][version] = {}
         self._platforms[protocol][version][chain_id] = address
 
-    def _add_historical_platforms(self):
-        """Add known historical platforms that might not be in the registry."""
-        # First Curve V2 platform on Arbitrum (before the current one)
-        # This was the first V2 deployment on L2s
+    def _add_historical_platforms(self) -> None:
+        """Add known historical platforms absent from the registry (first Curve V2 on L2s)."""
         first_v2_address = "0x5e5C922a5Eeab508486eB906ebE7bDFFB05D81e5"
-
-        # Add as v2_old for Curve on all L2 chains
-        for chain_id in [
-            42161,
-            10,
-            8453,
-            137,
-        ]:  # Arbitrum, Optimism, Base, Polygon
+        for chain_id in [42161, 10, 8453, 137]:
             self._add_platform("curve", chain_id, first_v2_address, "v2_old")
 
-    def _parse_controllers(self):
-        """Parse gauge controllers from registry."""
+    # -------------------------------------------------------------------------
+    # Controller parsing
+    # -------------------------------------------------------------------------
+
+    def _parse_controllers(self, protocols: Dict[str, Any]) -> None:
         self._controllers = {}
 
-        if not self._data:
-            return
+        for registry_name, internal_name in self.PROTOCOL_MAPPING.items():
+            if registry_name not in protocols:
+                continue
 
-        # Map of protocol to controller location in registry
-        # Format: internal_name -> (registry_path, internal_name)
-        controller_paths = {
-            "curve": (
-                ["curve", "ethereum", "protocol", "GAUGE_CONTROLLER"],
-                "curve",
-            ),
-            "balancer": (
-                ["balancer", "ethereum", "protocol", "GAUGE_CONTROLLER"],
-                "balancer",
-            ),
-            "frax": (
-                ["frax", "ethereum", "protocol", "GAUGE_CONTROLLER"],
-                "frax",
-            ),
-            "fxn": (
-                ["fxn", "ethereum", "protocol", "GAUGE_CONTROLLER"],
-                "fxn",
-            ),
-            "pendle": (
-                ["pendle", "ethereum", "locker", "VOTING_CONTROLLER"],
-                "pendle",
-            ),
-            "yb": (
-                [
-                    "yieldbasis",
-                    "ethereum",
-                    "yieldbasisprotocol",
-                    "GAUGE_CONTROLLER",
-                ],
-                "yb",
-            ),
-        }
+            controller_name = self.CONTROLLER_CONTRACT_NAMES.get(registry_name)
+            if not controller_name:
+                continue
 
-        for protocol, (path, internal_name) in controller_paths.items():
-            try:
-                data = self._data
-                for key in path:
-                    data = data[key]
-                self._controllers[protocol] = data
-            except (KeyError, TypeError):
-                pass
+            category = self.CONTROLLER_CATEGORIES.get(registry_name, "protocol")
+            contracts = self._get_chain_contracts(protocols[registry_name], "ethereum")
+            contract = self._find_contract(contracts, controller_name, category)
+            if contract and contract.get("address"):
+                self._controllers[internal_name] = contract["address"]
+            else:
+                logger.warning(
+                    "Registry: %s not found for %s (category=%s) — will use fallback",
+                    controller_name,
+                    registry_name,
+                    category,
+                )
+
+    # -------------------------------------------------------------------------
+    # VE address parsing
+    # -------------------------------------------------------------------------
+
+    def _parse_ve_addresses(self, protocols: Dict[str, Any]) -> None:
+        self._ve_addresses = {}
+
+        for registry_name, internal_name in self.PROTOCOL_MAPPING.items():
+            if registry_name not in protocols:
+                continue
+
+            ve_name = self.VE_CONTRACT_NAMES.get(registry_name)
+            if not ve_name:
+                continue
+
+            contracts = self._get_chain_contracts(protocols[registry_name], "ethereum")
+            contract = self._find_contract(contracts, ve_name, "protocol")
+            if contract and contract.get("address"):
+                self._ve_addresses[internal_name] = contract["address"]
+
+    # -------------------------------------------------------------------------
+    # Emission token parsing
+    # -------------------------------------------------------------------------
+
+    def _parse_emission_tokens(self, protocols: Dict[str, Any]) -> None:
+        self._emission_tokens = {}
+
+        for registry_name, internal_name in self.PROTOCOL_MAPPING.items():
+            if registry_name not in protocols:
+                continue
+
+            token_name = self.EMISSION_TOKEN_CONTRACT_NAMES.get(registry_name)
+            if not token_name:
+                continue
+
+            contracts = self._get_chain_contracts(protocols[registry_name], "ethereum")
+            contract = self._find_contract(contracts, token_name, "protocol")
+            if contract and contract.get("address"):
+                self._emission_tokens[internal_name] = contract["address"]
+
+    # -------------------------------------------------------------------------
+    # Fallback merge for protocols absent from registry
+    # -------------------------------------------------------------------------
+
+    def _merge_fallbacks_for_missing_protocols(self) -> None:
+        """For any protocol not found in the live registry, inject fallback data."""
+        for protocol, versions in self.FALLBACK_PLATFORMS.items():
+            if protocol not in self._platforms:
+                self._platforms[protocol] = copy.deepcopy(versions)
+
+        for protocol, address in self.FALLBACK_CONTROLLERS.items():
+            if protocol not in self._controllers:
+                self._controllers[protocol] = address
+
+        for protocol, address in self.FALLBACK_VE_ADDRESSES.items():
+            if protocol not in self._ve_addresses:
+                self._ve_addresses[protocol] = address
+
+        for protocol, address in self.FALLBACK_EMISSION_TOKENS.items():
+            if protocol not in self._emission_tokens:
+                self._emission_tokens[protocol] = address
 
 
 # =============================================================================
@@ -267,7 +363,6 @@ _registry = None
 
 
 def _get_registry():
-    """Get or create the registry instance."""
     global _registry
     if _registry is None:
         _registry = Registry()
@@ -351,7 +446,6 @@ def get_gauge_controller(protocol: str) -> Optional[str]:
     """Get gauge controller address for a protocol."""
     registry = _get_registry()
     protocol_lower = protocol.lower()
-    # Try registry first, then fallback
     if protocol_lower in registry._controllers:
         return registry._controllers[protocol_lower]
     return Registry.FALLBACK_CONTROLLERS.get(protocol_lower)
@@ -359,7 +453,6 @@ def get_gauge_controller(protocol: str) -> Optional[str]:
 
 def get_gauge_slots(protocol: str) -> Optional[Dict[str, int]]:
     """Get gauge storage slots for a protocol."""
-    # These slots are constants - could be moved to registry in future
     slots = {
         "curve": {
             "point_weights": 12,
@@ -396,8 +489,9 @@ def get_gauge_slots(protocol: str) -> Optional[Dict[str, int]]:
 
 def refresh_registry():
     """Force refresh the registry from GitHub."""
-    registry = _get_registry()
-    registry.refresh()
+    global _registry
+    _registry = None
+    _get_registry()
 
 
 # =============================================================================
@@ -412,68 +506,41 @@ def get_token_factory_address() -> str:
 
 def get_vote_event_hash(protocol: str) -> str:
     """Get vote event hash for a protocol."""
-    # Pendle uses a different event signature
     if protocol.lower() == "pendle":
-        # VoteForGaugeWeight(address indexed user, address indexed pool, uint256 weight, VoteResult vote)
         return "0xc71e393f1527f71ce01b78ea87c9bd4fca84f1482359ce7ac9b73f358c61b1e1"
     else:
-        # VoteForGauge(uint256 time, address user, address gauge_addr, uint256 weight)
         return "0x45ca9a4c8d0119eb329e580d28fe689e484e1be230da8037ade9547d2d25cc91"
 
 
 def get_creation_block(protocol: str) -> Optional[int]:
     """Get creation block for a protocol gauge controller."""
-    # These are the deployment blocks of gauge controllers on mainnet
-    # Could be fetched from a more comprehensive registry in future
     blocks = {
-        "curve": 10647875,  # Curve gauge controller deployment
-        "balancer": 14457014,  # Balancer gauge controller deployment
-        "frax": 14052749,  # Frax gauge controller deployment
-        "fxn": 18156185,  # FXN gauge controller deployment
-        "pendle": 16032096,  # Pendle gauge controller deployment
-        "yb": 23370933,  # YieldBasis gauge controller deployment
+        "curve": 10647875,
+        "balancer": 14457014,
+        "frax": 14052749,
+        "fxn": 18156185,
+        "pendle": 16032096,
+        "yb": 23370933,
     }
     return blocks.get(protocol.lower())
+
+
+def get_emission_token(protocol: str) -> Optional[str]:
+    """Get emission token address for a protocol (e.g. CRV, BAL, FXN, FXS, PENDLE)."""
+    registry = _get_registry()
+    protocol_lower = protocol.lower()
+    if protocol_lower in registry._emission_tokens:
+        return registry._emission_tokens[protocol_lower]
+    return Registry.FALLBACK_EMISSION_TOKENS.get(protocol_lower)
 
 
 def get_ve_address(protocol: str) -> Optional[str]:
     """Get VE token address for a protocol."""
     registry = _get_registry()
-
-    # Map internal protocol name to registry name
     protocol_lower = protocol.lower()
-    registry_name = "yieldbasis" if protocol_lower == "yb" else protocol_lower
-
-    # Try to get from registry
-    if registry._data and registry_name in registry._data:
-        try:
-            protocol_data = registry._data[registry_name]
-            if "ethereum" not in protocol_data:
-                return None
-
-            eth_data = protocol_data["ethereum"]
-
-            # Try standard "protocol" key first
-            if "protocol" in eth_data:
-                proto_data = eth_data["protocol"]
-                if "VEPENDLE" in proto_data:
-                    return proto_data["VEPENDLE"]
-                ve_key = "VE_" + protocol.upper()
-                if ve_key in proto_data:
-                    return proto_data[ve_key]
-
-            # Try protocol-specific key (e.g., "yieldbasisprotocol")
-            proto_key = f"{registry_name}protocol"
-            if proto_key in eth_data:
-                proto_data = eth_data[proto_key]
-                ve_key = "VE_" + protocol.upper()
-                if ve_key in proto_data:
-                    return proto_data[ve_key]
-
-        except (KeyError, TypeError):
-            pass
-
-    return None
+    if protocol_lower in registry._ve_addresses:
+        return registry._ve_addresses[protocol_lower]
+    return Registry.FALLBACK_VE_ADDRESSES.get(protocol_lower)
 
 
 def get_supported_protocols() -> List[str]:
