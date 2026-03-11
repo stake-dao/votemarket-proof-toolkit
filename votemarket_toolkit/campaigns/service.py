@@ -46,8 +46,6 @@ from votemarket_toolkit.shared.results import (
 )
 from votemarket_toolkit.shared.retry import RPC_RETRY_CONFIG
 from votemarket_toolkit.shared.services.laposte_service import laposte_service
-
-_logger = get_logger(__name__)
 from votemarket_toolkit.shared.services.resource_manager import (
     resource_manager,
 )
@@ -56,9 +54,12 @@ from votemarket_toolkit.utils.cache import SyncCacheManager
 from votemarket_toolkit.utils.campaign_utils import get_closability_info
 from votemarket_toolkit.utils.pricing import get_erc20_prices_in_usd
 
+_logger = get_logger(__name__)
+
 
 # Module-level constants
 PERIOD_DURATION = 604800  # Weekly periods in seconds
+MAINNET_CHAIN_ID = 1
 
 # Deprecated platform versions to exclude when filtering
 # These are old platform versions that should not be used for new campaigns
@@ -101,53 +102,67 @@ class CampaignService:
         web3_services: Cache of Web3Service instances per chain
     """
 
-    # Protocol configurations for efficiency calculations
-    # Based on VoteMarket V2 UI metadata files
-    _PROTOCOL_CONFIG = {
+    # Protocol static configuration for efficiency calculations (non-address fields only).
+    # Addresses (controller, emission_token, ve_token) are resolved via registry at runtime.
+    _PROTOCOL_STATIC_CONFIG = {
         "curve": {
-                "controller": "0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB",
-                "emission_token": "0xD533a949740bb3306d119CC777fa900bA034cd52",  # CRV
-                "controller_method": "get_total_weight",
-                "emission_method": "rate",
-                "scale_factor": 10**36,
-                "chain_id": 1,
-            },
-            "balancer": {
-                "controller": "0xC128468b7Ce63eA702C1f104D55A2566b13D3ABD",
-                "emission_token": "0xba100000625a3754423978a60c9317c58a424e3D",  # BAL
-                "controller_method": "get_total_weight",
-                "emission_method": "rate",  # Same as Curve
-                "token_admin": "0xf302f9F50958c5593770FDf4d4812309fF77414f",
-                "scale_factor": 10**18,
-                "chain_id": 1,
-            },
-            "fxn": {
-                "controller": "0xe60eB8098B34eD775ac44B1ddE864e098C6d7f37",
-                "emission_token": "0x365AccFCa291e7D3914637ABf1F7635dB165Bb09",  # FXN
-                "controller_method": "get_total_weight",
-                "emission_method": "rate",
-                "scale_factor": 10**36,
-                "chain_id": 1,
-            },
-            "pendle": {
-                "controller": "0x44087E105137a5095c008AaB6a6530182821F2F0",
-                "emission_token": "0x808507121B80c02388fAd14726482e061B8da827",  # PENDLE
-                "ve_token": "0x4f30A9D41B80ecC5B94306AB4364951AE3170210",  # vePENDLE
-                "controller_method": "pendlePerSec",
-                "ve_method": "totalSupplyAt",
-                "scale_factor": 10**18,
-                "chain_id": 1,
-            },
-            "frax": {
-                "controller": "0x3669C421b77340B2979d1A00a792CC2ee0FcE737",
-                "emission_token": "0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0",  # FXS
-                "controller_method": "get_total_weight",
-                "emission_method": "rate",
-                "scale_factor": 10**36,
-                "chain_id": 1,
-                "fixed_weekly_rate": 0,  # FRAX emissions have ended
-            },
+            "controller_method": "get_total_weight",
+            "emission_method": "rate",
+            "scale_factor": 10**36,
+            "chain_id": MAINNET_CHAIN_ID,
+        },
+        "balancer": {
+            "controller_method": "get_total_weight",
+            "emission_method": "rate",
+            "token_admin": "0xf302f9F50958c5593770FDf4d4812309fF77414f",
+            "scale_factor": 10**18,
+            "chain_id": MAINNET_CHAIN_ID,
+        },
+        "fxn": {
+            "controller_method": "get_total_weight",
+            "emission_method": "rate",
+            "scale_factor": 10**36,
+            "chain_id": MAINNET_CHAIN_ID,
+        },
+        "pendle": {
+            "controller_method": "pendlePerSec",
+            "ve_method": "totalSupplyAt",
+            "scale_factor": 10**18,
+            "chain_id": MAINNET_CHAIN_ID,
+        },
+        "frax": {
+            "controller_method": "get_total_weight",
+            "emission_method": "rate",
+            "scale_factor": 10**36,
+            "chain_id": MAINNET_CHAIN_ID,
+            "fixed_weekly_rate": 0,  # FRAX emissions have ended
+        },
     }
+
+    @classmethod
+    def _get_protocol_config(cls, protocol: str) -> Dict[str, Any]:
+        """Build protocol config by merging static fields with live registry addresses."""
+        if protocol not in cls._PROTOCOL_STATIC_CONFIG:
+            raise ValueError(f"Protocol {protocol} not supported")
+        config = dict(cls._PROTOCOL_STATIC_CONFIG[protocol])
+
+        controller = registry.get_gauge_controller(protocol)
+        if controller is None:
+            raise ValueError(f"No gauge controller address found in registry for protocol: {protocol}")
+        config["controller"] = controller
+
+        emission_token = registry.get_emission_token(protocol)
+        if emission_token is None and "emission_method" in config:
+            raise ValueError(f"No emission token address found in registry for protocol: {protocol}")
+        config["emission_token"] = emission_token
+
+        if protocol == "pendle":
+            ve_token = registry.get_ve_address(protocol)
+            if ve_token is None:
+                raise ValueError(f"No VE token address found in registry for protocol: {protocol}")
+            config["ve_token"] = ve_token
+
+        return config
 
     def __init__(self):
         """Initialize the campaign service with contract reader and service cache."""
@@ -1877,10 +1892,7 @@ class CampaignService:
         Returns:
             float: Token emissions per veToken per week
         """
-        if protocol not in self._PROTOCOL_CONFIG:
-            raise ValueError(f"Protocol {protocol} not supported")
-
-        config = self._PROTOCOL_CONFIG[protocol]
+        config = self._get_protocol_config(protocol)
         web3_service = self.get_web3_service(config["chain_id"])
         w3 = web3_service.w3
 
@@ -2058,10 +2070,7 @@ class CampaignService:
         Returns:
             Tuple of (emission_value, token_per_vetoken, token_price)
         """
-        if protocol not in self._PROTOCOL_CONFIG:
-            raise ValueError(f"Protocol {protocol} not supported")
-
-        config = self._PROTOCOL_CONFIG[protocol]
+        config = self._get_protocol_config(protocol)
 
         # Get tokenPerVeToken for this protocol
         token_per_vetoken = self.get_token_per_vetoken(protocol)

@@ -83,6 +83,10 @@ async def process_protocol(
     protocol_data: ProtocolData = {"platforms": {}}
 
     for platform in platforms:
+        if platform.version == "v1":
+            rprint(f"[dim]Skipping v1 platform {platform.address} on chain {chain_id}[/dim]")
+            continue
+
         chain_id = platform.chain_id
         platform_address = platform.address
 

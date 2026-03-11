@@ -9,14 +9,14 @@ from rich.console import Console
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.logging import get_logger
 from votemarket_toolkit.shared.retry import HTTP_RETRY_CONFIG, retry_async_operation
-
-_logger = get_logger(__name__)
 from votemarket_toolkit.shared.services.etherscan_service import (
     get_logs_by_address_and_topics,
 )
 from votemarket_toolkit.shared.services.http_client import get_async_client
 from votemarket_toolkit.votes.models.data_types import GaugeVotes, VoteLog
 from votemarket_toolkit.votes.services.parquet_service import ParquetService
+
+_logger = get_logger(__name__)
 
 console = Console()
 
@@ -27,6 +27,7 @@ class VotesService:
         self.parquet_service = ParquetService(cache_dir)
         self.votes_cache_file = "{protocol}_votes_cache.parquet"
         self.api_base_url = "https://raw.githubusercontent.com/stake-dao/api/main/api/votemarket/votes_cache"
+        self._fetched_protocols: set[str] = set()
 
     def _get_start_block(self, protocol: str, cache_file: str) -> int:
         """Get the starting block for vote fetching"""
@@ -88,8 +89,10 @@ class VotesService:
         """Query and return votes for a specific gauge"""
         cache_file = self.votes_cache_file.format(protocol=protocol)
 
-        # Try to fetch latest data from stake-dao/api
-        await self._get_remote_parquet(protocol)
+        # Fetch remote parquet at most once per protocol per service instance
+        if protocol not in self._fetched_protocols:
+            await self._get_remote_parquet(protocol)
+            self._fetched_protocols.add(protocol)
 
         if cache_file:
             rprint(f"[cyan]Using cached votes file: {cache_file}[/cyan]")
