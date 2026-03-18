@@ -129,9 +129,17 @@ def _do_single_request(url: str, request_type: str) -> Dict[str, Any]:
     if _is_rate_limit_error(data):
         raise APIException(f"Rate limit reached: {data.get('result')}")
 
+    # Transient server errors (timeout, busy) - retryable
+    message = data.get("message") or "Unknown error"
+    if any(
+        keyword in message.lower()
+        for keyword in ["timeout", "server too busy", "try again"]
+    ):
+        raise APIException(f"Transient Etherscan error: {message}")
+
     # Other API errors - not retryable
     logging.error(f"Unexpected response: {data}")
-    raise Exception(data.get("message") or "Unknown error")
+    raise Exception(message)
 
 
 def _make_request_with_retry(url: str, request_type: str) -> Dict[str, Any]:
