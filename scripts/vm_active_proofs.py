@@ -614,12 +614,14 @@ def write_protocol_data(
         json.dump(votes_index_data, f)
 
 
-def print_processing_summary() -> bool:
+def print_processing_summary() -> str:
     """
     Print a summary of processing results.
 
     Returns:
-        True if there were validation failures (script should exit with error).
+        "all_failed"     if there were failures and NO gauges succeeded (total failure).
+        "partial_failed" if there were failures but at least one gauge succeeded (partial success).
+        "success"        if there were no failures.
     """
     console.print("\n" + "=" * 70)
     console.print("[bold]PROCESSING SUMMARY[/bold]")
@@ -628,6 +630,10 @@ def print_processing_summary() -> bool:
     processed = processing_stats["processed_gauges"]
     skipped = processing_stats["skipped_invalid_gauges"]
     failed = processing_stats["failed_validation_gauges"]
+
+    console.print(
+        f"\n[bold]Results: {len(processed)} succeeded, {len(failed)} failed, {len(skipped)} skipped (invalid)[/bold]"
+    )
 
     console.print(f"\n[green]✓ Processed gauges:[/green] {len(processed)}")
     for g in processed:
@@ -647,24 +653,38 @@ def print_processing_summary() -> bool:
 
     console.print("\n" + "=" * 70)
 
-    if failed:
+    if not failed:
+        return "success"
+
+    if processed:
+        # Some gauges succeeded — partial success, commit what we have
         console.print(
-            f"[bold red]ERROR: {len(failed)} gauge(s) failed validation![/bold red]"
+            f"[bold yellow]WARNING: {len(failed)} gauge(s) failed validation, "
+            f"but {len(processed)} gauge(s) succeeded.[/bold yellow]"
         )
         console.print(
-            "[red]Proof generation may be incomplete. Review failures above.[/red]"
+            "[yellow]Committing successful proofs. Failed gauges will need to be retried.[/yellow]"
         )
-        return True
+        return "partial_failed"
 
-    return False
+    # No gauges succeeded at all — total failure
+    console.print(
+        f"[bold red]ERROR: {len(failed)} gauge(s) failed validation and no gauges succeeded![/bold red]"
+    )
+    console.print(
+        "[red]Proof generation produced no usable output. Review failures above.[/red]"
+    )
+    return "all_failed"
 
 
-async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> bool:
+async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
     """
     Main entry point for active proofs generation.
 
     Returns:
-        True if there were validation failures.
+        "all_failed"     if there were failures and NO gauges succeeded (total failure).
+        "partial_failed" if there were failures but at least one gauge succeeded (partial success).
+        "success"        if there were no failures.
     """
     # Reset stats for this run
     processing_stats["processed_gauges"] = []
@@ -693,7 +713,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> bool
         "[bold green]Finished generating active proofs for all protocols[/bold green]"
     )
 
-    # Print summary and check for failures
+    # Print summary and return outcome
     return print_processing_summary()
 
 
@@ -714,13 +734,18 @@ if __name__ == "__main__":
     with open(args.all_platforms_file, "r") as f:
         all_protocols_data = json.load(f)
 
-    had_failures = asyncio.run(main(all_protocols_data, args.current_epoch))
+    outcome = asyncio.run(main(all_protocols_data, args.current_epoch))
 
-    if had_failures:
+    if outcome == "all_failed":
         console.print(
-            "[bold red]Active proofs generation completed with ERRORS[/bold red]"
+            "[bold red]Active proofs generation completed with ERRORS — no successful proofs to commit[/bold red]"
         )
         sys.exit(1)
+    elif outcome == "partial_failed":
+        console.print(
+            "[bold yellow]Active proofs generation completed with partial failures — committing successful proofs[/bold yellow]"
+        )
+        # Exit 0 so the CI/CD pipeline commits the successful proofs
     else:
         console.print(
             "[bold green]Active proofs generation completed successfully[/bold green]"
