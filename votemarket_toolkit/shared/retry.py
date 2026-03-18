@@ -42,7 +42,6 @@ DEFAULT_RETRYABLE_EXCEPTIONS: Tuple[Type[Exception], ...] = (
     BadFunctionCallOutput,  # Malformed RPC responses
     TransactionNotFound,
     BlockNotFound,
-    Exception,  # Catch-all for any other RPC issues - ensures we always retry
 )
 
 

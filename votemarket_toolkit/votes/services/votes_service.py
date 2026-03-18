@@ -198,14 +198,20 @@ class VotesService:
         start_block: int,
         end_block: int,
     ) -> List[Dict[str, Any]]:
-        """Fetch new votes in chunks"""
+        """Fetch new votes in chunks with bounded concurrency"""
         INCREMENT = 100_000
-        tasks = []
+        # Limit concurrent Etherscan requests to avoid rate limiting (5 calls/sec)
+        semaphore = asyncio.Semaphore(3)
 
+        async def _bounded_fetch(s_block: int, e_block: int):
+            async with semaphore:
+                return await self._fetch_votes_chunk(protocol, s_block, e_block)
+
+        tasks = []
         for block in range(start_block, end_block + 1, INCREMENT):
             current_end_block = min(block + INCREMENT - 1, end_block)
             task = asyncio.create_task(
-                self._fetch_votes_chunk(protocol, block, current_end_block)
+                _bounded_fetch(block, current_end_block)
             )
             tasks.append(task)
 
