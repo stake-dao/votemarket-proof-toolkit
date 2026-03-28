@@ -104,6 +104,7 @@ extend-select = ["I"]
 [tool.uv]
 managed = true
 python-preference = "only-managed"
+exclude-newer = "7 days"
 
 [tool.black]
 line-length = 79
