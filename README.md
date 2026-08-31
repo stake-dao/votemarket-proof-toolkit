@@ -276,6 +276,13 @@ uv run scripts/vm_active_proofs.py temp/all_platforms.json <epoch> --bulk-proofs
 # or: VM_BULK_PROOFS=1 VM_BULK_KEYS_PER_CALL=100
 ```
 
+Provider notes (measured on Alchemy, 2026-08-31): `eth_getProof` accepts at most
+1024 storage keys per call and is billed 20 CU per call regardless of the number
+of keys (verified on the usage dashboard with 1, 100 and 1000 keys). On the app
+tested (Free tier) `eth_getProof` only served blocks up to ~128 behind the head
+while archive `eth_call` worked, so proofs must be generated shortly after the
+oracle block is set unless the plan/provider serves archive proofs.
+
 To check both modes against each other on real gauges (active campaigns, oracle
 block of the current epoch) and see the RPC call counts:
 

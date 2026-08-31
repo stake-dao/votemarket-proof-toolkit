@@ -44,7 +44,10 @@ from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 _logger = get_logger(__name__)
 
 # Conservative default: ~4.6 KB per key on the Curve gauge controller,
-# i.e. ~475 KB per response. Tune with the provider's limits in mind.
+# i.e. ~475 KB per response. Measured on Alchemy (2026-08-31): hard cap of
+# 1024 storage keys per eth_getProof call, billed 20 CU per call regardless
+# of the number of keys, so larger chunks only trade response size/latency
+# against the number of calls.
 DEFAULT_KEYS_PER_CALL = 100
 
 GAUGE = "gauge"
