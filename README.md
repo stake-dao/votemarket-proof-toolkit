@@ -276,6 +276,13 @@ uv run scripts/vm_active_proofs.py temp/all_platforms.json <epoch> --bulk-proofs
 # or: VM_BULK_PROOFS=1 VM_BULK_KEYS_PER_CALL=100
 ```
 
+To check both modes against each other on real gauges (active campaigns, oracle
+block of the current epoch) and see the RPC call counts:
+
+```bash
+uv run scripts/compare_bulk_proofs.py --protocol curve --chain-id 42161 --max-gauges 3
+```
+
 ## License
 
 AGPL-3.0 License - see [LICENSE](LICENSE)
