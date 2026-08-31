@@ -5,7 +5,7 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -31,6 +31,13 @@ vm_eligibility = EligibilityService(1)
 # Retry configuration for gauge validation - more aggressive for completeness
 VALIDATION_MAX_RETRIES = 5
 VALIDATION_BASE_DELAY = 3.0  # seconds
+
+# Bulk eth_getProof mode (opt-in): group the storage keys of many users and
+# gauges into a few eth_getProof calls instead of one call per proof.
+# Enable with --bulk-proofs or VM_BULK_PROOFS=1; tune with --keys-per-call
+# or VM_BULK_KEYS_PER_CALL. The generated proofs are byte-identical.
+BULK_PROOFS = os.getenv("VM_BULK_PROOFS", "0") == "1"
+BULK_KEYS_PER_CALL = int(os.getenv("VM_BULK_KEYS_PER_CALL", "100"))
 
 # Track processing results for summary
 processing_stats: Dict[str, Dict[str, Any]] = {
@@ -71,6 +78,214 @@ def is_campaign_active(campaign: dict) -> bool:
     return is_active
 
 
+# ---------------------------------------------------------------------------
+# Bulk eth_getProof path (opt-in, see BULK_PROOFS)
+# ---------------------------------------------------------------------------
+
+
+async def _get_eligible_users_with_retry(
+    protocol: str,
+    gauge_address: str,
+    current_epoch: int,
+    block_number: int,
+    max_retries: int,
+) -> List[Dict[str, Any]]:
+    """Eligibility lookup with the same retry policy as process_gauge."""
+    for attempt in range(max_retries):
+        result = await vm_eligibility.get_eligible_users(
+            protocol, gauge_address, current_epoch, block_number
+        )
+        if result.success:
+            return result.data or []
+        delay = 2.0 * (2**attempt)
+        console.print(
+            f"[yellow]Eligibility check attempt {attempt + 1}/{max_retries} failed. Retrying in {delay}s...[/yellow]"
+        )
+        time.sleep(delay)
+    return []
+
+
+def _bulk_proofs(
+    protocol: str,
+    gauge_address: str,
+    block_number: int,
+    users: List[str],
+    gauge_epoch: Optional[int] = None,
+    max_retries: int = 3,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, str], List[str]]:
+    """
+    One grouped eth_getProof pass for a gauge.
+
+    Returns (gauge_proof or None, {user: storage_proof_hex}, failed_users).
+    Raises when nothing at all could be generated.
+    """
+    gauge_epochs = (
+        [(gauge_address, gauge_epoch)] if gauge_epoch is not None else []
+    )
+    result = vm_proofs.get_proofs_bulk(
+        protocol=protocol,
+        block_number=block_number,
+        gauge_epochs=gauge_epochs,
+        users=[(gauge_address, user) for user in users],
+        keys_per_call=BULK_KEYS_PER_CALL,
+        max_retries=max_retries,
+    )
+    if not result.success:
+        error_msg = (
+            result.errors[0].message if result.errors else "Unknown error"
+        )
+        raise Exception(
+            f"Bulk proof generation failed for gauge {gauge_address}: {error_msg}"
+        )
+
+    data = result.data
+    stats = data.stats
+    console.print(
+        f"[dim]Bulk eth_getProof: {stats.rpc_calls} call(s) for {stats.keys} keys / "
+        f"{stats.requests} proofs ({stats.splits} splits, {stats.failed_requests} failed)[/dim]"
+    )
+
+    gauge_proof = None
+    if gauge_epoch is not None:
+        gauge_proof = data.gauge_proofs.get(
+            (gauge_address.lower(), get_rounded_epoch(gauge_epoch))
+        )
+
+    user_proofs: Dict[str, str] = {}
+    failed_users: List[str] = []
+    for user in users:
+        proof = data.user_proofs.get((gauge_address.lower(), user.lower()))
+        if proof is None:
+            failed_users.append(user.lower())
+        else:
+            user_proofs[user.lower()] = "0x" + proof["storage_proof"].hex()
+    return gauge_proof, user_proofs, failed_users
+
+
+async def _process_gauge_bulk(
+    protocol: str,
+    gauge_address: str,
+    current_epoch: int,
+    block_number: int,
+    user_proofs_cache: Dict[str, Any],
+    max_retries: int,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Bulk variant of process_gauge: same outputs, grouped eth_getProof."""
+    console.print(
+        f"Querying votes for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+    gauge_votes = await votes_service.get_gauge_votes(
+        protocol, gauge_address, block_number
+    )
+    console.print(
+        f"Found [yellow]{len(gauge_votes.votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+
+    console.print(
+        f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+    eligible_users = await _get_eligible_users_with_retry(
+        protocol, gauge_address, current_epoch, block_number, max_retries
+    )
+    console.print(
+        f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+
+    users_to_generate = list(
+        dict.fromkeys(
+            user["user"].lower()
+            for user in eligible_users
+            if f"{gauge_address}:{user['user'].lower()}"
+            not in user_proofs_cache
+        )
+    )
+    console.print(
+        f"Generating point data proof + {len(users_to_generate)} user proof(s) in bulk"
+    )
+    gauge_proof, new_user_proofs, failed_users = _bulk_proofs(
+        protocol,
+        gauge_address,
+        block_number,
+        users_to_generate,
+        gauge_epoch=current_epoch,
+        max_retries=max_retries,
+    )
+    if gauge_proof is None:
+        raise Exception(
+            f"Failed to generate gauge proof for {gauge_address} (bulk mode)"
+        )
+
+    gauge_proof_data = {
+        "point_data_proof": "0x" + gauge_proof["point_data_proof"].hex(),
+        "users": {},
+    }
+    gauge_vote_data = {"users": {}}
+
+    for user in eligible_users:
+        user_address = user["user"].lower()
+        cache_key = f"{gauge_address}:{user_address}"
+        if cache_key not in user_proofs_cache:
+            if user_address not in new_user_proofs:
+                continue  # Failed user: skipped, like the per-request path
+            user_proofs_cache[cache_key] = {
+                "storage_proof": new_user_proofs[user_address],
+                "last_vote": user["last_vote"],
+                "slope": user["slope"],
+                "power": user["power"],
+                "end": user["end"],
+            }
+        proof_info = user_proofs_cache[cache_key]
+        gauge_proof_data["users"][user_address] = {
+            "storage_proof": proof_info["storage_proof"]
+        }
+        gauge_vote_data["users"][user_address] = {
+            "last_vote": proof_info["last_vote"],
+            "slope": proof_info["slope"],
+            "power": proof_info["power"],
+            "end": proof_info["end"],
+        }
+
+    if failed_users:
+        console.print(
+            f"[yellow]Warning: {len(failed_users)} user(s) failed for gauge {gauge_address}[/yellow]"
+        )
+
+    return gauge_proof_data, gauge_vote_data
+
+
+def _process_listed_users_bulk(
+    protocol: str,
+    gauge_address: str,
+    block_number: int,
+    listed_users: List[str],
+    max_retries: int = 3,
+) -> Dict[str, Any]:
+    """Bulk variant of process_listed_users (never raises, skips failures)."""
+    users = list(dict.fromkeys(user.lower() for user in listed_users))
+    if not users:
+        return {}
+    try:
+        _, user_proofs, failed_users = _bulk_proofs(
+            protocol,
+            gauge_address,
+            block_number,
+            users,
+            max_retries=max_retries,
+        )
+    except Exception as exc:
+        console.print(
+            f"[red]Failed to generate listed user proofs for gauge {gauge_address}: {exc}[/red]"
+        )
+        return {}
+    for user in failed_users:
+        console.print(
+            f"[red]Failed to generate proof for listed user {user}. Skipping.[/red]"
+        )
+    return {
+        user: {"storage_proof": proof} for user, proof in user_proofs.items()
+    }
+
+
 async def process_gauge(
     protocol: str,
     gauge_address: str,
@@ -88,6 +303,16 @@ async def process_gauge(
       - gauge_proof_data: containing proofs (e.g. point_data_proof and storage proofs for each user).
       - gauge_vote_data: containing only the raw vote details for each eligible user.
     """
+    if BULK_PROOFS:
+        return await _process_gauge_bulk(
+            protocol,
+            gauge_address,
+            current_epoch,
+            block_number,
+            user_proofs_cache,
+            max_retries,
+        )
+
     console.print(
         f"Querying votes for gauge: [magenta]{gauge_address}[/magenta]"
     )
@@ -227,6 +452,11 @@ def process_listed_users(
 
     Resilient version: retries on failure, skips individual users if they consistently fail.
     """
+    if BULK_PROOFS:
+        return _process_listed_users_bulk(
+            protocol, gauge_address, block_number, listed_users
+        )
+
     listed_users_data = {}
     for listed_user in listed_users:
         console.print(
@@ -697,6 +927,14 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
     console.print(
         f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
     )
+    console.print(
+        "Proof generation mode: "
+        + (
+            f"[green]bulk[/green] ({BULK_KEYS_PER_CALL} keys per eth_getProof)"
+            if BULK_PROOFS
+            else "[cyan]per-request[/cyan]"
+        )
+    )
     for protocol, protocol_data in all_protocols_data["protocols"].items():
         if not protocol_data["platforms"]:
             console.print(
@@ -729,7 +967,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "current_epoch", type=int, help="Current epoch timestamp"
     )
+    parser.add_argument(
+        "--bulk-proofs",
+        action="store_true",
+        help="Group storage keys into few eth_getProof calls (opt-in, same as VM_BULK_PROOFS=1)",
+    )
+    parser.add_argument(
+        "--keys-per-call",
+        type=int,
+        default=None,
+        help="Max storage keys per eth_getProof call in bulk mode (default: VM_BULK_KEYS_PER_CALL or 100)",
+    )
     args = parser.parse_args()
+
+    if args.bulk_proofs:
+        BULK_PROOFS = True
+    if args.keys_per_call is not None:
+        if args.keys_per_call < 1:
+            parser.error("--keys-per-call must be >= 1")
+        BULK_KEYS_PER_CALL = args.keys_per_call
 
     with open(args.all_platforms_file, "r") as f:
         all_protocols_data = json.load(f)

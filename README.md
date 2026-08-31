@@ -249,6 +249,33 @@ make get-active-campaigns PROTOCOL=curve
 make check-user-eligibility USER=0x... PROTOCOL=curve [GAUGE=0x...] [CHAIN_ID=1] [STATUS=active]
 ```
 
+## Bulk proof generation (opt-in)
+
+`VoteMarketProofs.get_proofs_bulk()` groups the storage keys of many gauges and
+users into a few `eth_getProof` calls on the gauge controller instead of one
+call per proof. The generated proofs are byte-identical to `get_gauge_proof()`
+/ `get_user_proof()` (see `tests/unit/test_bulk_proofs.py`); failing chunks are
+split in half down to single proofs.
+
+```python
+result = proofs.get_proofs_bulk(
+    "curve",
+    block_number,
+    gauge_epochs=[(gauge, epoch)],
+    users=[(gauge, user) for user in users],
+    keys_per_call=100,
+)
+result.data.gauge_proofs[(gauge.lower(), epoch)]  # GaugeProof
+result.data.user_proofs[(gauge.lower(), user.lower())]  # UserProof
+```
+
+The proof pipeline can use it behind a flag (default stays per-request):
+
+```bash
+uv run scripts/vm_active_proofs.py temp/all_platforms.json <epoch> --bulk-proofs [--keys-per-call 100]
+# or: VM_BULK_PROOFS=1 VM_BULK_KEYS_PER_CALL=100
+```
+
 ## License
 
 AGPL-3.0 License - see [LICENSE](LICENSE)
