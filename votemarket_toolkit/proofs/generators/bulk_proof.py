@@ -240,6 +240,8 @@ def generate_proofs_bulk(
     controller_address = Web3.to_checksum_address(gauge_controller.lower())
 
     unique_requests = list(dict.fromkeys(requests))
+    if not unique_requests:
+        return BulkProofResult()
     slots_by_request = {
         request: _slots_for(protocol, request) for request in unique_requests
     }
@@ -263,7 +265,7 @@ def generate_proofs_bulk(
         fetcher.fetch(chunk)
 
     result.stats.failed_requests = len(result.errors)
-    _logger.info(
+    _logger.debug(
         "Bulk eth_getProof: %d call(s) for %d keys / %d proofs "
         "(%d splits, %d failed)",
         result.stats.rpc_calls,
