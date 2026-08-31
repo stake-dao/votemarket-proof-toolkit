@@ -400,3 +400,100 @@ def test_manager_bulk_configuration_error_is_failure(proof_manager):
     )
     assert not result.success
     assert result.errors[0].source == "bulk_proof"
+
+
+def test_invalid_request_is_isolated_not_fatal():
+    """A malformed address fails that request only, not the whole batch."""
+    valid = _requests()
+    bad = ProofRequest.for_user(GAUGES[0], "0xnot-an-address")
+    expected, _ = _reference_proofs("curve", valid)
+
+    w3 = FakeWeb3()
+    result = generate_proofs_bulk(w3, "curve", BLOCK, valid + [bad])
+
+    assert bad in result.errors
+    assert set(result.proofs) == set(valid)
+    assert all(result.proofs[r] == expected[r] for r in valid)
+    assert result.stats.failed_requests == 1
+
+
+def test_missing_response_key_is_rejected():
+    """A storage proof entry without a 'key' field must not be trusted."""
+
+    class KeylessEth(FakeEth):
+        def get_proof(self, address, keys, block):
+            response = super().get_proof(address, keys, block)
+            for entry in response["storageProof"]:
+                del entry["key"]
+            return response
+
+    w3 = FakeWeb3()
+    w3.eth = KeylessEth(None)
+    requests = [ProofRequest.for_user(GAUGES[0], USERS[0])]
+
+    result = generate_proofs_bulk(w3, "curve", BLOCK, requests, max_retries=1)
+
+    assert result.proofs == {}
+    assert set(result.errors) == set(requests)
+
+
+def test_transport_error_retries_chunk_before_splitting():
+    """A transient transport error retries the same chunk, no split storm."""
+    state = {"calls": 0}
+
+    def flaky(keys):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            raise ConnectionError("transient blip")
+
+    requests = _requests()
+    expected, _ = _reference_proofs("curve", requests)
+
+    w3 = FakeWeb3(flaky)
+    result = generate_proofs_bulk(
+        w3, "curve", BLOCK, requests, keys_per_call=100
+    )
+
+    assert result.errors == {}
+    assert result.stats.splits == 0
+    assert len(w3.eth.calls) == 2  # first attempt + one chunk retry
+    assert all(result.proofs[r] == expected[r] for r in requests)
+
+
+def test_provider_outage_triggers_circuit_breaker():
+    """A persistent outage aborts instead of storming the provider."""
+
+    def always_fail(keys):
+        raise ConnectionError("rpc down")
+
+    requests = [
+        ProofRequest.for_user(GAUGES[0], f"0x{i:040x}") for i in range(1, 30)
+    ]
+    w3 = FakeWeb3(always_fail)
+
+    result = generate_proofs_bulk(
+        w3,
+        "curve",
+        BLOCK,
+        requests,
+        keys_per_call=100,
+        max_retries=1,
+        abort_after_failures=3,
+    )
+
+    assert result.stats.aborted
+    assert result.proofs == {}
+    assert set(result.errors) == set(requests)
+    assert len(w3.eth.calls) < len(requests)
+
+
+def test_manager_bulk_malformed_input_returns_failure(proof_manager):
+    """Bad tuple shapes are wrapped in Result.fail, never raised."""
+    proof_manager.web3_service.w3 = FakeWeb3()
+
+    result = proof_manager.get_proofs_bulk(
+        "curve", BLOCK, users=[("0xdeadbeef",)]
+    )
+
+    assert not result.success
+    assert result.errors[0].source == "bulk_proof"

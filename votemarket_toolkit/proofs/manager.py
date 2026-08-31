@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from eth_utils import to_checksum_address
+from web3.exceptions import ContractLogicError
 
 from votemarket_toolkit.proofs.generators.block_info import get_block_info
 from votemarket_toolkit.proofs.generators.bulk_proof import (
@@ -19,13 +20,13 @@ from votemarket_toolkit.proofs.types import BlockInfo, GaugeProof, UserProof
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.constants import GlobalConstants
 from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.redact import format_exception_safe
 from votemarket_toolkit.shared.results import (
     ErrorSeverity,
     ProcessingError,
     Result,
 )
 from votemarket_toolkit.shared.retry import retry_sync_operation
-from web3.exceptions import ContractLogicError
 from votemarket_toolkit.shared.services.web3_service import Web3Service
 from votemarket_toolkit.utils import get_rounded_epoch
 
@@ -282,20 +283,20 @@ class VoteMarketProofs:
             nothing could be generated. Dictionary keys use lowercase
             addresses.
         """
-        requests: List[ProofRequest] = [
-            ProofRequest.for_gauge(gauge, get_rounded_epoch(epoch))
-            for gauge, epoch in gauge_epochs
-        ]
-        requests += [
-            ProofRequest.for_user(gauge, user) for gauge, user in users
-        ]
         context = {
             "protocol": protocol,
             "block": block_number,
-            "requests": len(requests),
+            "requests": len(gauge_epochs) + len(users),
         }
 
         try:
+            requests: List[ProofRequest] = [
+                ProofRequest.for_gauge(gauge, get_rounded_epoch(epoch))
+                for gauge, epoch in gauge_epochs
+            ]
+            requests += [
+                ProofRequest.for_user(gauge, user) for gauge, user in users
+            ]
             bulk = generate_proofs_bulk(
                 self.web3_service.w3,
                 protocol,
@@ -308,7 +309,10 @@ class VoteMarketProofs:
             return Result.fail(
                 ProcessingError(
                     source="bulk_proof",
-                    message=f"Bulk proof generation failed: {str(e)}",
+                    message=(
+                        "Bulk proof generation failed: "
+                        f"{format_exception_safe(e)}"
+                    ),
                     severity=ErrorSeverity.ERROR,
                     context=context,
                     exception=e,
@@ -336,7 +340,8 @@ class VoteMarketProofs:
                 ProcessingError(
                     source=source,
                     message=(
-                        f"Error generating {request.kind} proof: {str(exc)}"
+                        f"Error generating {request.kind} proof: "
+                        f"{format_exception_safe(exc)}"
                     ),
                     severity=ErrorSeverity.ERROR,
                     context={

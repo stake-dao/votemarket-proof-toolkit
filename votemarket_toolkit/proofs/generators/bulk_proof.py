@@ -38,6 +38,7 @@ from votemarket_toolkit.proofs.generators.user_proof import (
 )
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.logging import get_logger
+from votemarket_toolkit.shared.redact import format_exception_safe
 from votemarket_toolkit.shared.retry import retry_sync_operation
 from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 
@@ -98,6 +99,7 @@ class BulkProofStats:
     rpc_calls: int = 0
     splits: int = 0
     failed_requests: int = 0
+    aborted: bool = False
 
 
 @dataclass
@@ -209,6 +211,7 @@ def generate_proofs_bulk(
     keys_per_call: int = DEFAULT_KEYS_PER_CALL,
     max_retries: int = 3,
     base_delay: float = 1.0,
+    abort_after_failures: int = 8,
 ) -> BulkProofResult:
     """
     Generate many gauge/user proofs with grouped ``eth_getProof`` calls.
@@ -222,6 +225,10 @@ def generate_proofs_bulk(
             request with more keys than this is sent alone.
         max_retries: Attempts for a chunk reduced to a single request.
         base_delay: Base delay between those attempts (seconds).
+        abort_after_failures: Circuit breaker — after this many consecutive
+            single-request failures (a provider-wide outage), remaining
+            requests are failed without further RPC calls and
+            ``stats.aborted`` is set.
 
     Returns:
         BulkProofResult with per-request proofs, per-request errors and
@@ -233,6 +240,8 @@ def generate_proofs_bulk(
     """
     if keys_per_call < 1:
         raise ValueError("keys_per_call must be >= 1")
+    if not registry.get_gauge_slots(protocol):
+        raise ValueError(f"Unknown protocol: {protocol}")
 
     gauge_controller = registry.get_gauge_controller(protocol)
     if not gauge_controller:
@@ -242,12 +251,26 @@ def generate_proofs_bulk(
     unique_requests = list(dict.fromkeys(requests))
     if not unique_requests:
         return BulkProofResult()
-    slots_by_request = {
-        request: _slots_for(protocol, request) for request in unique_requests
-    }
 
     result = BulkProofResult()
     result.stats.requests = len(unique_requests)
+
+    # A malformed request (bad address, missing slot) must not abort the
+    # batch: record it as a per-request error and keep the valid ones.
+    slots_by_request: Dict[ProofRequest, List[str]] = {}
+    for request in unique_requests:
+        try:
+            slots_by_request[request] = _slots_for(protocol, request)
+        except Exception as exc:  # noqa: BLE001 - reported per request
+            _logger.error(
+                "Invalid proof request (%s %s%s): %s",
+                request.kind,
+                request.gauge,
+                f" / {request.user}" if request.user else "",
+                format_exception_safe(exc),
+            )
+            result.errors[request] = exc
+    valid_requests = [r for r in unique_requests if r in slots_by_request]
     result.stats.keys = sum(len(s) for s in slots_by_request.values())
 
     fetcher = _ChunkFetcher(
@@ -258,9 +281,10 @@ def generate_proofs_bulk(
         result=result,
         max_retries=max_retries,
         base_delay=base_delay,
+        abort_after_failures=abort_after_failures,
     )
     for chunk in _pack_requests(
-        unique_requests, slots_by_request, keys_per_call
+        valid_requests, slots_by_request, keys_per_call
     ):
         fetcher.fetch(chunk)
 
@@ -298,12 +322,40 @@ def _pack_requests(
     return chunks
 
 
-def _storage_key_matches(expected_hex: str, entry: Any) -> bool:
-    """Defensive check that the node answered for the key we asked."""
+def _check_storage_key(expected_hex: str, entry: Any) -> None:
+    """Fail-closed check that the node answered for the key we asked.
+
+    EIP-1186 returns storage proofs in request order; a missing or
+    mismatching key means the response cannot be trusted for splitting.
+    """
     key = entry.get("key") if hasattr(entry, "get") else None
     if key is None:
-        return True
-    return int.from_bytes(bytes(HexBytes(key)), "big") == int(expected_hex, 16)
+        raise ValueError("eth_getProof storage proof entry has no 'key' field")
+    if int.from_bytes(bytes(HexBytes(key)), "big") != int(expected_hex, 16):
+        raise ValueError(
+            "eth_getProof storage proof order mismatch for key "
+            f"{expected_hex}"
+        )
+
+
+# Failure signatures that call for splitting the chunk rather than
+# retrying it as-is (size caps and malformed/shifted responses).
+_SPLIT_ERROR_MARKERS = (
+    "too many storage keys",
+    "response too large",
+    "request entity too large",
+    "413",
+    "-32602",
+    "storage proofs for",
+    "order mismatch",
+    "has no 'key' field",
+    "exceeds",
+)
+
+
+def _looks_like_size_or_shape_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _SPLIT_ERROR_MARKERS)
 
 
 class _ChunkFetcher:
@@ -318,6 +370,7 @@ class _ChunkFetcher:
         result: BulkProofResult,
         max_retries: int,
         base_delay: float,
+        abort_after_failures: int,
     ) -> None:
         self._web_3 = web_3
         self._controller = controller_address
@@ -326,15 +379,29 @@ class _ChunkFetcher:
         self._result = result
         self._max_retries = max_retries
         self._base_delay = base_delay
+        self._abort_after = max(1, abort_after_failures)
+        self._consecutive_failures = 0
+        self._aborted = False
 
-    def fetch(self, chunk: List[ProofRequest]) -> None:
+    def fetch(self, chunk: List[ProofRequest], retried: bool = False) -> None:
+        if self._aborted:
+            for request in chunk:
+                self._result.errors.setdefault(
+                    request,
+                    RuntimeError(
+                        "bulk proof generation aborted after repeated "
+                        "RPC failures"
+                    ),
+                )
+            return
         keys = [key for request in chunk for key in self._slots[request]]
         try:
             raw_proof = self._get_proof(keys, single=len(chunk) == 1)
             proofs = self._split_response(raw_proof, chunk, keys)
-        except Exception as exc:  # noqa: BLE001 - any failure triggers split
-            self._handle_failure(chunk, exc)
+        except Exception as exc:  # noqa: BLE001 - handled per chunk
+            self._handle_failure(chunk, exc, retried)
             return
+        self._consecutive_failures = 0
         self._result.proofs.update(proofs)
 
     def _get_proof(self, keys: List[str], single: bool) -> Any:
@@ -375,27 +442,35 @@ class _ChunkFetcher:
             entries = storage_proofs[cursor : cursor + len(request_keys)]
             cursor += len(request_keys)
             for expected_key, entry in zip(request_keys, entries):
-                if not _storage_key_matches(expected_key, entry):
-                    raise ValueError(
-                        "eth_getProof storage proof order mismatch for key "
-                        f"{expected_key}"
-                    )
+                _check_storage_key(expected_key, entry)
             proofs[request] = encode_rlp_proofs(
                 {"accountProof": account_proof, "storageProof": entries}
             )
         return proofs
 
     def _handle_failure(
-        self, chunk: List[ProofRequest], exc: Exception
+        self, chunk: List[ProofRequest], exc: Exception, retried: bool
     ) -> None:
+        safe_message = format_exception_safe(exc)[:200]
         if len(chunk) > 1:
+            # Transport-looking errors get one retry of the same chunk;
+            # size/shape errors (and second failures) are split instead.
+            if not retried and not _looks_like_size_or_shape_error(exc):
+                _logger.warning(
+                    "Bulk eth_getProof chunk of %d requests failed (%s); "
+                    "retrying once before splitting",
+                    len(chunk),
+                    safe_message,
+                )
+                self.fetch(chunk, retried=True)
+                return
             self._result.stats.splits += 1
             middle = len(chunk) // 2
             _logger.warning(
                 "Bulk eth_getProof chunk of %d requests failed (%s); "
                 "splitting in %d + %d",
                 len(chunk),
-                str(exc)[:120],
+                safe_message,
                 middle,
                 len(chunk) - middle,
             )
@@ -409,6 +484,15 @@ class _ChunkFetcher:
             request.kind,
             request.gauge,
             f" / {request.user}" if request.user else "",
-            str(exc)[:200],
+            safe_message,
         )
         self._result.errors[request] = exc
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._abort_after:
+            self._aborted = True
+            self._result.stats.aborted = True
+            _logger.error(
+                "Aborting bulk proof generation after %d consecutive "
+                "request failures (likely provider-wide outage)",
+                self._consecutive_failures,
+            )
