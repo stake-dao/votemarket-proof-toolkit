@@ -14,6 +14,10 @@ By default the block is the canonical block stored by the platform oracle
 for the current epoch (same as vm_all_platforms.py). Requires the RPC
 environment variables used by the pipeline. Exits with status 1 when the
 two modes disagree.
+
+Note on timings: connections and the votes cache are warmed up before the
+first run, but wall-clock times remain indicative — the authoritative
+outputs are the byte comparison and the RPC call counts.
 """
 
 import argparse
@@ -174,6 +178,11 @@ async def main() -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
+    if args.max_gauges < 1:
+        parser.error("--max-gauges must be >= 1")
+    if args.keys_per_call is not None and args.keys_per_call < 1:
+        parser.error("--keys-per-call must be >= 1")
+
     if not args.verbose:
         vm.console = Console(quiet=True)
     if args.keys_per_call is not None:
@@ -202,6 +211,12 @@ async def main() -> int:
     }
     instrument(vm.vm_proofs.web3_service.w3, counters["proofs"])
     instrument(vm.vm_eligibility.web3_service.w3, counters["eligibility"])
+
+    # Warm up HTTP connections and the votes cache so the first timed mode
+    # does not pay one-off costs the second mode skips.
+    vm.vm_proofs.web3_service.w3.eth.block_number
+    vm.vm_eligibility.web3_service.w3.eth.block_number
+    await vm.votes_service.get_gauge_votes(args.protocol, gauges[0][0], block)
 
     runs = {}
     for bulk in (False, True):

@@ -37,13 +37,36 @@ VALIDATION_BASE_DELAY = 3.0  # seconds
 # Enable with --bulk-proofs or VM_BULK_PROOFS=1; tune with --keys-per-call
 # or VM_BULK_KEYS_PER_CALL. The generated proofs are byte-identical.
 BULK_PROOFS = os.getenv("VM_BULK_PROOFS", "0") == "1"
-BULK_KEYS_PER_CALL = int(os.getenv("VM_BULK_KEYS_PER_CALL", "100"))
+
+
+def _parse_positive_int_env(name: str, default: int) -> int:
+    """Parse a positive integer env var, falling back to the default."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        console.print(
+            f"[yellow]Invalid {name}={raw!r}; using default {default}[/yellow]"
+        )
+        return default
+    if value < 1:
+        console.print(
+            f"[yellow]{name} must be >= 1; using default {default}[/yellow]"
+        )
+        return default
+    return value
+
+
+BULK_KEYS_PER_CALL = _parse_positive_int_env("VM_BULK_KEYS_PER_CALL", 100)
 
 # Track processing results for summary
 processing_stats: Dict[str, Dict[str, Any]] = {
     "processed_gauges": [],
     "skipped_invalid_gauges": [],
     "failed_validation_gauges": [],  # RPC/network failures - these are problems
+    "failed_user_proofs": [],  # Individual user proofs that failed (bulk mode)
 }
 
 
@@ -249,8 +272,31 @@ async def _process_gauge_bulk(
         console.print(
             f"[yellow]Warning: {len(failed_users)} user(s) failed for gauge {gauge_address}[/yellow]"
         )
+        for user in failed_users:
+            processing_stats["failed_user_proofs"].append(
+                {
+                    "protocol": protocol,
+                    "gauge": gauge_address,
+                    "user": user,
+                    "kind": "eligible",
+                }
+            )
 
     return gauge_proof_data, gauge_vote_data
+
+
+def _record_failed_listed_users(
+    protocol: str, gauge_address: str, users: List[str]
+) -> None:
+    for user in users:
+        processing_stats["failed_user_proofs"].append(
+            {
+                "protocol": protocol,
+                "gauge": gauge_address,
+                "user": user,
+                "kind": "listed",
+            }
+        )
 
 
 def _process_listed_users_bulk(
@@ -258,7 +304,7 @@ def _process_listed_users_bulk(
     gauge_address: str,
     block_number: int,
     listed_users: List[str],
-    max_retries: int = 3,
+    max_retries: int = 5,
 ) -> Dict[str, Any]:
     """Bulk variant of process_listed_users (never raises, skips failures)."""
     users = list(dict.fromkeys(user.lower() for user in listed_users))
@@ -276,11 +322,13 @@ def _process_listed_users_bulk(
         console.print(
             f"[red]Failed to generate listed user proofs for gauge {gauge_address}: {exc}[/red]"
         )
+        _record_failed_listed_users(protocol, gauge_address, users)
         return {}
     for user in failed_users:
         console.print(
             f"[red]Failed to generate proof for listed user {user}. Skipping.[/red]"
         )
+    _record_failed_listed_users(protocol, gauge_address, failed_users)
     return {
         user: {"storage_proof": proof} for user, proof in user_proofs.items()
     }
@@ -454,7 +502,7 @@ def process_listed_users(
     """
     if BULK_PROOFS:
         return _process_listed_users_bulk(
-            protocol, gauge_address, block_number, listed_users
+            protocol, gauge_address, block_number, listed_users, max_retries
         )
 
     listed_users_data = {}
@@ -860,6 +908,7 @@ def print_processing_summary() -> str:
     processed = processing_stats["processed_gauges"]
     skipped = processing_stats["skipped_invalid_gauges"]
     failed = processing_stats["failed_validation_gauges"]
+    failed_users = processing_stats.get("failed_user_proofs", [])
 
     console.print(
         f"\n[bold]Results: {len(processed)} succeeded, {len(failed)} failed, {len(skipped)} skipped (invalid)[/bold]"
@@ -881,10 +930,28 @@ def print_processing_summary() -> str:
             console.print(f"  - {g['gauge']} ({g['protocol']}, campaign {g['campaign_id']})")
             console.print(f"    Error: {g['error']}")
 
+    if failed_users:
+        console.print(
+            f"\n[yellow]⚠ Failed user proofs:[/yellow] {len(failed_users)}"
+        )
+        for item in failed_users:
+            console.print(
+                f"  - {item['user']} on {item['gauge']} "
+                f"({item['protocol']}, {item['kind']})"
+            )
+
     console.print("\n" + "=" * 70)
 
-    if not failed:
+    if not failed and not failed_users:
         return "success"
+
+    if not failed and failed_users:
+        # Gauges are fine but some user proofs are missing: partial output
+        console.print(
+            f"[bold yellow]WARNING: {len(failed_users)} user proof(s) "
+            "failed. Committing successful proofs.[/bold yellow]"
+        )
+        return "partial_failed"
 
     if processed:
         # Some gauges succeeded — partial success, commit what we have
@@ -920,6 +987,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
     processing_stats["processed_gauges"] = []
     processing_stats["skipped_invalid_gauges"] = []
     processing_stats["failed_validation_gauges"] = []
+    processing_stats["failed_user_proofs"] = []
 
     # Clear cache to ensure fresh campaign data
     campaign_service.clear_cache()
