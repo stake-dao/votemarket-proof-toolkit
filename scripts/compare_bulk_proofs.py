@@ -27,6 +27,7 @@ from typing import Any, Dict, Iterator, List, Tuple
 
 from dotenv import load_dotenv
 from rich.console import Console
+from web3.middleware import Web3Middleware
 
 load_dotenv()
 
@@ -43,14 +44,24 @@ OUTPUT_DIR = "temp"
 
 
 def instrument(w3, counter: collections.Counter) -> None:
-    """Count JSON-RPC methods issued through a Web3 provider."""
-    original = w3.provider.make_request
+    """Count JSON-RPC methods issued through a Web3 instance.
 
-    def counting(method, params):
-        counter[method] += 1
-        return original(method, params)
+    Uses a web3 middleware rather than patching ``provider.make_request``:
+    web3 caches the middleware/request chain after the first request, so a
+    patched ``make_request`` would be ignored once any call has been made.
+    """
 
-    w3.provider.make_request = counting
+    class CountingMiddleware(Web3Middleware):
+        def wrap_make_request(self, make_request):
+            def middleware(method, params):
+                counter[method] += 1
+                return make_request(method, params)
+
+            return middleware
+
+    w3.middleware_onion.add(
+        CountingMiddleware, name=f"rpc_counter_{id(counter)}"
+    )
 
 
 def oracle_block(protocol: str, chain_id: int, epoch: int) -> int:
