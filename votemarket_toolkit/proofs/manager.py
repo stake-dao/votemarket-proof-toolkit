@@ -55,14 +55,25 @@ class BulkProofs:
 
     Keys use lowercase addresses: ``gauge_proofs[(gauge, epoch)]`` and
     ``user_proofs[(gauge, user)]``.
+
+    ``gauge_nodes`` / ``user_nodes`` keep the raw storage-trie node stacks
+    of the same proofs (one stack for a gauge, one per vote slot for a user)
+    for the batch verifier's node bags; ``storage_root`` is the controller
+    storage root every response of the run agreed on.
     """
 
     gauge_proofs: Dict[Tuple[str, int], GaugeProof] = field(
         default_factory=dict
     )
-    user_proofs: Dict[Tuple[str, str], UserProof] = field(
+    user_proofs: Dict[Tuple[str, str], UserProof] = field(default_factory=dict)
+    gauge_nodes: Dict[Tuple[str, int], List[bytes]] = field(
         default_factory=dict
     )
+    user_nodes: Dict[Tuple[str, str], List[List[bytes]]] = field(
+        default_factory=dict
+    )
+    storage_root: Optional[bytes] = None
+    saw_missing_storage_root: bool = False
     errors: List[ProcessingError] = field(default_factory=list)
     stats: BulkProofStats = field(default_factory=BulkProofStats)
 
@@ -319,20 +330,29 @@ class VoteMarketProofs:
                 )
             )
 
-        data = BulkProofs(stats=bulk.stats)
+        data = BulkProofs(
+            stats=bulk.stats,
+            storage_root=bulk.storage_root,
+            saw_missing_storage_root=bulk.saw_missing_storage_root,
+        )
         for request, (account_proof, storage_proof) in bulk.proofs.items():
+            stacks = bulk.node_stacks.get(request, [])
             if request.kind == GAUGE:
-                data.gauge_proofs[(request.gauge, request.epoch)] = (
-                    GaugeProof(
-                        gauge_controller_proof=account_proof,
-                        point_data_proof=storage_proof,
-                    )
+                data.gauge_proofs[(request.gauge, request.epoch)] = GaugeProof(
+                    gauge_controller_proof=account_proof,
+                    point_data_proof=storage_proof,
                 )
+                if stacks:
+                    data.gauge_nodes[(request.gauge, request.epoch)] = stacks[
+                        0
+                    ]
             else:
                 data.user_proofs[(request.gauge, request.user)] = UserProof(
                     account_proof=account_proof,
                     storage_proof=storage_proof,
                 )
+                if stacks:
+                    data.user_nodes[(request.gauge, request.user)] = stacks
 
         for request, exc in bulk.errors.items():
             source = "gauge_proof" if request.kind == GAUGE else "user_proof"
@@ -442,7 +462,9 @@ class VoteMarketProofs:
                     )
                     for i in range(nb_gauges):
                         gauge_address = (
-                            gauge_controller_contract.functions.gauges(i).call()
+                            gauge_controller_contract.functions.gauges(
+                                i
+                            ).call()
                         )
                         self.yb_gauges[gauge_address.lower()] = True
 
@@ -450,9 +472,11 @@ class VoteMarketProofs:
                 return Result.ok(
                     GaugeValidationResult(
                         is_valid=is_valid,
-                        reason="Gauge found in YB gauges list"
-                        if is_valid
-                        else "Gauge not found in YB gauges list",
+                        reason=(
+                            "Gauge found in YB gauges list"
+                            if is_valid
+                            else "Gauge not found in YB gauges list"
+                        ),
                         protocol=protocol,
                         gauge=gauge,
                     )

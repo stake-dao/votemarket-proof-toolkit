@@ -1,0 +1,26 @@
+{
+  "epoch": 1730937600,
+  "protocol": "curve",
+  "platform": null,
+  "chainId": 42161,
+  "gauge": "0x26f7786de3e6d9bd37fcf47be6f2bc455a21b74a",
+  "originalUrl": "https://raw.githubusercontent.com/stake-dao/api/refs/heads/main/api/votemarket/1730937600/curve/42161/0x26f7786de3e6d9bd37fcf47be6f2bc455a21b74a.json",
+  "blockNumber": 21134723,
+  "userCount": 67,
+  "convertedAt": "2026-01-20T18:14:51.091Z",
+  "mptProofSizes": {
+    "totalBytes": 437951,
+    "pointDataBytes": 2295,
+    "gcProofBytes": 0,
+    "userProofsBytes": 435656,
+    "userCount": 67,
+    "avgPerUser": 6502
+  },
+  "zkProofSizes": {
+    "proofBytes": 868,
+    "publicValuesBytes": 13184,
+    "totalBytes": 14052,
+    "proofKind": "plonk"
+  },
+  "proofBinSize": 16962
+}

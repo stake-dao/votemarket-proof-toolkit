@@ -14,6 +14,13 @@ from rich.panel import Panel
 from votemarket_toolkit.campaigns import CampaignService
 from votemarket_toolkit.data import EligibilityService
 from votemarket_toolkit.proofs import VoteMarketProofs
+from votemarket_toolkit.proofs.batch_artifacts import (
+    BatchStacks,
+    safe_attach_batch_artifacts,
+)
+from votemarket_toolkit.proofs.generators.node_bag import (
+    supports_batch_verifier,
+)
 from votemarket_toolkit.shared.types import AllProtocolsData, ProtocolData
 from votemarket_toolkit.utils import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
@@ -60,6 +67,34 @@ def _parse_positive_int_env(name: str, default: int) -> int:
 
 
 BULK_KEYS_PER_CALL = _parse_positive_int_env("VM_BULK_KEYS_PER_CALL", 100)
+
+
+def _parse_optional_positive_int_env(name: str) -> Optional[int]:
+    """Parse an optional positive integer env var (None when unset/invalid)."""
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        console.print(f"[yellow]Invalid {name}={raw!r}; ignored[/yellow]")
+        return None
+    if value < 1:
+        console.print(f"[yellow]{name} must be >= 1; ignored[/yellow]")
+        return None
+    return value
+
+
+# Batch-verifier artifacts (node bags) are derived from the bulk responses,
+# so they are only published in bulk mode, for the protocols the batch
+# verifier supports (curve, balancer, fxn). The budget bounds one encoded
+# batch call and defaults to the target chain's transaction-size limit;
+# override with --batch-max-bytes or VM_BATCH_MAX_BYTES. The collector is
+# reset for every protocol (one gauge controller) and keyed by block.
+BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
+    "VM_BATCH_MAX_BYTES"
+)
+batch_stacks = BatchStacks()
 
 # Track processing results for summary
 processing_stats: Dict[str, Dict[str, Any]] = {
@@ -167,6 +202,15 @@ def _bulk_proofs(
         f"[dim]Bulk eth_getProof: {stats.rpc_calls} call(s) for {stats.keys} keys / "
         f"{stats.requests} proofs ({stats.splits} splits, {stats.failed_requests} failed)[/dim]"
     )
+    if supports_batch_verifier(protocol):
+        # Keep the raw trie nodes for the batch-verifier artifacts (same response).
+        batch_stacks.record(
+            block_number,
+            data.user_nodes,
+            data.gauge_nodes,
+            data.storage_root,
+            saw_missing_root=data.saw_missing_storage_root,
+        )
 
     gauge_proof = None
     if gauge_epoch is not None:
@@ -549,6 +593,9 @@ async def process_protocol(
       - "platforms": for proofs (stored in index/gauge files)
       - "votes": for raw vote details only (to be stored in a separate file)
     """
+    global batch_stacks
+    batch_stacks = BatchStacks()  # one protocol = one gauge controller
+
     platforms_by_chain = protocol_data[
         "platforms"
     ]  # chain_id -> list of platform dicts
@@ -568,6 +615,20 @@ async def process_protocol(
         # Use the first platform’s data as representative.
         rep_platform = platforms_list[0]
         block_number = rep_platform["latest_setted_block"]
+        other_blocks = {
+            p["latest_setted_block"]
+            for p in platforms_list
+            if p["latest_setted_block"] != block_number
+        }
+        if other_blocks:
+            # The per-gauge/per-user caches below are shared across the
+            # platforms of a chain: proofs are only interchangeable when
+            # every platform anchors the same block.
+            console.print(
+                f"[yellow]Warning: platforms on chain {chain_id} anchor different blocks "
+                f"({block_number} vs {sorted(other_blocks)}); cached proofs may not match "
+                "every platform[/yellow]"
+            )
 
         output_data["chains"][chain_id] = {
             "chain_id": chain_id,
@@ -799,7 +860,65 @@ async def process_protocol(
         console.print(
             f"Finished processing chain {chain_id} for protocol: [blue]{protocol}[/blue]"
         )
+    # Batch-verifier artifacts, once every chain is done: the cached gauge
+    # objects are shared between platforms and mutated until here, so the
+    # artifacts are attached last, on private copies, with the header block
+    # of each chain (the only block the published header/account proof
+    # covers).
+    if BULK_PROOFS:
+        for chain_id, chain_platforms in output_data["platforms"].items():
+            header_block = (
+                output_data["chains"].get(chain_id, {}).get("block_data") or {}
+            ).get("block_number")
+            for platform_address, platform_entry in chain_platforms.items():
+                _publish_batch_artifacts(
+                    protocol,
+                    chain_id,
+                    platform_address,
+                    platform_entry,
+                    header_block,
+                )
+
     return output_data
+
+
+def _publish_batch_artifacts(
+    protocol: str,
+    chain_id: str,
+    platform_address: str,
+    platform_entry: Dict[str, Any],
+    header_block: Optional[int],
+) -> None:
+    """Attach node bags (batch verifier) to a platform's gauges; legacy fields untouched.
+
+    Best-effort: any failure leaves the entry without artifacts and never
+    stops the legacy publication.
+    """
+    block_number = (platform_entry.get("block_data") or {}).get("block_number")
+    if block_number is None:
+        console.print(
+            f"[yellow]No block number for platform {platform_address} on chain {chain_id}; "
+            "skipping batch artifacts[/yellow]"
+        )
+        return
+    summary = safe_attach_batch_artifacts(
+        platform_entry,
+        protocol,
+        chain_id,
+        block_number,
+        batch_stacks,
+        max_bytes=BATCH_MAX_BYTES,
+        header_block=header_block,
+    )
+    if summary.gauges or summary.point_chunks:
+        console.print(
+            f"[dim]Batch artifacts for {platform_address} on chain {chain_id}: "
+            f"{summary.gauges} gauge(s), {summary.account_chunks} account chunk(s) / "
+            f"{summary.account_calldata_bytes:,} B calldata, {summary.point_chunks} point "
+            f"chunk(s) / {summary.point_calldata_bytes:,} B calldata[/dim]"
+        )
+    for reason in summary.skipped:
+        console.print(f"[yellow]Batch artifacts skipped: {reason}[/yellow]")
 
 
 def write_protocol_data(
@@ -820,7 +939,7 @@ def write_protocol_data(
     platforms_by_address: Dict[str, Dict[str, Any]] = {}
     for chain_id, chain_platforms in processed_data["platforms"].items():
         for platform_addr, platform_data in chain_platforms.items():
-            platforms_by_address.setdefault(platform_addr, {})[chain_id] = {
+            chain_entry = {
                 "chain_id": chain_id,
                 "platform_address": platform_addr,
                 "block_data": processed_data["chains"]
@@ -828,6 +947,11 @@ def write_protocol_data(
                 .get("block_data", {}),
                 "gauges": platform_data.get("gauges", {}),
             }
+            if "batch_points" in platform_data:
+                chain_entry["batch_points"] = platform_data["batch_points"]
+            platforms_by_address.setdefault(platform_addr, {})[
+                chain_id
+            ] = chain_entry
 
     rep_platform_addr = next(iter(platforms_by_address))
     rep_chain_id = next(iter(platforms_by_address[rep_platform_addr]))
@@ -1046,6 +1170,15 @@ if __name__ == "__main__":
         default=None,
         help="Max storage keys per eth_getProof call in bulk mode (default: VM_BULK_KEYS_PER_CALL or 100)",
     )
+    parser.add_argument(
+        "--batch-max-bytes",
+        type=int,
+        default=None,
+        help=(
+            "Byte budget of one encoded batch-verifier call (bulk mode only; "
+            "default: per-chain transaction-size limit, or VM_BATCH_MAX_BYTES)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.bulk_proofs:
@@ -1054,6 +1187,10 @@ if __name__ == "__main__":
         if args.keys_per_call < 1:
             parser.error("--keys-per-call must be >= 1")
         BULK_KEYS_PER_CALL = args.keys_per_call
+    if args.batch_max_bytes is not None:
+        if args.batch_max_bytes < 1:
+            parser.error("--batch-max-bytes must be >= 1")
+        BATCH_MAX_BYTES = args.batch_max_bytes
 
     with open(args.all_platforms_file, "r") as f:
         all_protocols_data = json.load(f)

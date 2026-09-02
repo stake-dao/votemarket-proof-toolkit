@@ -31,12 +31,14 @@ from votemarket_toolkit.proofs.generators.gauge_proof import (
     get_gauge_time_storage_slot_pre_vyper03,
     get_gauge_time_storage_slot_yb,
 )
+from votemarket_toolkit.proofs.generators.node_bag import normalize_stack
 from votemarket_toolkit.proofs.generators.user_proof import (
     get_user_gauge_storage_slot,
     get_user_gauge_storage_slot_pendle,
     get_user_gauge_storage_slot_pre_vyper03,
 )
 from votemarket_toolkit.shared import registry
+from votemarket_toolkit.shared.exceptions import RetryableException
 from votemarket_toolkit.shared.logging import get_logger
 from votemarket_toolkit.shared.redact import format_exception_safe
 from votemarket_toolkit.shared.retry import retry_sync_operation
@@ -53,6 +55,16 @@ DEFAULT_KEYS_PER_CALL = 100
 
 GAUGE = "gauge"
 USER = "user"
+
+
+class ProofResponseMismatch(RetryableException, ValueError):
+    """An ``eth_getProof`` response that cannot be trusted for splitting.
+
+    Wrong key order, wrong proof count or a storage root disagreeing with
+    the other calls of the run. Retryable: a load-balanced provider can
+    answer from a lagging node once; a multi-request chunk is split instead
+    (see ``_SPLIT_ERROR_MARKERS``) and a single request is retried whole.
+    """
 
 
 @dataclass(frozen=True)
@@ -109,11 +121,25 @@ class BulkProofResult:
     ``proofs`` maps each request to ``(account_proof, storage_proof)``, the
     same tuple returned by the per-request generators. ``errors`` maps the
     requests that could not be generated to the last exception seen.
+
+    ``node_stacks`` keeps, per request, the raw storage-trie nodes of each
+    requested key (one stack per key, in key order) so node bags for the
+    batch verifier can be built from the same response. ``storage_root`` is
+    the controller's ``storageHash`` reported by the node; every call of a
+    run must report the same one (same account, same block), a mismatch
+    fails the chunk closed.
     """
 
     proofs: Dict[ProofRequest, Tuple[bytes, bytes]] = field(
         default_factory=dict
     )
+    node_stacks: Dict[ProofRequest, List[List[bytes]]] = field(
+        default_factory=dict
+    )
+    storage_root: Optional[bytes] = None
+    # True when at least one accepted response carried no storageHash: the
+    # pinned root then does not vouch for every kept stack.
+    saw_missing_storage_root: bool = False
     errors: Dict[ProofRequest, Exception] = field(default_factory=dict)
     stats: BulkProofStats = field(default_factory=BulkProofStats)
 
@@ -322,6 +348,16 @@ def _pack_requests(
     return chunks
 
 
+def _field(container: Any, name: str) -> Any:
+    """A required field of an eth_getProof response, or a retryable mismatch."""
+    value = container.get(name) if hasattr(container, "get") else None
+    if value is None:
+        raise ProofResponseMismatch(
+            f"eth_getProof response has no '{name}' field"
+        )
+    return value
+
+
 def _check_storage_key(expected_hex: str, entry: Any) -> None:
     """Fail-closed check that the node answered for the key we asked.
 
@@ -330,9 +366,11 @@ def _check_storage_key(expected_hex: str, entry: Any) -> None:
     """
     key = entry.get("key") if hasattr(entry, "get") else None
     if key is None:
-        raise ValueError("eth_getProof storage proof entry has no 'key' field")
+        raise ProofResponseMismatch(
+            "eth_getProof storage proof entry has no 'key' field"
+        )
     if int.from_bytes(bytes(HexBytes(key)), "big") != int(expected_hex, 16):
-        raise ValueError(
+        raise ProofResponseMismatch(
             "eth_getProof storage proof order mismatch for key "
             f"{expected_hex}"
         )
@@ -341,6 +379,8 @@ def _check_storage_key(expected_hex: str, entry: Any) -> None:
 # Failure signatures that call for splitting the chunk rather than
 # retrying it as-is (size caps and malformed/shifted responses).
 _SPLIT_ERROR_MARKERS = (
+    "storagehash mismatch",
+    "has no '",
     "too many storage keys",
     "response too large",
     "request entity too large",
@@ -396,23 +436,40 @@ class _ChunkFetcher:
             return
         keys = [key for request in chunk for key in self._slots[request]]
         try:
-            raw_proof = self._get_proof(keys, single=len(chunk) == 1)
-            proofs = self._split_response(raw_proof, chunk, keys)
+            proofs, stacks = self._fetch_chunk(chunk, keys)
         except Exception as exc:  # noqa: BLE001 - handled per chunk
             self._handle_failure(chunk, exc, retried)
             return
         self._consecutive_failures = 0
         self._result.proofs.update(proofs)
+        self._result.node_stacks.update(stacks)
 
-    def _get_proof(self, keys: List[str], single: bool) -> Any:
-        def _call() -> Any:
+    def _fetch_chunk(
+        self, chunk: List[ProofRequest], keys: List[str]
+    ) -> Tuple[
+        Dict[ProofRequest, Tuple[bytes, bytes]],
+        Dict[ProofRequest, List[List[bytes]]],
+    ]:
+        """One eth_getProof call validated end to end (keys, storage root).
+
+        A chunk reduced to a single request retries the whole call *and*
+        its validation; a multi-request chunk fails fast so the split gives
+        it a second chance.
+        """
+
+        def _call() -> Tuple[
+            Dict[ProofRequest, Tuple[bytes, bytes]],
+            Dict[ProofRequest, List[List[bytes]]],
+        ]:
             self._result.stats.rpc_calls += 1
-            return self._web_3.eth.get_proof(
+            raw_proof = self._web_3.eth.get_proof(
                 self._controller, keys, self._block
             )
+            proofs, stacks = self._split_response(raw_proof, chunk, keys)
+            self._record_storage_root(raw_proof)
+            return proofs, stacks
 
-        if not single:
-            # Multi-request chunk: fail fast, the split gives a second chance
+        if len(chunk) > 1:
             return _call()
         return retry_sync_operation(
             _call,
@@ -421,21 +478,42 @@ class _ChunkFetcher:
             operation_name=f"bulk_proof_{len(keys)}_keys",
         )
 
+    def _record_storage_root(self, raw_proof: Any) -> None:
+        """Pin the controller storage root; every call must agree on it."""
+        storage_hash = (
+            raw_proof.get("storageHash") if hasattr(raw_proof, "get") else None
+        )
+        if storage_hash is None:
+            self._result.saw_missing_storage_root = True
+            return
+        storage_root = bytes(HexBytes(storage_hash))
+        if self._result.storage_root is None:
+            self._result.storage_root = storage_root
+        elif self._result.storage_root != storage_root:
+            raise ProofResponseMismatch(
+                "eth_getProof storageHash mismatch between calls at the same "
+                "block: the responses cannot be combined"
+            )
+
     def _split_response(
         self,
         raw_proof: Any,
         chunk: List[ProofRequest],
         keys: List[str],
-    ) -> Dict[ProofRequest, Tuple[bytes, bytes]]:
-        account_proof = raw_proof["accountProof"]
-        storage_proofs = raw_proof["storageProof"]
+    ) -> Tuple[
+        Dict[ProofRequest, Tuple[bytes, bytes]],
+        Dict[ProofRequest, List[List[bytes]]],
+    ]:
+        account_proof = _field(raw_proof, "accountProof")
+        storage_proofs = _field(raw_proof, "storageProof")
         if len(storage_proofs) != len(keys):
-            raise ValueError(
+            raise ProofResponseMismatch(
                 f"eth_getProof returned {len(storage_proofs)} storage proofs "
                 f"for {len(keys)} keys"
             )
 
         proofs: Dict[ProofRequest, Tuple[bytes, bytes]] = {}
+        stacks: Dict[ProofRequest, List[List[bytes]]] = {}
         cursor = 0
         for request in chunk:
             request_keys = self._slots[request]
@@ -446,7 +524,10 @@ class _ChunkFetcher:
             proofs[request] = encode_rlp_proofs(
                 {"accountProof": account_proof, "storageProof": entries}
             )
-        return proofs
+            stacks[request] = [
+                normalize_stack(_field(entry, "proof")) for entry in entries
+            ]
+        return proofs, stacks
 
     def _handle_failure(
         self, chunk: List[ProofRequest], exc: Exception, retried: bool
