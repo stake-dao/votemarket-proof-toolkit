@@ -93,8 +93,13 @@ one KMS-signed, guard-routed job per chain (`votemarket-proofs-arbitrum`,
 
 Done in the port:
 
-- `weekly_data.py` keeps the legacy parsing and retains `batch` / `batch_points`
-  with their published member order; malformed artifacts are ignored per entry.
+- `weekly_data.py` reads the protocol `index.json` (one request, no GitHub contents API),
+  keeps the legacy parsing and retains `batch` / `batch_points` with their published member
+  order; a malformed artifact is ignored for its entry only.
+- Oracle state is read through Multicall3 for the requested epoch (`epoch` dispatch input
+  for a backfill), never from the chain clock; the campaigns step refuses a published
+  platform the registry does not know; transactions that landed before a failure are
+  reported to Maestro.
 - `planning.py` (pure): headers = legacy `setBlockData` **and** `registerStorageRoot`
   (the storage root is checked on its own, so a mid-epoch rollout registers it);
   points and accounts give every needed member to the first published chunk that
@@ -114,9 +119,8 @@ Done in the port:
 
 Remaining:
 
-- [ ] Ceremony: `docs/ceremonies/votemarket-proofs/` (21 rules Arbitrum, 18
-      Optimism, generated); Optimism also needs `AllMight.allowAddress(guard v1.1)`;
-      fund the KMS signer on both L2s.
+- [ ] Ceremony: `docs/ceremonies/votemarket-proofs/` (21 rules per chain, generated);
+      Optimism also needs `AllMight.allowAddress(guard v1.1)`; fund the KMS signer on both L2s.
 - [ ] After the BatchVerifier deploy: address in `constants.py` + 3 rules per
       protocol in the manifest (one change; a test enforces both), `policy batch --diff`.
 - [ ] Maestro: unpause `pipelines/votemarket-v2-proofs-guard.yaml` and retire the

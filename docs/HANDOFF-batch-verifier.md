@@ -89,11 +89,15 @@ legacy steps selectable per dispatch (`VM_PROOFS_STEP`), node-bag path gated on 
 otherwise, `VM_PROOFS_BATCH=off` forces legacy). Rehearsed 2026-09-04 on Arbitrum with real proofs and
 DRY_RUN: 64 txs for the week (2 headers, 22 point packs, 40 account packs), max calldata 22 KB, all
 reads verified against the live oracle (60/60 points, 106/106 accounts already inserted by the legacy
-bot). Ceremony JSON generated (`docs/ceremonies/votemarket-proofs/`, 21 + 18 `setRule`); Optimism also
+bot). Ceremony JSON generated (`docs/ceremonies/votemarket-proofs/`, 21 `setRule` per chain); Optimism also
 needs `AllMight.allowAddress(guard v1.1)`; the signer holds 0 ETH on both L2s. Two platform edits:
 `EXECUTOR_GUARD_DEPLOY_BLOCK` for 42161/10 and the `chain_id == 1` assertion relaxed to "has a Boss
 Safe". Pre-existing on origin/main: `crv-swaps.yaml` drifts from its manifest (2 platform tests red),
-2 ruff findings in files untouched here.
+2 ruff findings in files untouched here. Reviews 2026-09-04 (Codex gpt-5.6-sol xhigh + Claude finders): fixed
+— Optimism curve/fxn platforms were missing from the registry (silent skip -> now listed and a registry gap raises),
+oracle state was read at the chain clock's epoch (GetInsertedProofs) -> Multicall3 reads at the requested epoch,
+landed transactions dropped from error reports -> PartialExecutionError, multi-epoch campaign packs and listed
+accounts now chained in test-mode bundles, malformed artifacts fall back per entry, single index.json fetch.
 
 ## What is left
 1. **Bot** — done in `automation-guard` (above); after the BatchVerifier deploy add its address to
