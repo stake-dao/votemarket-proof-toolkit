@@ -77,8 +77,11 @@ Remaining:
 
 - [ ] Commit, PR; once a `BatchVerifier` is deployed, cross-check `accountPaths()`/`pointPath()`
       against the live contract in `compare_bulk_proofs.py`.
-- [ ] Make the Python -> Solidity end-to-end check durable (commit an exported bag fixture in the
-      monorepo and a Foundry test reading it) instead of the one-off probe.
+- [x] Python -> Solidity end-to-end check made durable (2026-09-04): `BatchVerifierFFI.t.sol` in the
+      monorepo runs `test/python/generate_batch.py` inside this toolkit's environment (FFI, like the
+      legacy `generate_proof.py`), builds the bags of a real Curve gauge at a recent mainnet block and
+      compares every value BatchVerifier writes with `eth_getStorageAt`. Needs an archive
+      `ETHEREUM_MAINNET_RPC_URL` and this checkout next to the monorepo; skipped otherwise.
 - [ ] Published JSON grows (hex doubles each bag, gauge data is written in both the chain index
       and the gauge file): consider a dedicated artifact file if size becomes a problem.
 
