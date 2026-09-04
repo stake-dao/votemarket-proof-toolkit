@@ -82,28 +82,46 @@ Remaining:
 - [ ] Published JSON grows (hex doubles each bag, gauge data is written in both the chain index
       and the gauge file): consider a dedicated artifact file if size becomes a problem.
 
-## 3. `automation-jobs` — the bot ⏳ after deploy
+## 3. The bot — `automation-guard` ✅ written (branch `feat/votemarket-proofs-guard`)
 
-- [ ] `ContractRegistry` + ABI loader: add `*_BATCH_VERIFIER` per chain (legacy stays the fallback
-      whenever batch artifacts are absent from the JSON).
-- [ ] `1_insert_headers.py`: check `BatchVerifier.storageRootByEpoch(epoch)` **independently** of
-      the legacy header status — the current "skip if legacy header present" logic would skip root
-      registration forever after a mid-epoch rollout or a partial failure. If zero, call
-      `registerStorageRoot` (idempotent) even when `setBlockData` was already done.
-- [ ] `2_insert_point_data.py`: `setPointDataBatch` per protocol from the point-only bags,
-      byte-split like accounts.
-- [ ] `3_insert_accounts.py`: use a gauge's `batch` only when present (all-or-nothing coverage,
-      otherwise legacy blobs); filter already-registered accounts first (one registered account
-      reverts the whole batch) and send the remaining accounts of a chunk in their published order
-      with the chunk's bag (extra nodes are tolerated); on `ALREADY_REGISTERED` races, refetch
-      registration status and retry the remainder. Point bags: skip `missing_gauges` to legacy.
-- [ ] **Weiroll packing: at most one batch call per `ALL_MIGHT_V2.execute` transaction** unless a
-      byte-budget packer proves more fits — the current `MAX_ACTIONS_PER_BATCH = 3` rule must not
-      group 80–110 KB calls. Budget = final serialized signed tx, envelope included.
-- [ ] `WeeklyDataProcessor`: extend dataclasses/parser to retain the new artifacts and their
-      canonical account order (unknown fields are dropped today; sets lose ordering).
-- [ ] Rollout hygiene: canary (one gauge, one chain) with shadow comparison vs the legacy path,
-      alerting on revert/skip rates, and a feature flag falling back to legacy blobs.
+The four legacy scripts of `automation-jobs` (`votemarket/v2/proofs/1_…4_*.py`) are
+ported into `stake-dao/automation-guard` as `jobs/guard_jobs/jobs/votemarket_proofs/`:
+one KMS-signed, guard-routed job per chain (`votemarket-proofs-arbitrum`,
+`votemarket-proofs-optimism`), steps selectable per dispatch
+(`VM_PROOFS_STEP=all|headers|points|accounts|campaigns`). Nothing was removed from
+`automation-jobs`; the legacy pipeline keeps running until the atomic cutover.
+
+Done in the port:
+
+- `weekly_data.py` keeps the legacy parsing and retains `batch` / `batch_points`
+  with their published member order; malformed artifacts are ignored per entry.
+- `planning.py` (pure): headers = legacy `setBlockData` **and** `registerStorageRoot`
+  (the storage root is checked on its own, so a mid-epoch rollout registers it);
+  points and accounts give every needed member to the first published chunk that
+  covers it and send the remainder in published order under the chunk's bag
+  (already-registered members are filtered first: one would revert the call);
+  what no chunk covers, `missing_gauges` and gauges without `batch` keep the
+  legacy proofs; legacy proofs stay packed three per transaction, batch calls
+  one per transaction.
+- Node bags are used only when the chain has a `ContractRegistry.*_BATCH_VERIFIER`
+  address, the manifest and the guard carry its three rules, and the oracle
+  authorizes it (`VM_PROOFS_BATCH=off` forces legacy).
+- The final `execute(bytes32[],bytes[])` calldata is bounded by the chain's
+  transaction limit (95 KB Arbitrum / 128 KB Optimism, minus envelope): an
+  oversized chunk falls back to legacy proofs, an oversized legacy pack is split.
+- Test mode chains each leg behind the run's own header / root / point legs in a
+  Tenderly bundle, so a full week simulates before anything landed.
+
+Remaining:
+
+- [ ] Ceremony: `docs/ceremonies/votemarket-proofs/` (21 rules Arbitrum, 18
+      Optimism, generated); Optimism also needs `AllMight.allowAddress(guard v1.1)`;
+      fund the KMS signer on both L2s.
+- [ ] After the BatchVerifier deploy: address in `constants.py` + 3 rules per
+      protocol in the manifest (one change; a test enforces both), `policy batch --diff`.
+- [ ] Maestro: unpause `pipelines/votemarket-v2-proofs-guard.yaml` and retire the
+      four legacy insert steps in the same change (canary: one `execute` dispatch
+      with `step=headers` on Arbitrum first).
 
 ## 4. Governance — after audit
 
@@ -114,5 +132,5 @@ Remaining:
 ## Order
 
 contracts (commit → PR → audit) → toolkit encoder + chunk artifacts (parallel; parity on unit
-fixtures until deploy) → deploy + governance (readiness checks first) → bot canary → full switch.
-Legacy path stays live at every step.
+fixtures until deploy) → guard job ceremony + test dispatches → deploy + governance (readiness
+checks first) → bot canary → full switch. Legacy path stays live at every step.
