@@ -87,7 +87,13 @@ def main() -> int:
     data = result.data
 
     stacks = BatchStacks()
-    stacks.record(block, data.user_nodes, data.gauge_nodes, data.storage_root)
+    stacks.record(
+        block,
+        data.user_nodes,
+        data.gauge_nodes,
+        data.storage_root,
+        saw_missing_root=data.saw_missing_storage_root,
+    )
     platform: Dict[str, Any] = {
         "block_data": {"block_number": block},
         "gauges": {

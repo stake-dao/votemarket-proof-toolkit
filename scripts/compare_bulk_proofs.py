@@ -91,14 +91,14 @@ def oracle_block(protocol: str, chain_id: int, epoch: int) -> int:
 
 
 async def select_gauges(
-    protocol: str, chain_id: int, max_gauges: int
+    protocol: str, chain_id: int, epoch: int, max_gauges: int
 ) -> List[Tuple[str, List[str]]]:
     """Gauges of active campaigns, listed-user campaigns first."""
     platform = registry.get_platform(protocol, chain_id, "v2")
     result = await vm.campaign_service.get_campaigns(chain_id, platform)
     if not result.success:
         raise SystemExit(f"Campaign fetch failed: {result.errors[0].message}")
-    active = [c for c in result.data if vm.is_campaign_active(c)]
+    active = [c for c in result.data if vm.is_campaign_active(c, epoch)]
     active.sort(key=lambda c: -len(c.get("addresses", [])))
 
     selected: List[Tuple[str, List[str]]] = []
@@ -195,7 +195,9 @@ async def main() -> int:
 
     epoch = get_rounded_epoch(args.epoch or int(time.time()))
     block = args.block or oracle_block(args.protocol, args.chain_id, epoch)
-    gauges = await select_gauges(args.protocol, args.chain_id, args.max_gauges)
+    gauges = await select_gauges(
+        args.protocol, args.chain_id, epoch, args.max_gauges
+    )
     if not gauges:
         raise SystemExit("No active campaign found")
 

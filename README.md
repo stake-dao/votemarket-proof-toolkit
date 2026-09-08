@@ -300,7 +300,10 @@ the batch verifier supports — curve, balancer, fxn (pendle/yb keep their own
 verifiers) — and publishes them **next to** the legacy fields, which are
 untouched: the legacy verifier and self-serve users keep working from the same
 files. Artifact generation is best-effort and can never break the legacy
-publication.
+publication. The migrated automation-jobs consumer requires these artifacts for
+Curve, Balancer and FXN: missing or unusable required batches stop the job, with
+no legacy fallback. See the [current rollout checklist](docs/batch-verifier-rollout.md)
+for deployment, both Oracle authorizations and activation on the existing pipeline.
 
 ```jsonc
 // <platform>/<chain>/<gauge>.json — per gauge, for setAccountDataBatch(gauge, epoch, accounts, node_bag)
@@ -318,12 +321,16 @@ publication.
                  "chunks": [{"gauges": ["0x…"], "node_bag": "0x…", "bag_bytes": 2323, "calldata_bytes": 2532}]}
 ```
 
-- **Coverage is all-or-nothing per gauge**: a `batch` is published only when every
-  account of the gauge's legacy fields (eligible and listed users) has trie nodes
-  at the platform's block; otherwise the gauge has no `batch` and consumers use the
-  legacy blobs. `batch_points.missing_gauges` names the gauges a point bag does not
-  cover. Accounts are sorted (lowercase) so chunks are canonical across runs; the
-  order inside a chunk is the order to pass on-chain.
+- **Coverage is all-or-nothing for the published gauge inventory**: a `batch` is
+  published only when every account present in the gauge's legacy fields (eligible
+  and listed users) has trie nodes at the platform's block; otherwise the gauge has
+  no `batch`. `batch_points.missing_gauges` names gauges a point bag does not cover.
+  Automation-jobs fails if any required member lacks batch coverage, even when its
+  legacy blob exists. This cannot detect users omitted before the inventory was
+  built. Separately, the producer can report success without required bags, and the
+  API wrapper can omit bulk mode; both publication issues remain open. Accounts are
+  sorted (lowercase) so chunks are canonical across runs; the order inside a chunk
+  is the order to pass on-chain.
 - **Chunks are cut by encoded call size**, not by number of accounts: the ABI head,
   one 32-byte word per account and the padded bag must fit the budget — 90 KB on
   Arbitrum (sequencer limit ~95 KB, about 20 accounts today), 124 KB on Optimism
@@ -377,14 +384,11 @@ endpoint, private key or live transaction. `SOLC_BINARY` can select an already
 installed compiler for a fully offline run. With `REQUIRE_BATCH_VERIFIER_TEST=1`,
 missing Forge or a missing contracts checkout is an error, not a skipped test.
 
-The `proof_regressions.yml` workflow runs the unit regression suite on toolkit
-changes. The companion `curve_toolkit_regressions.yml` workflow belongs to
-`contracts-monorepo`: that private repository checks out this public toolkit
-and runs the proof regression suite and Solidity test together. Publish the
-toolkit changes before running it. Its toolkit ref can be pinned through
-`VOTEMARKET_TOOLKIT_REF` or selected on manual dispatch; after merging the
-toolkit branch, update the ref to the merged commit. For a toolkit-only change,
-dispatch the contracts workflow with that toolkit commit before merging it.
+Run these checks manually against the intended toolkit and contracts revisions.
+The [rollout checklist](docs/batch-verifier-rollout.md#manual-validation-and-order) also gives the
+recorded Foundry and automation tests, plus the Curve and FXN mainnet-getter tests.
+Those mainnet tests generate proofs through Python, insert them into a local
+verifier/Oracle and compare the resulting data and votes without a fork.
 
 ## License
 

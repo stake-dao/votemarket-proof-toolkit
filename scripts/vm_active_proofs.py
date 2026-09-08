@@ -4,8 +4,8 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
+from typing import Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -96,46 +96,6 @@ BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
     "VM_BATCH_MAX_BYTES"
 )
 batch_stacks = BatchStacks()
-
-# Track processing results for summary
-processing_stats: Dict[str, Dict[str, Any]] = {
-    "processed_gauges": [],
-    "skipped_invalid_gauges": [],
-    "failed_validation_gauges": [],  # RPC/network failures - these are problems
-    "failed_user_proofs": [],  # Individual user proofs that failed (bulk mode)
-}
-
-
-def is_campaign_active(campaign: dict) -> bool:
-    """
-    Check if a campaign should be processed for proof generation.
-
-    A campaign should be included if:
-    1. It's currently active (end_timestamp > now AND has remaining_periods)
-    2. OR it ended within the current epoch (same week) - because we still need
-       proofs for votes cast during this epoch
-
-    This ensures campaigns that ended today or this week still generate proofs,
-    allowing users to claim rewards for the current epoch's voting period.
-    """
-    current_timestamp = int(datetime.now().timestamp())
-    current_epoch = get_rounded_epoch(current_timestamp)
-
-    is_closed = campaign.get("is_closed", False)
-    end_timestamp = campaign["campaign"]["end_timestamp"]
-    end_epoch = get_rounded_epoch(end_timestamp)
-    remaining_periods = campaign.get("remaining_periods", 0)
-
-    # Campaign is active if it's not closed AND either:
-    # 1. Still running (end_timestamp in future with remaining periods)
-    # 2. Ended within current epoch (same week - proofs still needed)
-    is_active = not is_closed and (
-        (end_timestamp > current_timestamp and remaining_periods > 0)
-        or (end_epoch == current_epoch)
-    )
-
-    return is_active
-
 
 # ---------------------------------------------------------------------------
 # Bulk eth_getProof path (opt-in, see BULK_PROOFS)
@@ -377,6 +337,30 @@ def _process_listed_users_bulk(
     return {
         user: {"storage_proof": proof} for user, proof in user_proofs.items()
     }
+
+
+# Track processing results for summary
+processing_stats: Dict[str, Dict[str, Any]] = {
+    "processed_gauges": [],
+    "skipped_invalid_gauges": [],
+    "failed_validation_gauges": [],  # RPC/network failures - these are problems
+    "failed_user_proofs": [],  # Individual user proofs that failed (bulk mode)
+}
+
+
+def is_campaign_active(campaign: dict, current_epoch: int) -> bool:
+    """
+    Check if a campaign should be processed for proof generation.
+
+    A campaign is relevant for an epoch if it hasn't ended before that epoch
+    started. We intentionally do NOT check `remaining_periods` here: that
+    value reflects live contract state and races with `distribute()` calls —
+    during a period transition it momentarily drops to 0, which would cause
+    valid campaigns to be silently skipped.
+    """
+    is_closed = campaign.get("is_closed", False)
+    end_timestamp = campaign["campaign"]["end_timestamp"]
+    return not is_closed and end_timestamp > current_epoch
 
 
 async def process_gauge(
@@ -714,7 +698,7 @@ async def process_protocol(
                     continue  # Skip this platform but continue with others
 
                 active_campaigns = [
-                    c for c in all_campaigns if is_campaign_active(c)
+                    c for c in all_campaigns if is_campaign_active(c, current_epoch)
                 ]
                 if len(active_campaigns) < len(all_campaigns):
                     console.print(
