@@ -33,11 +33,18 @@ contract CurveProtocolTest {
             new BatchVerifier(address(oracle), 0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB, 11, 9, 12, true);
         oracle.setAuthorizedBlockNumberProvider(address(this));
         oracle.setAuthorizedDataProvider(address(verifier));
+        oracle.setAuthorizedBlockNumberProvider(address(verifier));
         StateProofVerifier.BlockHeader memory h = StateProofVerifier.parseBlockHeader(f.header);
         uint256 epoch = h.timestamp / 1 weeks * 1 weeks;
+        h.stateRootHash = bytes32(0);
         oracle.insertBlockNumber(epoch, h);
         verifier.registerStorageRoot(f.header, f.accountProof);
         require(verifier.storageRootByEpoch(epoch) == f.storageRoot, "controller storage root");
+        {
+            (bytes32 hash, bytes32 root, uint256 number, uint256 timestamp) = oracle.epochBlockNumber(epoch);
+            require(root == f.storageRoot, "controller root persisted in Oracle");
+            require(hash == h.hash && number == h.number && timestamp == h.timestamp, "block metadata preserved");
+        }
 
         {
             (bytes32 last, bytes32 slopePath, bytes32 endPath) = verifier.accountPaths(f.user, f.gauge);

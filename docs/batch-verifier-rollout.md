@@ -15,10 +15,12 @@ initial ceilings, re-derived weekly, never as guaranteed maxima).
 Branch `feat/votemarket-verifier-v3` (uncommitted). Done:
 
 - `src/verifiers/BatchVerifier.sol` — `registerStorageRoot(blockHeader, accountProof)` proves the
-  controller storage root from the block hash anchored in the Oracle (once per epoch; after the
-  first success, same-epoch calls are no-ops returning the stored root), then
+  controller storage root from the block hash anchored in the Oracle and writes it to
+  `Oracle.epochBlockNumber(epoch).stateRootHash`. Every registration revalidates the header and
+  account proof; an identical root is a no-op and a conflicting nonzero root reverts. Then
   `setAccountDataBatch(gauge, epoch, accounts[], nodeBag)` / `setPointDataBatch(gauges[], epoch, nodeBag)`.
-  Legacy `ALREADY_REGISTERED` semantics; only needs the Oracle data-provider role.
+  Legacy `ALREADY_REGISTERED` semantics; needs both Oracle data-provider and block-number-provider
+  roles. `storageRootByEpoch` forwards the Oracle root, with no separate local mapping.
 - `src/utils/MerklePatriciaBatchVerifier.sol` — verbatim copy of `market` @ commit `75b24ec`
   (keep byte-identical).
 - `script/verifier/DeployBatchVerifier.s.sol` — CREATE3 **protected salts** (broadcaster in the
@@ -32,12 +34,14 @@ Remaining:
 
 - [ ] Commit, PR.
 - [ ] Audit — bundle with the `market` audit; state explicitly for auditors: the trust root is the
-      Oracle's authorized block-number provider set, and registered roots are final per epoch.
+      Oracle's authorized block-number provider set. BatchVerifier refuses to overwrite a conflicting
+      root, but authorized Oracle providers can change the shared root, as in the legacy design.
 - [ ] Before broadcasting the deploy: verify on both chains that the L1 block updater is an
       authorized block-number provider of each target Oracle and actually serves it; record
       addresses, salt, initcode/runtime hashes in the address book (not optional — self-serve
       users and the indexer need them). After the governance txs, verify
-      `authorizedDataProviders(batchVerifier) == true`.
+      `authorizedDataProviders(batchVerifier) == true` and
+      `authorizedBlockNumberProviders(batchVerifier) == true`.
 - [ ] Nice-to-have for audit: real balancer/fxn point-proof fixtures; exact-error test for the
       wrong-controller path.
 

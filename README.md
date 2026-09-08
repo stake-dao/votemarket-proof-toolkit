@@ -336,9 +336,13 @@ publication.
   only when every response of the run reported the same controller `storageHash`
   (a run where responses disagreed or carried no root gets no artifacts).
   `observed_storage_root` is that pinned value and is **diagnostic only**: the
-  batch verifier proves and stores its own root from the anchored block header,
+  batch verifier proves the root from the anchored block header and stores it in
+  `Oracle.epochBlockNumber(epoch).stateRootHash`, as the legacy verifiers do;
   no batch call accepts this value — at most compare it with
-  `storageRootByEpoch(epoch)`.
+  `storageRootByEpoch(epoch)` (a getter over the Oracle field). Root registration
+  requires the verifier's Oracle block-number-provider role; inserting votes and
+  weights also requires its data-provider role. Re-registering validates the full
+  header/account proof, accepts an identical root and rejects a conflicting root.
 - Bag encoding follows the on-chain contract (nodes deduplicated and sorted by
   keccak, embedded nodes under 32 bytes dropped except stack roots) and is pinned
   byte-for-byte to the Solidity reference helper `BagBuilder.sol` in

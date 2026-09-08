@@ -10,6 +10,15 @@ metadata:
 
 # Hand-off — Votemarket V2 batched proofs (BatchVerifier)
 
+> Update 2026-09-08: the historical design below has changed. BatchVerifier now proves the
+> controller root and stores it in `Oracle.epochBlockNumber(epoch).stateRootHash`; the
+> `storageRootByEpoch` getter forwards that field. Registration always verifies header/account
+> proof, accepts an identical root and rejects a conflicting nonzero root. Both Oracle provider
+> roles are required. Production integration now lives in automation-jobs with mandatory batch
+> proofs for Curve/FXN/Balancer and no legacy fallback. See `batch-verifier-rollout.md` for the
+> current contract authorization requirements; the Guard rollout and old measurements below
+> are historical context.
+
 Read this first, then the linked notes for details: [[market-node-bag-plan]], [[verifier-v3-implementation]],
 [[toolkit-batch-artifacts]], [[v2-verifier-gas-measurements]], [[fork-rehearsal]], [[bulk-getproof-branch]],
 [[alchemy-limits]], [[user-profile]].
