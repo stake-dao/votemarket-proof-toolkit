@@ -18,6 +18,13 @@ metadata:
 > proofs for Curve/FXN/Balancer and no legacy fallback. See `batch-verifier-rollout.md` for the
 > current contract authorization requirements; the Guard rollout and old measurements below
 > are historical context.
+>
+> The constructor's `hashStructBaseSlot` flag is immutable after deployment and exposed by
+> `HASH_STRUCT_BASE_SLOT()`. `true` (Curve) adds one hash of the nested struct base before field
+> offsets; `false` (FXN/Balancer) uses that base directly. It applies to `vote_user_slopes` and
+> `points_weight`, never to `last_user_vote`. Both layouts still hash each final field slot into
+> its storage-trie path. This selects the controller's storage layout; it does not select a verifier
+> or enable a legacy fallback.
 
 Read this first, then the linked notes for details: [[market-node-bag-plan]], [[verifier-v3-implementation]],
 [[toolkit-batch-artifacts]], [[v2-verifier-gas-measurements]], [[fork-rehearsal]], [[bulk-getproof-branch]],
@@ -51,7 +58,7 @@ Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` 
   root; root stored per epoch, final once registered — the Oracle's overloaded `stateRootHash` field is
   never read), `setAccountDataBatch(gauge, epoch, accounts[], nodeBag)`, `setPointDataBatch(gauges[], epoch,
   nodeBag)`; constructor `(oracle, gaugeController, lastVoteSlot, userSlopeSlot, weightSlot,
-  legacyStructSlot)` — `true` = Curve (`RLPDecoder`), `false` = balancer/fxn (`RLPDecoderV2`); only needs
+  hashStructBaseSlot)` — `true` = Curve (`RLPDecoder`), `false` = balancer/fxn (`RLPDecoderV2`); only needs
   the Oracle **data-provider** role; public `accountPaths()`/`pointPath()`; events.
 - `src/utils/MerklePatriciaBatchVerifier.sol`: verbatim copy of `market` @ `75b24ec` (keep byte-identical).
 - `script/verifier/DeployBatchVerifier.s.sol`: CREATE3 protected salts (broadcaster-prefixed, byte 21 =
