@@ -21,6 +21,7 @@ from votemarket_toolkit.proofs.batch_artifacts import (
 from votemarket_toolkit.proofs.generators.node_bag import (
     supports_batch_verifier,
 )
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.shared.types import AllProtocolsData, ProtocolData
 from votemarket_toolkit.utils import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
@@ -593,6 +594,7 @@ async def process_protocol(
       - "platforms": for proofs (stored in index/gauge files)
       - "votes": for raw vote details only (to be stored in a separate file)
     """
+    protocol = normalize_proof_protocol(protocol)
     global batch_stacks
     batch_stacks = BatchStacks()  # one protocol = one gauge controller
 
@@ -1128,6 +1130,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
         )
     )
     for protocol, protocol_data in all_protocols_data["protocols"].items():
+        protocol = normalize_proof_protocol(protocol)
         if not protocol_data["platforms"]:
             console.print(
                 f"Skipping protocol: [blue]{protocol}[/blue] as no platforms found"

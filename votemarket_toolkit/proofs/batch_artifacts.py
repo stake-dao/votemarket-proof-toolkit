@@ -24,7 +24,7 @@ private copies of the gauge entries (the script shares cached gauge objects
 between platforms) and can never abort the legacy publication.
 
 Stacks are keyed by block: one collector serves one protocol (one gauge
-controller), whose platforms may anchor different blocks.
+controller) and one epoch, whose platforms may anchor different blocks.
 """
 
 from __future__ import annotations
@@ -48,10 +48,14 @@ _logger = get_logger(__name__)
 
 @dataclass
 class BatchStacks:
-    """Raw trie nodes of one protocol, collected while generating legacy proofs in bulk.
+    """Raw trie nodes of one protocol and epoch, collected from bulk legacy proofs.
 
     Keys use lowercase addresses and include the block the proofs were
-    generated at. ``storage_roots`` pins the controller storage root per
+    generated at. The first point proof binds the collector to its epoch;
+    a record containing another epoch is rejected before any state changes.
+    User-only runs do not bind an epoch: their storage paths only depend on
+    the gauge and user, and their nodes remain keyed by block.
+    ``storage_roots`` pins the controller storage root per
     block; a block whose responses disagreed is listed in
     ``conflicting_blocks`` and a block where at least one accepted response
     carried no root in ``blocks_without_root`` — neither gets artifacts
@@ -67,6 +71,7 @@ class BatchStacks:
     storage_roots: Dict[int, bytes] = field(default_factory=dict)
     conflicting_blocks: Set[int] = field(default_factory=set)
     blocks_without_root: Set[int] = field(default_factory=set)
+    _epoch: Optional[int] = field(default=None, init=False, repr=False)
 
     def record(
         self,
@@ -76,7 +81,30 @@ class BatchStacks:
         storage_root: Optional[bytes],
         saw_missing_root: bool = False,
     ) -> None:
-        """Keep the stacks of one bulk run (``BulkProofs`` fields)."""
+        """Keep one bulk run, rejecting mixed epochs before mutating the collector.
+
+        Point stacks omit the epoch from their keys because a collector is
+        bound to one epoch. Use a separate collector for another epoch;
+        multiple blocks and gauges of the same epoch can coexist.
+        """
+        epochs: Set[int] = set()
+        for _, epoch in gauge_nodes:
+            if type(epoch) is not int:
+                raise ValueError("Gauge proof epoch must be an integer")
+            epochs.add(epoch)
+        if len(epochs) > 1:
+            raise ValueError(
+                "BatchStacks collects a single epoch; received multiple epochs"
+            )
+        if epochs:
+            epoch = next(iter(epochs))
+            if self._epoch is not None and epoch != self._epoch:
+                raise ValueError(
+                    f"BatchStacks is bound to epoch {self._epoch}; "
+                    f"received epoch {epoch}"
+                )
+            self._epoch = epoch
+
         for (gauge, user), stacks in user_nodes.items():
             self.user_stacks[(block_number, gauge.lower(), user.lower())] = (
                 stacks

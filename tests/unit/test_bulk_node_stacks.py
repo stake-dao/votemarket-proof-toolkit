@@ -84,6 +84,12 @@ class FakeEth:
 class FakeWeb3:
     def __init__(self, roots: Optional[List[HexBytes]] = None):
         self.eth = FakeEth(roots)
+        self.manager = self
+
+    def request_blocking(self, method, params):
+        assert method == "eth_getProof"
+        address, keys, block = params
+        return self.eth.get_proof(address, keys, int(block, 16))
 
 
 @pytest.fixture(autouse=True)

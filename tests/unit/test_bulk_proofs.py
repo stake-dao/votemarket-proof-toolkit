@@ -84,6 +84,12 @@ class FakeWeb3:
 
     def __init__(self, behaviour: Optional[Callable] = None):
         self.eth = FakeEth(behaviour)
+        self.manager = self
+
+    def request_blocking(self, method, params):
+        assert method == "eth_getProof"
+        address, keys, block = params
+        return self.eth.get_proof(address, keys, int(block, 16))
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +144,24 @@ def test_bulk_slots_match_existing_generators(protocol):
     assert keys_user == get_user_proof_slots(protocol, GAUGES[0], USERS[0])
     assert addr_gauge == addr_user == Web3.to_checksum_address(CONTROLLER)
     assert block_gauge == BLOCK
+
+
+@pytest.mark.parametrize("protocol", PROTOCOLS)
+def test_bulk_public_entrypoints_normalize_protocol(protocol):
+    canonical = FakeWeb3()
+    expected = generate_proofs_bulk(canonical, protocol, BLOCK, _requests())
+    supplied = "  " + protocol.upper() + "  "
+    normalized = FakeWeb3()
+    actual = generate_proofs_bulk(normalized, supplied, BLOCK, _requests())
+
+    assert actual.proofs == expected.proofs
+    assert normalized.eth.calls == canonical.eth.calls
+    assert get_gauge_proof_slots(
+        supplied, GAUGES[0], EPOCH
+    ) == get_gauge_proof_slots(protocol, GAUGES[0], EPOCH)
+    assert get_user_proof_slots(
+        supplied, GAUGES[0], USERS[0]
+    ) == get_user_proof_slots(protocol, GAUGES[0], USERS[0])
 
 
 # =============================================================================

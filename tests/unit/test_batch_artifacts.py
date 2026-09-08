@@ -2,6 +2,9 @@
 Unit tests for the batch-verifier artifacts attached to the published proofs.
 """
 
+from copy import deepcopy
+
+import pytest
 import rlp
 
 from votemarket_toolkit.proofs.batch_artifacts import (
@@ -23,6 +26,7 @@ OTHER_GAUGE = "0x7e1444ba99dcdffe8fbdb42c02fb0da4aaace4d5"
 ROOT = b"\x42" * 32
 BLOCK = 21000000
 OTHER_BLOCK = 21000100
+EPOCH = 1764806400
 
 
 def _stack(tag: bytes, depth: int = 3):
@@ -44,7 +48,7 @@ def _stacks(users, gauge=GAUGE, root=ROOT, block=BLOCK):
     stacks.record(
         block,
         {(gauge, u): _user_stacks(u, block) for u in users},
-        {(gauge, 1764806400): _stack(b"point" + gauge.encode())},
+        {(gauge, EPOCH): _stack(b"point" + gauge.encode())},
         root,
     )
     return stacks
@@ -259,6 +263,150 @@ def test_record_normalizes_addresses():
     )
     assert (BLOCK, GAUGE.lower(), "0xab") in stacks.user_stacks
     assert (BLOCK, OTHER_GAUGE.lower()) in stacks.point_stacks
+
+
+@pytest.mark.parametrize("populated", [False, True])
+@pytest.mark.parametrize("second_gauge", [GAUGE, GAUGE.upper(), OTHER_GAUGE])
+def test_record_rejects_multiple_epochs_before_any_mutation(
+    populated, second_gauge
+):
+    stacks = _stacks(["0xa1"]) if populated else BatchStacks()
+    before = deepcopy(stacks)
+
+    with pytest.raises(ValueError, match="single epoch"):
+        stacks.record(
+            BLOCK,
+            {
+                (GAUGE.upper(), "0xA1"): _user_stacks("replacement"),
+                (OTHER_GAUGE, "0xa2"): _user_stacks("new-user"),
+            },
+            {
+                (GAUGE, EPOCH): _stack(b"first-point"),
+                (second_gauge, EPOCH + 604800): _stack(b"other-epoch"),
+            },
+            b"\x24" * 32,
+            saw_missing_root=True,
+        )
+
+    # Rejection must preserve all users, points, roots, flags and epoch binding.
+    assert stacks == before
+
+
+@pytest.mark.parametrize("block", [BLOCK, OTHER_BLOCK])
+@pytest.mark.parametrize("gauge", [GAUGE.upper(), OTHER_GAUGE])
+def test_record_rejects_a_later_epoch_before_any_mutation(block, gauge):
+    stacks = _stacks(["0xa1"])
+    before = deepcopy(stacks)
+
+    with pytest.raises(ValueError, match="bound to epoch"):
+        stacks.record(
+            block,
+            {(GAUGE, "0xa1"): _user_stacks("replacement", block)},
+            {(gauge, EPOCH + 604800): _stack(b"other-epoch")},
+            None,
+            saw_missing_root=True,
+        )
+
+    assert stacks == before
+
+
+def test_same_epoch_multiple_blocks_and_gauges_keep_distinct_artifacts():
+    stacks = BatchStacks()
+    gauges = [GAUGE, OTHER_GAUGE]
+    roots = {BLOCK: ROOT, OTHER_BLOCK: b"\x24" * 32}
+    point_nodes = {}
+    for block, root in roots.items():
+        points = {
+            gauge: _stack(gauge.encode() + block.to_bytes(4, "big"))
+            for gauge in gauges
+        }
+        point_nodes[block] = points
+        stacks.record(
+            block,
+            {
+                (gauge.upper(), "0xA1"): _user_stacks("0xa1", block)
+                for gauge in gauges
+            },
+            {(gauge.upper(), EPOCH): point for gauge, point in points.items()},
+            root,
+        )
+
+    assert stacks.storage_roots == roots
+    assert not stacks.conflicting_blocks
+    for block in roots:
+        platform = _platform(["0xa1"], block=block)
+        platform["gauges"][OTHER_GAUGE] = _platform(["0xa1"])["gauges"][GAUGE]
+        summary = attach_batch_artifacts(
+            platform, "curve", 42161, block, stacks
+        )
+
+        assert not summary.skipped
+        assert summary.gauges == 2
+        points = platform["batch_points"]
+        assert points["observed_storage_root"] == "0x" + roots[block].hex()
+        assert points["chunks"][0]["gauges"] == sorted(gauges)
+        assert (
+            points["chunks"][0]["node_bag"]
+            == "0x"
+            + encode_node_bag(
+                [point_nodes[block][gauge] for gauge in sorted(gauges)]
+            ).hex()
+        )
+        for gauge in gauges:
+            batch = platform["gauges"][gauge]["batch"]
+            assert batch["block_number"] == block
+            assert batch["chunks"][0]["accounts"] == ["0xa1"]
+            assert (
+                batch["chunks"][0]["node_bag"]
+                == "0x" + encode_node_bag(_user_stacks("0xa1", block)).hex()
+            )
+
+
+def test_user_only_runs_work_before_and_after_epoch_is_bound():
+    stacks = BatchStacks()
+    stacks.record(BLOCK, {(GAUGE, "0xa1"): _user_stacks("0xa1")}, {}, ROOT)
+    stacks.record(
+        OTHER_BLOCK,
+        {(GAUGE, "0xa2"): _user_stacks("0xa2", OTHER_BLOCK)},
+        {},
+        b"\x24" * 32,
+    )
+    # User slots do not include an epoch; the first point establishes the binding.
+    stacks.record(BLOCK, {}, {(GAUGE, EPOCH): _stack(b"point")}, ROOT)
+    stacks.record(BLOCK, {(GAUGE, "0xa3"): _user_stacks("0xa3")}, {}, ROOT)
+    stacks.record(
+        OTHER_BLOCK,
+        {},
+        {(GAUGE, EPOCH): _stack(b"other-block-point")},
+        b"\x24" * 32,
+    )
+
+    assert set(stacks.user_stacks) == {
+        (BLOCK, GAUGE, "0xa1"),
+        (OTHER_BLOCK, GAUGE, "0xa2"),
+        (BLOCK, GAUGE, "0xa3"),
+    }
+    assert set(stacks.point_stacks) == {(BLOCK, GAUGE), (OTHER_BLOCK, GAUGE)}
+    before = deepcopy(stacks)
+    with pytest.raises(ValueError, match="bound to epoch"):
+        stacks.record(
+            BLOCK, {}, {(GAUGE, EPOCH + 604800): _stack(b"wrong-epoch")}, ROOT
+        )
+    assert stacks == before
+
+
+@pytest.mark.parametrize("epoch", [None, str(EPOCH), float(EPOCH), True])
+def test_record_rejects_non_integer_epochs_without_mutation(epoch):
+    stacks = BatchStacks()
+    before = deepcopy(stacks)
+    with pytest.raises(ValueError, match="epoch must be an integer"):
+        stacks.record(
+            BLOCK,
+            {(GAUGE, "0xa1"): _user_stacks("0xa1")},
+            {(GAUGE, epoch): _stack(b"point")},
+            ROOT,
+        )
+    assert stacks == before
 
 
 def test_stale_artifacts_are_replaced_or_removed():

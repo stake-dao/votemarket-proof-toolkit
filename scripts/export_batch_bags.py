@@ -33,13 +33,16 @@ from votemarket_toolkit.proofs.generators.bulk_proof import (
     get_user_proof_slots,
 )
 from votemarket_toolkit.proofs.manager import VoteMarketProofs
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils import get_rounded_epoch
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--protocol", required=True)
+    parser.add_argument(
+        "--protocol", type=normalize_proof_protocol, required=True
+    )
     parser.add_argument("--gauge", required=True)
     parser.add_argument(
         "--users", required=True, help="File with one account per line"

@@ -37,6 +37,9 @@ load_dotenv()
 
 import vm_active_proofs as vm  # noqa: E402  (sibling script)
 
+from votemarket_toolkit.proofs.protocol import (  # noqa: E402
+    normalize_proof_protocol,
+)
 from votemarket_toolkit.shared import registry  # noqa: E402
 from votemarket_toolkit.shared.services.web3_service import (  # noqa: E402
     Web3Service,
@@ -169,7 +172,9 @@ async def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compare per-request vs bulk proof generation"
     )
-    parser.add_argument("--protocol", default="curve")
+    parser.add_argument(
+        "--protocol", type=normalize_proof_protocol, default="curve"
+    )
     parser.add_argument("--chain-id", type=int, default=42161)
     parser.add_argument("--block", type=int, default=None)
     parser.add_argument("--epoch", type=int, default=None)

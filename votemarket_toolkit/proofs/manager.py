@@ -16,6 +16,7 @@ from votemarket_toolkit.proofs.generators.gauge_proof import (
     generate_gauge_proof,
 )
 from votemarket_toolkit.proofs.generators.user_proof import generate_user_proof
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.proofs.types import BlockInfo, GaugeProof, UserProof
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.constants import GlobalConstants
@@ -122,6 +123,8 @@ class VoteMarketProofs:
         }
 
         try:
+            protocol = normalize_proof_protocol(protocol)
+            context["protocol"] = protocol
 
             def _generate():
                 return generate_gauge_proof(
@@ -185,6 +188,8 @@ class VoteMarketProofs:
         }
 
         try:
+            protocol = normalize_proof_protocol(protocol)
+            context["protocol"] = protocol
 
             def _generate():
                 return generate_user_proof(
@@ -301,6 +306,8 @@ class VoteMarketProofs:
         }
 
         try:
+            protocol = normalize_proof_protocol(protocol)
+            context["protocol"] = protocol
             requests: List[ProofRequest] = [
                 ProofRequest.for_gauge(gauge, get_rounded_epoch(epoch))
                 for gauge, epoch in gauge_epochs

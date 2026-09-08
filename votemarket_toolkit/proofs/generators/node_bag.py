@@ -70,7 +70,7 @@ NodeStack = List[bytes]
 
 def supports_batch_verifier(protocol: str) -> bool:
     """True when ``protocol``'s controller can be proven by the batch verifier."""
-    return protocol.lower() in BATCH_VERIFIER_PROTOCOLS
+    return protocol.strip().lower() in BATCH_VERIFIER_PROTOCOLS
 
 
 def calldata_max_bytes(chain_id: Union[int, str, None]) -> int:

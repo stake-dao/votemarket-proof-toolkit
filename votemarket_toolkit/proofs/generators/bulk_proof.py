@@ -19,9 +19,11 @@ fails, only that request is reported as failed.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import rlp
 from hexbytes import HexBytes
 from web3 import Web3
 
@@ -31,18 +33,17 @@ from votemarket_toolkit.proofs.generators.gauge_proof import (
     get_gauge_time_storage_slot_pre_vyper03,
     get_gauge_time_storage_slot_yb,
 )
-from votemarket_toolkit.proofs.generators.node_bag import normalize_stack
 from votemarket_toolkit.proofs.generators.user_proof import (
     get_user_gauge_storage_slot,
     get_user_gauge_storage_slot_pendle,
     get_user_gauge_storage_slot_pre_vyper03,
 )
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.shared.exceptions import RetryableException
 from votemarket_toolkit.shared.logging import get_logger
 from votemarket_toolkit.shared.redact import format_exception_safe
 from votemarket_toolkit.shared.retry import retry_sync_operation
-from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 
 _logger = get_logger(__name__)
 
@@ -60,8 +61,8 @@ USER = "user"
 class ProofResponseMismatch(RetryableException, ValueError):
     """An ``eth_getProof`` response that cannot be trusted for splitting.
 
-    Wrong key order, wrong proof count or a storage root disagreeing with
-    the other calls of the run. Retryable: a load-balanced provider can
+    Invalid fields, RLP nodes, key order, proof count or storage root.
+    Retryable: a load-balanced provider can
     answer from a lagging node once; a multi-request chunk is split instead
     (see ``_SPLIT_ERROR_MARKERS``) and a single request is retried whole.
     """
@@ -153,6 +154,7 @@ def get_gauge_proof_slots(
     protocol: str, gauge_address: str, current_epoch: int
 ) -> List[str]:
     """Storage keys requested by ``generate_gauge_proof`` (same order)."""
+    protocol = normalize_proof_protocol(protocol)
     gauge_slots = registry.get_gauge_slots(protocol)
     if not gauge_slots:
         raise ValueError(f"Unknown protocol: {protocol}")
@@ -177,6 +179,7 @@ def get_user_proof_slots(
     protocol: str, gauge_address: str, user: str
 ) -> List[str]:
     """Storage keys requested by ``generate_user_proof`` (same order)."""
+    protocol = normalize_proof_protocol(protocol)
     gauge_slots = registry.get_gauge_slots(protocol)
     if not gauge_slots:
         raise ValueError(f"Unknown protocol: {protocol}")
@@ -264,6 +267,7 @@ def generate_proofs_bulk(
         ValueError: Unknown protocol, missing gauge controller or invalid
             ``keys_per_call`` (configuration errors, not RPC failures).
     """
+    protocol = normalize_proof_protocol(protocol)
     if keys_per_call < 1:
         raise ValueError("keys_per_call must be >= 1")
     if not registry.get_gauge_slots(protocol):
@@ -350,12 +354,74 @@ def _pack_requests(
 
 def _field(container: Any, name: str) -> Any:
     """A required field of an eth_getProof response, or a retryable mismatch."""
-    value = container.get(name) if hasattr(container, "get") else None
+    if not isinstance(container, Mapping):
+        raise ProofResponseMismatch("eth_getProof response must be an object")
+    value = container.get(name)
     if value is None:
         raise ProofResponseMismatch(
             f"eth_getProof response has no '{name}' field"
         )
     return value
+
+
+def _array_field(container: Any, name: str) -> Sequence[Any]:
+    value = _field(container, name)
+    if not isinstance(value, (list, tuple)):
+        raise ProofResponseMismatch(
+            f"eth_getProof '{name}' field must be an array"
+        )
+    return value
+
+
+def _hex_bytes(value: Any, field_name: str) -> bytes:
+    """Decode response data only, without accepting integers as byte strings."""
+    if not isinstance(value, (str, bytes, bytearray)):
+        raise ProofResponseMismatch(
+            f"eth_getProof '{field_name}' must contain hex or bytes"
+        )
+    if isinstance(value, str):
+        if not value.startswith(("0x", "0X")) or any(
+            char not in "0123456789abcdefABCDEF" for char in value[2:]
+        ):
+            raise ProofResponseMismatch(
+                f"eth_getProof '{field_name}' contains invalid hex"
+            )
+        # Storage keys can be quantities (0x0); roots and RLP nodes are data.
+        if field_name != "key" and len(value[2:]) % 2:
+            raise ProofResponseMismatch(
+                f"eth_getProof '{field_name}' contains incomplete hex bytes"
+            )
+    try:
+        return bytes(HexBytes(value))
+    except (TypeError, ValueError) as exc:
+        raise ProofResponseMismatch(
+            f"eth_getProof '{field_name}' contains invalid hex"
+        ) from exc
+
+
+def _decode_stack(container: Any, name: str) -> Tuple[List[bytes], List[Any]]:
+    """Validate a proof's wire representation before encoding or keeping nodes.
+
+    Empty stacks are legitimate exclusion proofs, including an empty trie.
+    This checks RLP syntax and its node-list envelope, not MPT membership.
+    """
+    nodes: List[bytes] = []
+    decoded_nodes: List[Any] = []
+    for value in _array_field(container, name):
+        node = _hex_bytes(value, name)
+        try:
+            decoded = rlp.decode(node)
+        except rlp.DecodingError as exc:
+            raise ProofResponseMismatch(
+                f"eth_getProof '{name}' contains invalid RLP"
+            ) from exc
+        if not isinstance(decoded, list):
+            raise ProofResponseMismatch(
+                f"eth_getProof '{name}' RLP node must be a list"
+            )
+        nodes.append(node)
+        decoded_nodes.append(decoded)
+    return nodes, decoded_nodes
 
 
 def _check_storage_key(expected_hex: str, entry: Any) -> None:
@@ -364,12 +430,12 @@ def _check_storage_key(expected_hex: str, entry: Any) -> None:
     EIP-1186 returns storage proofs in request order; a missing or
     mismatching key means the response cannot be trusted for splitting.
     """
-    key = entry.get("key") if hasattr(entry, "get") else None
-    if key is None:
+    key = _hex_bytes(_field(entry, "key"), "key")
+    if not 1 <= len(key) <= 32:
         raise ProofResponseMismatch(
-            "eth_getProof storage proof entry has no 'key' field"
+            "eth_getProof storage proof key must fit in 32 bytes"
         )
-    if int.from_bytes(bytes(HexBytes(key)), "big") != int(expected_hex, 16):
+    if int.from_bytes(key, "big") != int(expected_hex, 16):
         raise ProofResponseMismatch(
             "eth_getProof storage proof order mismatch for key "
             f"{expected_hex}"
@@ -394,6 +460,8 @@ _SPLIT_ERROR_MARKERS = (
 
 
 def _looks_like_size_or_shape_error(exc: Exception) -> bool:
+    if isinstance(exc, ProofResponseMismatch):
+        return True
     message = str(exc).lower()
     return any(marker in message for marker in _SPLIT_ERROR_MARKERS)
 
@@ -462,8 +530,13 @@ class _ChunkFetcher:
             Dict[ProofRequest, List[List[bytes]]],
         ]:
             self._result.stats.rpc_calls += 1
-            raw_proof = self._web_3.eth.get_proof(
-                self._controller, keys, self._block
+            # Keep Web3's provider/middleware/error handling, but validate
+            # before Eth's result formatters: those can coerce invalid proof
+            # objects ({}) to empty arrays or hide malformed hex widths.
+            # The controller and storage keys are already formatted above;
+            # the explicit block number is a JSON-RPC quantity.
+            raw_proof = self._web_3.manager.request_blocking(
+                "eth_getProof", [self._controller, keys, hex(self._block)]
             )
             proofs, stacks = self._split_response(raw_proof, chunk, keys)
             self._record_storage_root(raw_proof)
@@ -480,13 +553,14 @@ class _ChunkFetcher:
 
     def _record_storage_root(self, raw_proof: Any) -> None:
         """Pin the controller storage root; every call must agree on it."""
-        storage_hash = (
-            raw_proof.get("storageHash") if hasattr(raw_proof, "get") else None
-        )
-        if storage_hash is None:
+        if "storageHash" not in raw_proof:
             self._result.saw_missing_storage_root = True
             return
-        storage_root = bytes(HexBytes(storage_hash))
+        storage_root = _hex_bytes(raw_proof["storageHash"], "storageHash")
+        if len(storage_root) != 32:
+            raise ProofResponseMismatch(
+                "eth_getProof storageHash must be exactly 32 bytes"
+            )
         if self._result.storage_root is None:
             self._result.storage_root = storage_root
         elif self._result.storage_root != storage_root:
@@ -504,8 +578,8 @@ class _ChunkFetcher:
         Dict[ProofRequest, Tuple[bytes, bytes]],
         Dict[ProofRequest, List[List[bytes]]],
     ]:
-        account_proof = _field(raw_proof, "accountProof")
-        storage_proofs = _field(raw_proof, "storageProof")
+        _, account_nodes = _decode_stack(raw_proof, "accountProof")
+        storage_proofs = _array_field(raw_proof, "storageProof")
         if len(storage_proofs) != len(keys):
             raise ProofResponseMismatch(
                 f"eth_getProof returned {len(storage_proofs)} storage proofs "
@@ -514,19 +588,21 @@ class _ChunkFetcher:
 
         proofs: Dict[ProofRequest, Tuple[bytes, bytes]] = {}
         stacks: Dict[ProofRequest, List[List[bytes]]] = {}
+        account_proof = rlp.encode(account_nodes)
         cursor = 0
         for request in chunk:
             request_keys = self._slots[request]
             entries = storage_proofs[cursor : cursor + len(request_keys)]
             cursor += len(request_keys)
+            request_stacks: List[List[bytes]] = []
+            request_nodes: List[Any] = []
             for expected_key, entry in zip(request_keys, entries):
                 _check_storage_key(expected_key, entry)
-            proofs[request] = encode_rlp_proofs(
-                {"accountProof": account_proof, "storageProof": entries}
-            )
-            stacks[request] = [
-                normalize_stack(_field(entry, "proof")) for entry in entries
-            ]
+                nodes, decoded_nodes = _decode_stack(entry, "proof")
+                request_stacks.append(nodes)
+                request_nodes.append(decoded_nodes)
+            proofs[request] = (account_proof, rlp.encode(request_nodes))
+            stacks[request] = request_stacks
         return proofs, stacks
 
     def _handle_failure(

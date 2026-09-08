@@ -345,6 +345,43 @@ publication.
   `tests/unit/test_node_bag.py`. `scripts/export_batch_bags.py` builds real bags
   from a live `eth_getProof` for an end-to-end check with the Solidity library.
 
+## Proof regression tests
+
+Proof entry points and the batch exporter trim and lowercase protocol names
+before selecting storage layouts; unknown names fail before any proof RPC.
+Curve always uses slots `11` (last vote), `9` (slope/end) and `12` (point weights),
+including its additional storage-slot hash. `curve`, `CURVE`, `Curve` and
+`" curve "` therefore produce identical proofs.
+
+`BatchStacks` collects one protocol and one epoch. The first point proof binds
+its epoch, and a record containing mixed or different epochs fails before
+changing its state. Use another collector for another epoch.
+
+Run the deterministic Python-to-Solidity test against a contracts checkout:
+
+```sh
+VOTEMARKET_CONTRACTS_PATH=/absolute/path/to/contracts-monorepo \
+REQUIRE_BATCH_VERIFIER_TEST=1 PYTHON_DOTENV_DISABLED=1 \
+uv run --frozen --extra dev pytest -q -s tests/integration/test_curve_batch_verifier.py
+```
+
+Install Forge first. The test compiles the unmodified `BatchVerifier`, `Oracle`
+and their proof libraries with Solidity 0.8.28, then runs the real exporter for
+all four spellings against recorded block 21134723 proofs. It checks fixed
+storage paths and four nonzero values written to the Oracle. It needs no RPC
+endpoint, private key or live transaction. `SOLC_BINARY` can select an already
+installed compiler for a fully offline run. With `REQUIRE_BATCH_VERIFIER_TEST=1`,
+missing Forge or a missing contracts checkout is an error, not a skipped test.
+
+The `proof_regressions.yml` workflow runs the unit regression suite on toolkit
+changes. The companion `curve_toolkit_regressions.yml` workflow belongs to
+`contracts-monorepo`: that private repository checks out this public toolkit
+and runs the proof regression suite and Solidity test together. Publish the
+toolkit changes before running it. Its toolkit ref can be pinned through
+`VOTEMARKET_TOOLKIT_REF` or selected on manual dispatch; after merging the
+toolkit branch, update the ref to the merged commit. For a toolkit-only change,
+dispatch the contracts workflow with that toolkit commit before merging it.
+
 ## License
 
 AGPL-3.0 License - see [LICENSE](LICENSE)
