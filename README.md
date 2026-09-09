@@ -249,7 +249,7 @@ make get-active-campaigns PROTOCOL=curve
 make check-user-eligibility USER=0x... PROTOCOL=curve [GAUGE=0x...] [CHAIN_ID=1] [STATUS=active]
 ```
 
-## Bulk proof generation (opt-in)
+## Bulk proof generation
 
 `VoteMarketProofs.get_proofs_bulk()` groups the storage keys of many gauges and
 users into a few `eth_getProof` calls on the gauge controller instead of one
@@ -269,12 +269,19 @@ result.data.gauge_proofs[(gauge.lower(), epoch)]  # GaugeProof
 result.data.user_proofs[(gauge.lower(), user.lower())]  # UserProof
 ```
 
-The proof pipeline can use it behind a flag (default stays per-request):
+The active-proof pipeline automatically uses grouped RPC calls for Curve, Balancer
+and FXN and requires complete batch artifacts before writing the protocol output.
+The production job needs only its usual two positional arguments:
 
 ```bash
-uv run scripts/vm_active_proofs.py temp/all_platforms.json <epoch> --bulk-proofs [--keys-per-call 100]
-# or: VM_BULK_PROOFS=1 VM_BULK_KEYS_PER_CALL=100
+uv run scripts/vm_active_proofs.py temp/all_platforms.json <epoch>
 ```
+
+Other protocols, including YB and Pendle, keep per-request proof generation and
+their specialized proof formats. The pipeline selects the RPC path automatically
+from the protocol; there is no manual mode switch. RPC sizing can still be tuned
+with `--keys-per-call` or `VM_BULK_KEYS_PER_CALL`; the job uses the toolkit defaults
+without additional arguments.
 
 Provider notes (measured on Alchemy, 2026-08-31): `eth_getProof` accepts at most
 1024 storage keys per call and is billed 20 CU per call regardless of the number
@@ -299,10 +306,11 @@ bags from the same `eth_getProof` responses (no extra RPC call) for the protocol
 the batch verifier supports — curve, balancer, fxn (pendle/yb keep their own
 verifiers) — and publishes them **next to** the legacy fields, which are
 untouched: the legacy verifier and self-serve users keep working from the same
-files. Artifact generation is best-effort and can never break the legacy
-publication. The migrated automation-jobs consumer requires these artifacts for
-Curve, Balancer and FXN: missing or unusable required batches stop the job, with
-no legacy fallback. See the [current rollout checklist](docs/batch-verifier-rollout.md)
+files. Before writing a compatible protocol, the producer requires point bags
+covering every published gauge and account bags covering all its published eligible
+and listed users. A missing block, rejected build or incomplete coverage raises an
+error and makes the job fail. The migrated automation-jobs consumer also checks
+these required artifacts, with no legacy fallback. See the [current rollout checklist](docs/batch-verifier-rollout.md)
 for deployment, both Oracle authorizations and activation on the existing pipeline.
 
 ```jsonc
@@ -327,10 +335,10 @@ for deployment, both Oracle authorizations and activation on the existing pipeli
   no `batch`. `batch_points.missing_gauges` names gauges a point bag does not cover.
   Automation-jobs fails if any required member lacks batch coverage, even when its
   legacy blob exists. This cannot detect users omitted before the inventory was
-  built. Separately, the producer can report success without required bags, and the
-  API wrapper can omit bulk mode; both publication issues remain open. Accounts are
-  sorted (lowercase) so chunks are canonical across runs; the order inside a chunk
-  is the order to pass on-chain.
+  built. The producer rejects incomplete coverage before writing that protocol;
+  the API job stops before copying files when the producer exits with an error.
+  Accounts are sorted (lowercase) so chunks are canonical across runs; the order
+  inside a chunk is the order to pass on-chain.
 - **Chunks are cut by encoded call size**, not by number of accounts: the ABI head,
   one 32-byte word per account and the padded bag must fit the budget — 90 KB on
   Arbitrum (sequencer limit ~95 KB, about 20 accounts today), 124 KB on Optimism

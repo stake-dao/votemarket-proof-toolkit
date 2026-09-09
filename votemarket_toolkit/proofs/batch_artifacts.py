@@ -2,8 +2,8 @@
 Batch-verifier artifacts published next to the legacy proofs.
 
 ``vm_active_proofs.py`` generates, per gauge, one legacy proof blob per user
-and one point proof. In bulk mode the same ``eth_getProof`` responses also
-yield the raw trie nodes; this module turns them into the node bags the
+and one point proof. Compatible protocols automatically collect the raw trie
+nodes from grouped ``eth_getProof`` responses; this module builds the bags the
 ``BatchVerifier`` consumes, cut by the target chain's calldata budget:
 
 - per gauge, ``batch.chunks[]`` — ordered accounts and one minimal bag each,
@@ -13,15 +13,17 @@ yield the raw trie nodes; this module turns them into the node bags the
 
 Coverage is all-or-nothing per gauge: a ``batch`` artifact always covers
 every account published in the legacy fields of that gauge, otherwise it is
-omitted and the consumer falls back to the legacy blobs. Point artifacts list
-the gauges they do not cover. Only protocols the batch verifier supports get
+omitted. Point artifacts list the gauges they do not cover. The active-proof
+pipeline rejects incomplete coverage before publication, with no legacy fallback. Only protocols the batch verifier supports get
 artifacts, and only for a platform whose anchored block is the one the
 published header / controller account proof belongs to (the verifier
 registers its storage root from that header).
 
 The legacy fields are untouched: ``safe_attach_batch_artifacts`` works on
 private copies of the gauge entries (the script shares cached gauge objects
-between platforms) and can never abort the legacy publication.
+between platforms) and returns build failures in ``BatchSummary.skipped``.
+The caller decides whether to reject publication; the active-proof pipeline
+requires complete artifacts for every compatible protocol.
 
 Stacks are keyed by block: one collector serves one protocol (one gauge
 controller) and one epoch, whose platforms may anchor different blocks.
@@ -276,7 +278,7 @@ def safe_attach_batch_artifacts(
     max_bytes: Optional[int] = None,
     header_block: Any = None,
 ) -> BatchSummary:
-    """``attach_batch_artifacts`` that can never break legacy publication.
+    """Attach artifacts while reporting build failures to the caller.
 
     The gauge entries are replaced by private shallow copies first: the
     script shares cached gauge objects between platforms, and each platform
@@ -303,7 +305,7 @@ def safe_attach_batch_artifacts(
         return attach_batch_artifacts(
             platform_entry, protocol, chain_id, block, stacks, max_bytes
         )
-    except Exception as exc:  # noqa: BLE001 - artifacts are best-effort
+    except Exception as exc:  # noqa: BLE001 - report build failure to caller
         _logger.error(
             "Batch artifacts failed for protocol %s on chain %s: %s",
             protocol,

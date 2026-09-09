@@ -257,3 +257,247 @@ def test_export_requires_complete_account_and_point_batches(
         output = json.loads(target.read_text())
         assert output["batch"]["chunks"][0]["accounts"] == [USER]
         assert output["batch_points"]["chunks"][0]["gauges"] == [GAUGE]
+
+
+@pytest.mark.parametrize(
+    "protocol,expected_mode",
+    [
+        ("curve", "bulk"),
+        (" CURVE ", "bulk"),
+        ("fxn", "bulk"),
+        ("FXN", "bulk"),
+        ("balancer", "bulk"),
+        ("yb", "individual"),
+        ("pendle", "individual"),
+        ("frax", "individual"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_active_proof_routing_is_automatic(
+    active_script, monkeypatch, protocol, expected_mode
+):
+    calls = []
+
+    async def bulk_gauge(*args):
+        calls.append("bulk_gauge")
+        return {"point_data_proof": "0x12", "users": {}}, {"users": {}}
+
+    def bulk_listed(*args):
+        calls.append("bulk_listed")
+        return {USER: {"storage_proof": "0x34"}}
+
+    def individual_gauge(**kwargs):
+        calls.append("individual_gauge")
+        return Result.ok({"point_data_proof": b"\x12"})
+
+    def individual_user(**kwargs):
+        calls.append("individual_user")
+        return Result.ok({"storage_proof": b"\x34"})
+
+    async def votes(*args):
+        return SimpleNamespace(votes=[])
+
+    async def eligible(*args):
+        return Result.ok([])
+
+    monkeypatch.setattr(active_script, "_process_gauge_bulk", bulk_gauge)
+    monkeypatch.setattr(
+        active_script, "_process_listed_users_bulk", bulk_listed
+    )
+    monkeypatch.setattr(
+        active_script,
+        "vm_proofs",
+        SimpleNamespace(
+            get_gauge_proof=individual_gauge, get_user_proof=individual_user
+        ),
+    )
+    monkeypatch.setattr(
+        active_script, "votes_service", SimpleNamespace(get_gauge_votes=votes)
+    )
+    monkeypatch.setattr(
+        active_script,
+        "vm_eligibility",
+        SimpleNamespace(get_eligible_users=eligible),
+    )
+    proof, _ = await active_script.process_gauge(
+        protocol, GAUGE, EPOCH, BLOCK, {}
+    )
+    listed = active_script.process_listed_users(protocol, GAUGE, BLOCK, [USER])
+    assert proof["point_data_proof"] == "0x12"
+    assert listed[USER]["storage_proof"] == "0x34"
+    assert calls == (
+        ["bulk_gauge", "bulk_listed"]
+        if expected_mode == "bulk"
+        else ["individual_gauge", "individual_user"]
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "complete",
+        "point_only",
+        "listed_only",
+        "partial_points",
+        "no_gauges",
+        "unsupported",
+        "no_block",
+        "budget",
+        "missing_point",
+        "missing_account",
+        "missing_root",
+        "conflicting_roots",
+        "header_mismatch",
+    ],
+)
+def test_active_publication_requires_complete_batches(
+    active_script, monkeypatch, case
+):
+    monkeypatch.setattr(
+        "votemarket_toolkit.shared.registry.get_gauge_controller",
+        lambda protocol: CONTROLLER,
+    )
+    data = (
+        RecordedCurveProvider()
+        .manager()
+        .get_proofs_bulk(
+            "curve",
+            BLOCK,
+            gauge_epochs=[(GAUGE, EPOCH)],
+            users=[(GAUGE, USER)],
+        )
+        .unwrap()
+    )
+    stacks = batch_artifacts.BatchStacks()
+    stacks.record(
+        BLOCK,
+        data.user_nodes,
+        data.gauge_nodes,
+        data.storage_root,
+        saw_missing_root=case == "missing_root",
+    )
+    platform = {
+        "block_data": {"block_number": BLOCK},
+        "gauges": {GAUGE: {"users": {USER: {}}, "listed_users": {}}},
+    }
+    if case == "point_only":
+        platform["gauges"][GAUGE]["users"] = {}
+    elif case == "listed_only":
+        platform["gauges"][GAUGE]["listed_users"] = {"campaign": {USER: {}}}
+        platform["gauges"][GAUGE]["users"] = {}
+    elif case == "partial_points":
+        platform["gauges"]["0x" + "22" * 20] = {"users": {}}
+    elif case == "no_gauges":
+        platform = {"gauges": {}}
+    elif case == "no_block":
+        platform["block_data"] = {}
+    elif case == "missing_point":
+        stacks.point_stacks.clear()
+    elif case == "missing_account":
+        stacks.user_stacks.clear()
+    elif case == "conflicting_roots":
+        stacks.record(BLOCK, {}, {}, b"\xab" * 32)
+    monkeypatch.setattr(active_script, "batch_stacks", stacks)
+    monkeypatch.setattr(
+        active_script, "BATCH_MAX_BYTES", 1 if case == "budget" else None
+    )
+    protocol = "yb" if case == "unsupported" else "curve"
+    header = BLOCK + 1 if case == "header_mismatch" else BLOCK
+    if case in (
+        "complete",
+        "point_only",
+        "listed_only",
+        "no_gauges",
+        "unsupported",
+    ):
+        active_script._publish_batch_artifacts(
+            protocol, "42161", "platform", platform, header
+        )
+        assert ("batch_points" in platform) is (
+            case in ("complete", "point_only", "listed_only")
+        )
+        if case == "point_only":
+            assert "batch" not in platform["gauges"][GAUGE]
+        elif case in ("complete", "listed_only"):
+            assert platform["gauges"][GAUGE]["batch"]["chunks"][0][
+                "accounts"
+            ] == [USER]
+    else:
+        expected_error = (
+            "Missing batch block"
+            if case == "no_block"
+            else "Incomplete batch artifacts"
+        )
+        with pytest.raises(RuntimeError, match=expected_error):
+            active_script._publish_batch_artifacts(
+                protocol, "42161", "platform", platform, header
+            )
+
+
+@pytest.mark.asyncio
+async def test_comparison_keeps_distinct_modes_with_real_proofs(
+    comparison_script, monkeypatch
+):
+    vm = comparison_script.vm
+    monkeypatch.setattr(
+        "votemarket_toolkit.shared.registry.get_gauge_controller",
+        lambda protocol: CONTROLLER,
+    )
+    manager = RecordedCurveProvider().manager()
+    generate = manager.get_proofs_bulk
+    bulk_calls = []
+
+    def bulk(**kwargs):
+        bulk_calls.append(kwargs)
+        return generate(**kwargs)
+
+    async def votes(*args):
+        return SimpleNamespace(votes=[])
+
+    async def eligible(*args):
+        return Result.ok(
+            [{"user": USER, "last_vote": 0, "slope": 0, "power": 0, "end": 0}]
+        )
+
+    monkeypatch.setattr(manager, "get_proofs_bulk", bulk)
+    monkeypatch.setattr(vm, "vm_proofs", manager)
+    monkeypatch.setattr(
+        vm, "votes_service", SimpleNamespace(get_gauge_votes=votes)
+    )
+    monkeypatch.setattr(
+        vm, "vm_eligibility", SimpleNamespace(get_eligible_users=eligible)
+    )
+    original_mode = vm._uses_bulk_proofs
+    individual = await comparison_script.run_mode(
+        False, "curve", [(GAUGE, [USER])], EPOCH, BLOCK, {}
+    )
+    assert bulk_calls == []
+    assert vm._uses_bulk_proofs is original_mode
+    grouped = await comparison_script.run_mode(
+        True, "curve", [(GAUGE, [USER])], EPOCH, BLOCK, {}
+    )
+    assert len(bulk_calls) == 2
+    assert individual["output"] == grouped["output"]
+    assert vm._uses_bulk_proofs is original_mode
+    assert vm._uses_bulk_proofs("curve")
+    assert not vm._uses_bulk_proofs("yb")
+
+
+@pytest.mark.parametrize("bulk", [False, True])
+@pytest.mark.asyncio
+async def test_comparison_restores_automatic_mode_after_error(
+    comparison_script, monkeypatch, bulk
+):
+    vm = comparison_script.vm
+    original_mode = vm._uses_bulk_proofs
+
+    async def fail(*args):
+        assert vm._uses_bulk_proofs("curve") is bulk
+        raise RuntimeError("Proof comparison failed")
+
+    monkeypatch.setattr(vm, "process_gauge", fail)
+    with pytest.raises(RuntimeError, match="Proof comparison failed"):
+        await comparison_script.run_mode(
+            bulk, "curve", [(GAUGE, [])], EPOCH, BLOCK, {}
+        )
+    assert vm._uses_bulk_proofs is original_mode

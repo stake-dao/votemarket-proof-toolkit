@@ -2,9 +2,10 @@
 
 Batched storage proofs for Votemarket V2 (curve, balancer, fxn — pendle/yb keep their own
 verifiers; Base/Polygon oracles are frozen). Target chains: **Arbitrum + Optimism**.
-Updated 2026-09-08. Use the existing automation-jobs/Maestro pipeline. Two new publication
-issues remain open: the producer can report success without required bags, and the API wrapper
-can omit bulk mode. This cleanup does not fix either issue.
+Updated 2026-09-09. Use the existing automation-jobs/Maestro pipeline. Compatible protocols
+now generate batch artifacts automatically and the producer rejects incomplete bags before
+writing that protocol. The API job uses its usual positional arguments, without bulk/batch
+workflow inputs. Activate only after the selected toolkit and API revisions contain both changes.
 
 Historical measurements on earlier builds (callee execution gas; remeasure current revisions): ~148k/account vs ~790k–1.39M
 legacy (−81/−89%); bag bytes −33% at 5 accounts, −45% on the 30-account fixture. **The bag rides
@@ -67,9 +68,12 @@ On top of the bulk path (`get_proofs_bulk` fetches all nodes of a gauge in one
   a block whose runs disagreed on the root, or where a response carried none, gets no artifacts;
   `observed_storage_root` is diagnostic only. `safe_attach_batch_artifacts` works on private
   copies of the gauge entries (the script shares cached gauge objects between platforms), only
-  for a platform anchored at the chain's published header block, and can never abort the legacy
-  publication. Attached by `scripts/vm_active_proofs.py` at the end of each protocol, in bulk
-  mode, for curve/balancer/fxn only.
+  for a platform anchored at the chain's published header block. The reusable builder reports
+  failures to its caller. `scripts/vm_active_proofs.py` automatically collects and requires
+  complete artifacts for Curve/Balancer/FXN before writing each protocol; a failure exits
+  nonzero and stops the API job before copying the generated files. No additional job
+  arguments or workflow inputs are required. The API job must resolve the toolkit revision
+  containing this automatic generation and strict publication check before activation.
 - Tests: byte-for-byte parity with `BagBuilder.sol` (golden keccaks from the Foundry suite),
   RLP header boundaries, bag-contract rules, calldata-budget chunking (incl. cheap exclusion-like
   members), block isolation, platforms sharing a gauge object at different blocks, header-block
@@ -111,9 +115,9 @@ No Guard ceremony, fallback switch or replacement pipeline is required.
 
 Remaining:
 
-- [ ] Make required bag-generation failures fail the producer, and prevent the API wrapper
-      from continuing without requested bulk generation. Validate the selected API/toolkit
-      revisions together. Inherited campaign-identity behavior is outside these fixes.
+- [ ] Validate the selected API/toolkit revisions together: automatic batches and strict
+      publication must be present in the toolkit actually checked out by the API job.
+      Inherited campaign-identity behavior is outside these fixes.
 - [ ] Deploy and authorize the selected contract revision, then populate automation-jobs'
       `CURVE_BATCH_VERIFIER`, `BALANCER_BATCH_VERIFIER` and `FXN_BATCH_VERIFIER` registries.
       They are currently empty; an active compatible protocol intentionally fails without one.

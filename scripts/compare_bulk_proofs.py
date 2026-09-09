@@ -3,8 +3,8 @@
 Compare the per-request and bulk proof paths of vm_active_proofs.py.
 
 Runs process_gauge() + process_listed_users() twice on the same gauges and
-block (BULK_PROOFS=False, then True), then compares the produced structures
-byte for byte and reports RPC call counts and wall time for each mode.
+block, explicitly selecting each RPC path for this diagnostic. Compares the
+structures byte for byte and reports RPC call counts and wall time for each mode.
 
 Usage:
     uv run scripts/compare_bulk_proofs.py [--protocol curve] [--chain-id 42161]
@@ -28,6 +28,7 @@ import os
 import sys
 import time
 from typing import Any, Dict, Iterator, List, Tuple
+from unittest.mock import patch
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -143,24 +144,26 @@ async def run_mode(
     block: int,
     counters: Dict[str, collections.Counter],
 ) -> Dict[str, Any]:
-    vm.BULK_PROOFS = bulk
     for counter in counters.values():
         counter.clear()
     user_proofs_cache: Dict[str, Any] = {}
     output: Dict[str, Any] = {}
     started = time.time()
-    for gauge, listed_users in gauges:
-        proof_data, vote_data = await vm.process_gauge(
-            protocol, gauge, epoch, block, user_proofs_cache
-        )
-        listed_data = vm.process_listed_users(
-            protocol, gauge, block, listed_users
-        )
-        output[gauge] = {
-            "proof": proof_data,
-            "votes": vote_data,
-            "listed": listed_data,
-        }
+    # Force each RPC path only within this diagnostic. The production pipeline
+    # selects the RPC path automatically from the protocol capabilities.
+    with patch.object(vm, "_uses_bulk_proofs", return_value=bulk):
+        for gauge, listed_users in gauges:
+            proof_data, vote_data = await vm.process_gauge(
+                protocol, gauge, epoch, block, user_proofs_cache
+            )
+            listed_data = vm.process_listed_users(
+                protocol, gauge, block, listed_users
+            )
+            output[gauge] = {
+                "proof": proof_data,
+                "votes": vote_data,
+                "listed": listed_data,
+            }
     return {
         "output": output,
         "seconds": time.time() - started,

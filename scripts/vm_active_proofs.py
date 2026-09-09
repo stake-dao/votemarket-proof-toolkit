@@ -16,6 +16,7 @@ from votemarket_toolkit.data import EligibilityService
 from votemarket_toolkit.proofs import VoteMarketProofs
 from votemarket_toolkit.proofs.batch_artifacts import (
     BatchStacks,
+    gauge_accounts,
     safe_attach_batch_artifacts,
 )
 from votemarket_toolkit.proofs.generators.node_bag import (
@@ -40,11 +41,10 @@ vm_eligibility = EligibilityService(1)
 VALIDATION_MAX_RETRIES = 5
 VALIDATION_BASE_DELAY = 3.0  # seconds
 
-# Bulk eth_getProof mode (opt-in): group the storage keys of many users and
-# gauges into a few eth_getProof calls instead of one call per proof.
-# Enable with --bulk-proofs or VM_BULK_PROOFS=1; tune with --keys-per-call
-# or VM_BULK_KEYS_PER_CALL. The generated proofs are byte-identical.
-BULK_PROOFS = os.getenv("VM_BULK_PROOFS", "0") == "1"
+
+def _uses_bulk_proofs(protocol: str) -> bool:
+    """Use grouped RPC calls for protocols requiring batch artifacts."""
+    return supports_batch_verifier(protocol)
 
 
 def _parse_positive_int_env(name: str, default: int) -> int:
@@ -86,10 +86,9 @@ def _parse_optional_positive_int_env(name: str) -> Optional[int]:
     return value
 
 
-# Batch-verifier artifacts (node bags) are derived from the bulk responses,
-# so they are only published in bulk mode, for the protocols the batch
-# verifier supports (curve, balancer, fxn). The budget bounds one encoded
-# batch call and defaults to the target chain's transaction-size limit;
+# Batch-verifier artifacts (node bags) are required for Curve, Balancer and
+# FXN and are derived from the grouped RPC responses. The budget bounds one
+# encoded batch call and defaults to the target chain's transaction-size limit;
 # override with --batch-max-bytes or VM_BATCH_MAX_BYTES. The collector is
 # reset for every protocol (one gauge controller) and keyed by block.
 BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
@@ -98,7 +97,7 @@ BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
 batch_stacks = BatchStacks()
 
 # ---------------------------------------------------------------------------
-# Bulk eth_getProof path (opt-in, see BULK_PROOFS)
+# Grouped eth_getProof path (automatic for BatchVerifier-compatible protocols)
 # ---------------------------------------------------------------------------
 
 
@@ -380,7 +379,7 @@ async def process_gauge(
       - gauge_proof_data: containing proofs (e.g. point_data_proof and storage proofs for each user).
       - gauge_vote_data: containing only the raw vote details for each eligible user.
     """
-    if BULK_PROOFS:
+    if _uses_bulk_proofs(protocol):
         return await _process_gauge_bulk(
             protocol,
             gauge_address,
@@ -529,7 +528,7 @@ def process_listed_users(
 
     Resilient version: retries on failure, skips individual users if they consistently fail.
     """
-    if BULK_PROOFS:
+    if _uses_bulk_proofs(protocol):
         return _process_listed_users_bulk(
             protocol, gauge_address, block_number, listed_users, max_retries
         )
@@ -851,7 +850,7 @@ async def process_protocol(
     # artifacts are attached last, on private copies, with the header block
     # of each chain (the only block the published header/account proof
     # covers).
-    if BULK_PROOFS:
+    if supports_batch_verifier(protocol):
         for chain_id, chain_platforms in output_data["platforms"].items():
             header_block = (
                 output_data["chains"].get(chain_id, {}).get("block_data") or {}
@@ -875,18 +874,16 @@ def _publish_batch_artifacts(
     platform_entry: Dict[str, Any],
     header_block: Optional[int],
 ) -> None:
-    """Attach node bags (batch verifier) to a platform's gauges; legacy fields untouched.
-
-    Best-effort: any failure leaves the entry without artifacts and never
-    stops the legacy publication.
-    """
+    """Build complete node bags before publishing a compatible protocol."""
+    gauges = platform_entry.get("gauges", {})
+    if not supports_batch_verifier(protocol) or not gauges:
+        return
     block_number = (platform_entry.get("block_data") or {}).get("block_number")
     if block_number is None:
-        console.print(
-            f"[yellow]No block number for platform {platform_address} on chain {chain_id}; "
-            "skipping batch artifacts[/yellow]"
+        raise RuntimeError(
+            f"Missing batch block for {protocol} on chain {chain_id}, "
+            f"platform {platform_address}"
         )
-        return
     summary = safe_attach_batch_artifacts(
         platform_entry,
         protocol,
@@ -903,8 +900,28 @@ def _publish_batch_artifacts(
             f"{summary.account_calldata_bytes:,} B calldata, {summary.point_chunks} point "
             f"chunk(s) / {summary.point_calldata_bytes:,} B calldata[/dim]"
         )
-    for reason in summary.skipped:
-        console.print(f"[yellow]Batch artifacts skipped: {reason}[/yellow]")
+    errors = list(summary.skipped)
+    point_members = {
+        gauge.lower()
+        for chunk in platform_entry.get("batch_points", {}).get("chunks", [])
+        for gauge in chunk["gauges"]
+    }
+    if point_members != {gauge.lower() for gauge in gauges}:
+        errors.append("point bags do not cover every published gauge")
+    # safe_attach_batch_artifacts replaces cached gauge objects with copies.
+    for gauge, gauge_data in platform_entry["gauges"].items():
+        account_members = {
+            account.lower()
+            for chunk in gauge_data.get("batch", {}).get("chunks", [])
+            for account in chunk["accounts"]
+        }
+        if account_members != set(gauge_accounts(gauge_data)):
+            errors.append(f"account bags do not cover gauge {gauge}")
+    if errors:
+        raise RuntimeError(
+            f"Incomplete batch artifacts for {protocol} on chain {chain_id}, "
+            f"platform {platform_address}: " + "; ".join(errors)
+        )
 
 
 def write_protocol_data(
@@ -1105,14 +1122,6 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
     console.print(
         f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
     )
-    console.print(
-        "Proof generation mode: "
-        + (
-            f"[green]bulk[/green] ({BULK_KEYS_PER_CALL} keys per eth_getProof)"
-            if BULK_PROOFS
-            else "[cyan]per-request[/cyan]"
-        )
-    )
     for protocol, protocol_data in all_protocols_data["protocols"].items():
         protocol = normalize_proof_protocol(protocol)
         if not protocol_data["platforms"]:
@@ -1121,6 +1130,14 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
             )
             continue
         console.print(f"Processing protocol: [blue]{protocol}[/blue]")
+        console.print(
+            "Proof generation mode: "
+            + (
+                f"[green]bulk[/green] ({BULK_KEYS_PER_CALL} keys per eth_getProof)"
+                if _uses_bulk_proofs(protocol)
+                else "[cyan]per-request[/cyan]"
+            )
+        )
         processed_data = await process_protocol(
             protocol, protocol_data, current_epoch
         )
@@ -1147,11 +1164,6 @@ if __name__ == "__main__":
         "current_epoch", type=int, help="Current epoch timestamp"
     )
     parser.add_argument(
-        "--bulk-proofs",
-        action="store_true",
-        help="Group storage keys into few eth_getProof calls (opt-in, same as VM_BULK_PROOFS=1)",
-    )
-    parser.add_argument(
         "--keys-per-call",
         type=int,
         default=None,
@@ -1162,14 +1174,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help=(
-            "Byte budget of one encoded batch-verifier call (bulk mode only; "
+            "Byte budget of one encoded batch-verifier call (compatible protocols; "
             "default: per-chain transaction-size limit, or VM_BATCH_MAX_BYTES)"
         ),
     )
     args = parser.parse_args()
 
-    if args.bulk_proofs:
-        BULK_PROOFS = True
     if args.keys_per_call is not None:
         if args.keys_per_call < 1:
             parser.error("--keys-per-call must be >= 1")

@@ -78,7 +78,8 @@ Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` 
   (raw node stacks, pinned `storageHash`, retryable `ProofResponseMismatch`, `saw_missing_storage_root`),
   `proofs/batch_artifacts.py` (collector per protocol keyed by block, all-or-nothing per gauge, private
   copies per platform, header-block guard, exception boundary), `scripts/vm_active_proofs.py`
-  (`--bulk-proofs` required; artifacts attached at end of protocol; `--batch-max-bytes`),
+  (automatic for Curve/Balancer/FXN; complete artifacts required before protocol output;
+  optional `--batch-max-bytes` tuning),
   `scripts/export_batch_bags.py` (real bags for a Foundry check).
 - Published JSON: per gauge `batch{version, block_number, accounts_total, observed_storage_root,
   chunks[{accounts, node_bag, bag_bytes, calldata_bytes}]}`; per platform `batch_points{…, missing_gauges,
@@ -111,11 +112,10 @@ retain earlier mined hashes on an execution error; this does not extend to all d
 ## What is left
 
 Follow the current [rollout checklist](batch-verifier-rollout.md): audit the selected revisions,
-fix the two new publication issues (producer success without required bags, and API wrapper
-omitting bulk mode), run the manual recorded and mainnet-read tests, deploy, grant both Oracle
-roles, populate the consumer's registries and validate a canary through the existing pipeline.
-The verifier/documentation cleanup does not fix those publication issues. No Guard ceremony
-or replacement pipeline is required.
+ensure the API job resolves the toolkit with automatic batch generation and strict publication,
+run the manual recorded and mainnet-read tests, deploy, grant both Oracle roles, populate the
+consumer's registries and validate a canary through the existing pipeline. The API job needs
+no additional arguments. No Guard ceremony or replacement pipeline is required.
 
 ## Gotchas
 - Use `uv run --frozen` during validation to avoid changing the toolkit lockfile.

@@ -3,7 +3,7 @@
 Export real node bags for an end-to-end check against the Solidity library.
 
 Builds, from a live ``eth_getProof`` at a recent block, the batch-verifier
-artifacts of one gauge exactly like ``vm_active_proofs.py --bulk-proofs``
+artifacts of one gauge exactly like ``vm_active_proofs.py``
 does, together with the slot values read back with ``eth_getStorageAt``, so a
 Foundry test can feed the bags to ``MerklePatriciaBatchVerifier`` and compare
 the returned values (see docs/batch-verifier-rollout.md).
