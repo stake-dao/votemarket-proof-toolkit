@@ -14,9 +14,12 @@ from tests.curve_fixture import (
     CONTROLLER,
     EPOCH,
     GAUGE,
+    POINT_SLOT,
     USER,
     RecordedCurveProvider,
 )
+from votemarket_toolkit.proofs import batch_artifacts
+from votemarket_toolkit.proofs.generators.node_bag import POINT_CALL_HEAD_BYTES
 from votemarket_toolkit.shared.results import Result
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
@@ -152,9 +155,12 @@ async def test_comparison_main_forwards_explicit_epoch(
     assert received == [("curve", 42161, EPOCH, 2)]
 
 
-@pytest.mark.parametrize("missing_first_root", [False, True])
-def test_export_rejects_a_mixed_missing_storage_root(
-    monkeypatch, tmp_path, missing_first_root
+@pytest.mark.parametrize(
+    "failure", [None, "missing_root", "missing_point", "point_builder"]
+)
+@pytest.mark.parametrize("existing_output", [False, True])
+def test_export_requires_complete_account_and_point_batches(
+    monkeypatch, tmp_path, failure, existing_output
 ):
     exporter = load_script("export_batch_bags")
     monkeypatch.setattr(
@@ -169,9 +175,30 @@ def test_export_rejects_a_mixed_missing_storage_root(
             response = super().make_request(method, params)
             if method == "eth_getProof":
                 self.proof_calls += 1
-                if missing_first_root and self.proof_calls == 1:
+                if failure == "missing_root" and self.proof_calls == 1:
                     response["result"].pop("storageHash")
+                if failure == "missing_point":
+                    response["result"]["storageProof"] = [
+                        entry
+                        for entry in response["result"]["storageProof"]
+                        if int(entry["key"], 16) != int(POINT_SLOT, 16)
+                    ]
             return response
+
+    monkeypatch.setattr(
+        "votemarket_toolkit.shared.retry.time.sleep", lambda seconds: None
+    )
+    if failure == "point_builder":
+        chunk = batch_artifacts.chunk_by_calldata_size
+
+        def refuse_point_chunk(members, stacks, budget, head):
+            if head == POINT_CALL_HEAD_BYTES:
+                raise ValueError("Point chunk construction failed")
+            return chunk(members, stacks, budget, head)
+
+        monkeypatch.setattr(
+            batch_artifacts, "chunk_by_calldata_size", refuse_point_chunk
+        )
 
     provider = Provider()
     manager = provider.manager()
@@ -179,7 +206,7 @@ def test_export_rejects_a_mixed_missing_storage_root(
     results = []
 
     def get_proofs_bulk(**kwargs):
-        # One point request and one three-slot user request use two calls.
+        # Keep point and user requests in separate RPC calls.
         result = generate(keys_per_call=3, **kwargs)
         results.append(result)
         return result
@@ -189,6 +216,9 @@ def test_export_rejects_a_mixed_missing_storage_root(
     users = tmp_path / "users.txt"
     users.write_text(USER + "\n")
     target = tmp_path / "bags.json"
+    previous = '{"previous_export": true}\n'
+    if existing_output:
+        target.write_text(previous)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -208,13 +238,21 @@ def test_export_rejects_a_mixed_missing_storage_root(
             str(target),
         ],
     )
-    assert exporter.main() == (1 if missing_first_root else 0)
-    assert provider.proof_calls == 2
+    assert exporter.main() == (1 if failure else 0)
     assert results[0].success
+    assert results[0].partial is (failure == "missing_point")
     assert results[0].data.storage_root == provider.storage_root
-    assert results[0].data.saw_missing_storage_root is missing_first_root
-    if missing_first_root:
-        assert not target.exists()
+    assert results[0].data.saw_missing_storage_root is (
+        failure == "missing_root"
+    )
+    if failure:
+        if existing_output:
+            assert target.read_text() == previous
+        else:
+            assert not target.exists()
+        assert not any(
+            method == "eth_getStorageAt" for method, _ in provider.calls
+        )
     else:
         output = json.loads(target.read_text())
         assert output["batch"]["chunks"][0]["accounts"] == [USER]

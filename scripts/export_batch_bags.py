@@ -112,8 +112,8 @@ def main() -> int:
         stacks,
         max_bytes=args.batch_max_bytes,
     )
-    if "batch" not in platform["gauges"][gauge]:
-        print(f"no batch artifact: {summary.skipped}", file=sys.stderr)
+    if "batch" not in platform["gauges"][gauge] or "batch_points" not in platform:
+        print(f"incomplete batch artifacts: {summary.skipped}", file=sys.stderr)
         return 1
 
     controller = Web3.to_checksum_address(
