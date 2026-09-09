@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from typing import Any, Dict, List, Tuple
+from typing import Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -13,6 +14,15 @@ from rich.panel import Panel
 from votemarket_toolkit.campaigns import CampaignService
 from votemarket_toolkit.data import EligibilityService
 from votemarket_toolkit.proofs import VoteMarketProofs
+from votemarket_toolkit.proofs.batch_artifacts import (
+    BatchStacks,
+    gauge_accounts,
+    safe_attach_batch_artifacts,
+)
+from votemarket_toolkit.proofs.generators.node_bag import (
+    supports_batch_verifier,
+)
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.shared.types import AllProtocolsData, ProtocolData
 from votemarket_toolkit.utils import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
@@ -31,11 +41,309 @@ vm_eligibility = EligibilityService(1)
 VALIDATION_MAX_RETRIES = 5
 VALIDATION_BASE_DELAY = 3.0  # seconds
 
+
+def _uses_bulk_proofs(protocol: str) -> bool:
+    """Use grouped RPC calls for protocols requiring batch artifacts."""
+    return supports_batch_verifier(protocol)
+
+
+def _parse_positive_int_env(name: str, default: int) -> int:
+    """Parse a positive integer env var, falling back to the default."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        console.print(
+            f"[yellow]Invalid {name}={raw!r}; using default {default}[/yellow]"
+        )
+        return default
+    if value < 1:
+        console.print(
+            f"[yellow]{name} must be >= 1; using default {default}[/yellow]"
+        )
+        return default
+    return value
+
+
+BULK_KEYS_PER_CALL = _parse_positive_int_env("VM_BULK_KEYS_PER_CALL", 100)
+
+
+def _parse_optional_positive_int_env(name: str) -> Optional[int]:
+    """Parse an optional positive integer env var (None when unset/invalid)."""
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        console.print(f"[yellow]Invalid {name}={raw!r}; ignored[/yellow]")
+        return None
+    if value < 1:
+        console.print(f"[yellow]{name} must be >= 1; ignored[/yellow]")
+        return None
+    return value
+
+
+# Batch-verifier artifacts (node bags) are required for Curve, Balancer and
+# FXN and are derived from the grouped RPC responses. The budget bounds one
+# encoded batch call and defaults to the target chain's transaction-size limit;
+# override with --batch-max-bytes or VM_BATCH_MAX_BYTES. The collector is
+# reset for every protocol (one gauge controller) and keyed by block.
+BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
+    "VM_BATCH_MAX_BYTES"
+)
+batch_stacks = BatchStacks()
+
+# ---------------------------------------------------------------------------
+# Grouped eth_getProof path (automatic for BatchVerifier-compatible protocols)
+# ---------------------------------------------------------------------------
+
+
+async def _get_eligible_users_with_retry(
+    protocol: str,
+    gauge_address: str,
+    current_epoch: int,
+    block_number: int,
+    max_retries: int,
+) -> List[Dict[str, Any]]:
+    """Eligibility lookup with the same retry policy as process_gauge."""
+    for attempt in range(max_retries):
+        result = await vm_eligibility.get_eligible_users(
+            protocol, gauge_address, current_epoch, block_number
+        )
+        if result.success:
+            return result.data or []
+        delay = 2.0 * (2**attempt)
+        console.print(
+            f"[yellow]Eligibility check attempt {attempt + 1}/{max_retries} failed. Retrying in {delay}s...[/yellow]"
+        )
+        time.sleep(delay)
+    return []
+
+
+def _bulk_proofs(
+    protocol: str,
+    gauge_address: str,
+    block_number: int,
+    users: List[str],
+    gauge_epoch: Optional[int] = None,
+    max_retries: int = 3,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, str], List[str]]:
+    """
+    One grouped eth_getProof pass for a gauge.
+
+    Returns (gauge_proof or None, {user: storage_proof_hex}, failed_users).
+    Raises when nothing at all could be generated.
+    """
+    gauge_epochs = (
+        [(gauge_address, gauge_epoch)] if gauge_epoch is not None else []
+    )
+    result = vm_proofs.get_proofs_bulk(
+        protocol=protocol,
+        block_number=block_number,
+        gauge_epochs=gauge_epochs,
+        users=[(gauge_address, user) for user in users],
+        keys_per_call=BULK_KEYS_PER_CALL,
+        max_retries=max_retries,
+    )
+    if not result.success:
+        error_msg = (
+            result.errors[0].message if result.errors else "Unknown error"
+        )
+        raise Exception(
+            f"Bulk proof generation failed for gauge {gauge_address}: {error_msg}"
+        )
+
+    data = result.data
+    stats = data.stats
+    console.print(
+        f"[dim]Bulk eth_getProof: {stats.rpc_calls} call(s) for {stats.keys} keys / "
+        f"{stats.requests} proofs ({stats.splits} splits, {stats.failed_requests} failed)[/dim]"
+    )
+    if supports_batch_verifier(protocol):
+        # Keep the raw trie nodes for the batch-verifier artifacts (same response).
+        batch_stacks.record(
+            block_number,
+            data.user_nodes,
+            data.gauge_nodes,
+            data.storage_root,
+            saw_missing_root=data.saw_missing_storage_root,
+        )
+
+    gauge_proof = None
+    if gauge_epoch is not None:
+        gauge_proof = data.gauge_proofs.get(
+            (gauge_address.lower(), get_rounded_epoch(gauge_epoch))
+        )
+
+    user_proofs: Dict[str, str] = {}
+    failed_users: List[str] = []
+    for user in users:
+        proof = data.user_proofs.get((gauge_address.lower(), user.lower()))
+        if proof is None:
+            failed_users.append(user.lower())
+        else:
+            user_proofs[user.lower()] = "0x" + proof["storage_proof"].hex()
+    return gauge_proof, user_proofs, failed_users
+
+
+async def _process_gauge_bulk(
+    protocol: str,
+    gauge_address: str,
+    current_epoch: int,
+    block_number: int,
+    user_proofs_cache: Dict[str, Any],
+    max_retries: int,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Bulk variant of process_gauge: same outputs, grouped eth_getProof."""
+    console.print(
+        f"Querying votes for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+    gauge_votes = await votes_service.get_gauge_votes(
+        protocol, gauge_address, block_number
+    )
+    console.print(
+        f"Found [yellow]{len(gauge_votes.votes)}[/yellow] votes for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+
+    console.print(
+        f"Querying eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+    eligible_users = await _get_eligible_users_with_retry(
+        protocol, gauge_address, current_epoch, block_number, max_retries
+    )
+    console.print(
+        f"Found [yellow]{len(eligible_users)}[/yellow] eligible users for gauge: [magenta]{gauge_address}[/magenta]"
+    )
+
+    users_to_generate = list(
+        dict.fromkeys(
+            user["user"].lower()
+            for user in eligible_users
+            if f"{gauge_address}:{user['user'].lower()}"
+            not in user_proofs_cache
+        )
+    )
+    console.print(
+        f"Generating point data proof + {len(users_to_generate)} user proof(s) in bulk"
+    )
+    gauge_proof, new_user_proofs, failed_users = _bulk_proofs(
+        protocol,
+        gauge_address,
+        block_number,
+        users_to_generate,
+        gauge_epoch=current_epoch,
+        max_retries=max_retries,
+    )
+    if gauge_proof is None:
+        raise Exception(
+            f"Failed to generate gauge proof for {gauge_address} (bulk mode)"
+        )
+
+    gauge_proof_data = {
+        "point_data_proof": "0x" + gauge_proof["point_data_proof"].hex(),
+        "users": {},
+    }
+    gauge_vote_data = {"users": {}}
+
+    for user in eligible_users:
+        user_address = user["user"].lower()
+        cache_key = f"{gauge_address}:{user_address}"
+        if cache_key not in user_proofs_cache:
+            if user_address not in new_user_proofs:
+                continue  # Failed user: skipped, like the per-request path
+            user_proofs_cache[cache_key] = {
+                "storage_proof": new_user_proofs[user_address],
+                "last_vote": user["last_vote"],
+                "slope": user["slope"],
+                "power": user["power"],
+                "end": user["end"],
+            }
+        proof_info = user_proofs_cache[cache_key]
+        gauge_proof_data["users"][user_address] = {
+            "storage_proof": proof_info["storage_proof"]
+        }
+        gauge_vote_data["users"][user_address] = {
+            "last_vote": proof_info["last_vote"],
+            "slope": proof_info["slope"],
+            "power": proof_info["power"],
+            "end": proof_info["end"],
+        }
+
+    if failed_users:
+        console.print(
+            f"[yellow]Warning: {len(failed_users)} user(s) failed for gauge {gauge_address}[/yellow]"
+        )
+        for user in failed_users:
+            processing_stats["failed_user_proofs"].append(
+                {
+                    "protocol": protocol,
+                    "gauge": gauge_address,
+                    "user": user,
+                    "kind": "eligible",
+                }
+            )
+
+    return gauge_proof_data, gauge_vote_data
+
+
+def _record_failed_listed_users(
+    protocol: str, gauge_address: str, users: List[str]
+) -> None:
+    for user in users:
+        processing_stats["failed_user_proofs"].append(
+            {
+                "protocol": protocol,
+                "gauge": gauge_address,
+                "user": user,
+                "kind": "listed",
+            }
+        )
+
+
+def _process_listed_users_bulk(
+    protocol: str,
+    gauge_address: str,
+    block_number: int,
+    listed_users: List[str],
+    max_retries: int = 5,
+) -> Dict[str, Any]:
+    """Bulk variant of process_listed_users (never raises, skips failures)."""
+    users = list(dict.fromkeys(user.lower() for user in listed_users))
+    if not users:
+        return {}
+    try:
+        _, user_proofs, failed_users = _bulk_proofs(
+            protocol,
+            gauge_address,
+            block_number,
+            users,
+            max_retries=max_retries,
+        )
+    except Exception as exc:
+        console.print(
+            f"[red]Failed to generate listed user proofs for gauge {gauge_address}: {exc}[/red]"
+        )
+        _record_failed_listed_users(protocol, gauge_address, users)
+        return {}
+    for user in failed_users:
+        console.print(
+            f"[red]Failed to generate proof for listed user {user}. Skipping.[/red]"
+        )
+    _record_failed_listed_users(protocol, gauge_address, failed_users)
+    return {
+        user: {"storage_proof": proof} for user, proof in user_proofs.items()
+    }
+
+
 # Track processing results for summary
 processing_stats: Dict[str, Dict[str, Any]] = {
     "processed_gauges": [],
     "skipped_invalid_gauges": [],
     "failed_validation_gauges": [],  # RPC/network failures - these are problems
+    "failed_user_proofs": [],  # Individual user proofs that failed (bulk mode)
 }
 
 
@@ -71,6 +379,16 @@ async def process_gauge(
       - gauge_proof_data: containing proofs (e.g. point_data_proof and storage proofs for each user).
       - gauge_vote_data: containing only the raw vote details for each eligible user.
     """
+    if _uses_bulk_proofs(protocol):
+        return await _process_gauge_bulk(
+            protocol,
+            gauge_address,
+            current_epoch,
+            block_number,
+            user_proofs_cache,
+            max_retries,
+        )
+
     console.print(
         f"Querying votes for gauge: [magenta]{gauge_address}[/magenta]"
     )
@@ -210,6 +528,11 @@ def process_listed_users(
 
     Resilient version: retries on failure, skips individual users if they consistently fail.
     """
+    if _uses_bulk_proofs(protocol):
+        return _process_listed_users_bulk(
+            protocol, gauge_address, block_number, listed_users, max_retries
+        )
+
     listed_users_data = {}
     for listed_user in listed_users:
         console.print(
@@ -254,6 +577,10 @@ async def process_protocol(
       - "platforms": for proofs (stored in index/gauge files)
       - "votes": for raw vote details only (to be stored in a separate file)
     """
+    protocol = normalize_proof_protocol(protocol)
+    global batch_stacks
+    batch_stacks = BatchStacks()  # one protocol = one gauge controller
+
     platforms_by_chain = protocol_data[
         "platforms"
     ]  # chain_id -> list of platform dicts
@@ -273,6 +600,20 @@ async def process_protocol(
         # Use the first platform’s data as representative.
         rep_platform = platforms_list[0]
         block_number = rep_platform["latest_setted_block"]
+        other_blocks = {
+            p["latest_setted_block"]
+            for p in platforms_list
+            if p["latest_setted_block"] != block_number
+        }
+        if other_blocks:
+            # The per-gauge/per-user caches below are shared across the
+            # platforms of a chain: proofs are only interchangeable when
+            # every platform anchors the same block.
+            console.print(
+                f"[yellow]Warning: platforms on chain {chain_id} anchor different blocks "
+                f"({block_number} vs {sorted(other_blocks)}); cached proofs may not match "
+                "every platform[/yellow]"
+            )
 
         output_data["chains"][chain_id] = {
             "chain_id": chain_id,
@@ -504,7 +845,83 @@ async def process_protocol(
         console.print(
             f"Finished processing chain {chain_id} for protocol: [blue]{protocol}[/blue]"
         )
+    # Batch-verifier artifacts, once every chain is done: the cached gauge
+    # objects are shared between platforms and mutated until here, so the
+    # artifacts are attached last, on private copies, with the header block
+    # of each chain (the only block the published header/account proof
+    # covers).
+    if supports_batch_verifier(protocol):
+        for chain_id, chain_platforms in output_data["platforms"].items():
+            header_block = (
+                output_data["chains"].get(chain_id, {}).get("block_data") or {}
+            ).get("block_number")
+            for platform_address, platform_entry in chain_platforms.items():
+                _publish_batch_artifacts(
+                    protocol,
+                    chain_id,
+                    platform_address,
+                    platform_entry,
+                    header_block,
+                )
+
     return output_data
+
+
+def _publish_batch_artifacts(
+    protocol: str,
+    chain_id: str,
+    platform_address: str,
+    platform_entry: Dict[str, Any],
+    header_block: Optional[int],
+) -> None:
+    """Build complete node bags before publishing a compatible protocol."""
+    gauges = platform_entry.get("gauges", {})
+    if not supports_batch_verifier(protocol) or not gauges:
+        return
+    block_number = (platform_entry.get("block_data") or {}).get("block_number")
+    if block_number is None:
+        raise RuntimeError(
+            f"Missing batch block for {protocol} on chain {chain_id}, "
+            f"platform {platform_address}"
+        )
+    summary = safe_attach_batch_artifacts(
+        platform_entry,
+        protocol,
+        chain_id,
+        block_number,
+        batch_stacks,
+        max_bytes=BATCH_MAX_BYTES,
+        header_block=header_block,
+    )
+    if summary.gauges or summary.point_chunks:
+        console.print(
+            f"[dim]Batch artifacts for {platform_address} on chain {chain_id}: "
+            f"{summary.gauges} gauge(s), {summary.account_chunks} account chunk(s) / "
+            f"{summary.account_calldata_bytes:,} B calldata, {summary.point_chunks} point "
+            f"chunk(s) / {summary.point_calldata_bytes:,} B calldata[/dim]"
+        )
+    errors = list(summary.skipped)
+    point_members = {
+        gauge.lower()
+        for chunk in platform_entry.get("batch_points", {}).get("chunks", [])
+        for gauge in chunk["gauges"]
+    }
+    if point_members != {gauge.lower() for gauge in gauges}:
+        errors.append("point bags do not cover every published gauge")
+    # safe_attach_batch_artifacts replaces cached gauge objects with copies.
+    for gauge, gauge_data in platform_entry["gauges"].items():
+        account_members = {
+            account.lower()
+            for chunk in gauge_data.get("batch", {}).get("chunks", [])
+            for account in chunk["accounts"]
+        }
+        if account_members != set(gauge_accounts(gauge_data)):
+            errors.append(f"account bags do not cover gauge {gauge}")
+    if errors:
+        raise RuntimeError(
+            f"Incomplete batch artifacts for {protocol} on chain {chain_id}, "
+            f"platform {platform_address}: " + "; ".join(errors)
+        )
 
 
 def write_protocol_data(
@@ -525,7 +942,7 @@ def write_protocol_data(
     platforms_by_address: Dict[str, Dict[str, Any]] = {}
     for chain_id, chain_platforms in processed_data["platforms"].items():
         for platform_addr, platform_data in chain_platforms.items():
-            platforms_by_address.setdefault(platform_addr, {})[chain_id] = {
+            chain_entry = {
                 "chain_id": chain_id,
                 "platform_address": platform_addr,
                 "block_data": processed_data["chains"]
@@ -533,6 +950,11 @@ def write_protocol_data(
                 .get("block_data", {}),
                 "gauges": platform_data.get("gauges", {}),
             }
+            if "batch_points" in platform_data:
+                chain_entry["batch_points"] = platform_data["batch_points"]
+            platforms_by_address.setdefault(platform_addr, {})[
+                chain_id
+            ] = chain_entry
 
     rep_platform_addr = next(iter(platforms_by_address))
     rep_chain_id = next(iter(platforms_by_address[rep_platform_addr]))
@@ -613,6 +1035,7 @@ def print_processing_summary() -> str:
     processed = processing_stats["processed_gauges"]
     skipped = processing_stats["skipped_invalid_gauges"]
     failed = processing_stats["failed_validation_gauges"]
+    failed_users = processing_stats.get("failed_user_proofs", [])
 
     console.print(
         f"\n[bold]Results: {len(processed)} succeeded, {len(failed)} failed, {len(skipped)} skipped (invalid)[/bold]"
@@ -634,10 +1057,28 @@ def print_processing_summary() -> str:
             console.print(f"  - {g['gauge']} ({g['protocol']}, campaign {g['campaign_id']})")
             console.print(f"    Error: {g['error']}")
 
+    if failed_users:
+        console.print(
+            f"\n[yellow]⚠ Failed user proofs:[/yellow] {len(failed_users)}"
+        )
+        for item in failed_users:
+            console.print(
+                f"  - {item['user']} on {item['gauge']} "
+                f"({item['protocol']}, {item['kind']})"
+            )
+
     console.print("\n" + "=" * 70)
 
-    if not failed:
+    if not failed and not failed_users:
         return "success"
+
+    if not failed and failed_users:
+        # Gauges are fine but some user proofs are missing: partial output
+        console.print(
+            f"[bold yellow]WARNING: {len(failed_users)} user proof(s) "
+            "failed. Committing successful proofs.[/bold yellow]"
+        )
+        return "partial_failed"
 
     if processed:
         # Some gauges succeeded — partial success, commit what we have
@@ -673,6 +1114,7 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
     processing_stats["processed_gauges"] = []
     processing_stats["skipped_invalid_gauges"] = []
     processing_stats["failed_validation_gauges"] = []
+    processing_stats["failed_user_proofs"] = []
 
     # Clear cache to ensure fresh campaign data
     campaign_service.clear_cache()
@@ -681,12 +1123,21 @@ async def main(all_protocols_data: AllProtocolsData, current_epoch: int) -> str:
         f"Starting active proofs generation for epoch: [yellow]{current_epoch}[/yellow]"
     )
     for protocol, protocol_data in all_protocols_data["protocols"].items():
+        protocol = normalize_proof_protocol(protocol)
         if not protocol_data["platforms"]:
             console.print(
                 f"Skipping protocol: [blue]{protocol}[/blue] as no platforms found"
             )
             continue
         console.print(f"Processing protocol: [blue]{protocol}[/blue]")
+        console.print(
+            "Proof generation mode: "
+            + (
+                f"[green]bulk[/green] ({BULK_KEYS_PER_CALL} keys per eth_getProof)"
+                if _uses_bulk_proofs(protocol)
+                else "[cyan]per-request[/cyan]"
+            )
+        )
         processed_data = await process_protocol(
             protocol, protocol_data, current_epoch
         )
@@ -712,7 +1163,31 @@ if __name__ == "__main__":
     parser.add_argument(
         "current_epoch", type=int, help="Current epoch timestamp"
     )
+    parser.add_argument(
+        "--keys-per-call",
+        type=int,
+        default=None,
+        help="Max storage keys per eth_getProof call in bulk mode (default: VM_BULK_KEYS_PER_CALL or 100)",
+    )
+    parser.add_argument(
+        "--batch-max-bytes",
+        type=int,
+        default=None,
+        help=(
+            "Byte budget of one encoded batch-verifier call (compatible protocols; "
+            "default: per-chain transaction-size limit, or VM_BATCH_MAX_BYTES)"
+        ),
+    )
     args = parser.parse_args()
+
+    if args.keys_per_call is not None:
+        if args.keys_per_call < 1:
+            parser.error("--keys-per-call must be >= 1")
+        BULK_KEYS_PER_CALL = args.keys_per_call
+    if args.batch_max_bytes is not None:
+        if args.batch_max_bytes < 1:
+            parser.error("--batch-max-bytes must be >= 1")
+        BATCH_MAX_BYTES = args.batch_max_bytes
 
     with open(args.all_platforms_file, "r") as f:
         all_protocols_data = json.load(f)
