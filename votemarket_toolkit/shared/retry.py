@@ -14,17 +14,18 @@ import asyncio
 import logging
 import time
 from functools import wraps
-from typing import Any, Callable, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar
 
 from web3.exceptions import (
-    Web3Exception,
-    ContractLogicError,
     BadFunctionCallOutput,
-    TransactionNotFound,
     BlockNotFound,
+    ContractLogicError,
+    TransactionNotFound,
+    Web3Exception,
 )
 
 from votemarket_toolkit.shared.exceptions import RetryableException
+from votemarket_toolkit.shared.redact import format_exception_safe
 
 T = TypeVar("T")
 
@@ -94,7 +95,7 @@ def with_retry(
 
                         logger.warning(
                             f"Attempt {attempt + 1}/{max_attempts} failed for "
-                            f"{func.__name__}: {e}. Retrying in {delay:.1f}s..."
+                            f"{func.__name__}: {format_exception_safe(e)}. Retrying in {delay:.1f}s..."
                         )
 
                         if on_retry:
@@ -106,7 +107,7 @@ def with_retry(
             if last_exception:
                 raise last_exception
             raise RuntimeError(
-                f"Unexpected state: no exception but all attempts exhausted"
+                "Unexpected state: no exception but all attempts exhausted"
             )
 
         return wrapper
@@ -163,7 +164,7 @@ def retry_sync(
 
                         logger.warning(
                             f"Attempt {attempt + 1}/{max_attempts} failed for "
-                            f"{func.__name__}: {e}. Retrying in {delay:.1f}s..."
+                            f"{func.__name__}: {format_exception_safe(e)}. Retrying in {delay:.1f}s..."
                         )
 
                         if on_retry:
@@ -175,7 +176,7 @@ def retry_sync(
             if last_exception:
                 raise last_exception
             raise RuntimeError(
-                f"Unexpected state: no exception but all attempts exhausted"
+                "Unexpected state: no exception but all attempts exhausted"
             )
 
         return wrapper
@@ -242,7 +243,7 @@ async def retry_async_operation(
 
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_attempts} failed for "
-                    f"{name}: {e}. Retrying in {delay:.1f}s..."
+                    f"{name}: {format_exception_safe(e)}. Retrying in {delay:.1f}s..."
                 )
 
                 await asyncio.sleep(delay)
@@ -305,7 +306,7 @@ def retry_sync_operation(
 
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_attempts} failed for "
-                    f"{name}: {e}. Retrying in {delay:.1f}s..."
+                    f"{name}: {format_exception_safe(e)}. Retrying in {delay:.1f}s..."
                 )
 
                 time.sleep(delay)

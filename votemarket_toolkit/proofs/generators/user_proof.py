@@ -6,6 +6,7 @@ from eth_abi import encode
 from eth_utils import keccak
 from web3 import Web3
 
+from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
 from votemarket_toolkit.shared import registry
 from votemarket_toolkit.utils.blockchain import encode_rlp_proofs
 
@@ -114,6 +115,7 @@ def generate_user_proof(
     """
 
     # Get base slots for last user vote and vote user slope
+    protocol = normalize_proof_protocol(protocol)
     gauge_slots = registry.get_gauge_slots(protocol)
     if not gauge_slots:
         raise ValueError(f"Unknown protocol: {protocol}")
