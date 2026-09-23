@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 from typing import Optional
 
@@ -18,11 +19,13 @@ from votemarket_toolkit.proofs.batch_artifacts import (
     BatchStacks,
     gauge_accounts,
     safe_attach_batch_artifacts,
+    strip_batch_artifacts,
 )
 from votemarket_toolkit.proofs.generators.node_bag import (
     supports_batch_verifier,
 )
 from votemarket_toolkit.proofs.protocol import normalize_proof_protocol
+from votemarket_toolkit.shared.redact import format_exception_safe
 from votemarket_toolkit.shared.types import AllProtocolsData, ProtocolData
 from votemarket_toolkit.utils import get_rounded_epoch
 from votemarket_toolkit.votes.services.votes_service import votes_service
@@ -43,7 +46,7 @@ VALIDATION_BASE_DELAY = 3.0  # seconds
 
 
 def _uses_bulk_proofs(protocol: str) -> bool:
-    """Use grouped RPC calls for protocols requiring batch artifacts."""
+    """Use grouped RPC calls for protocols supporting batch artifacts."""
     return supports_batch_verifier(protocol)
 
 
@@ -86,9 +89,9 @@ def _parse_optional_positive_int_env(name: str) -> Optional[int]:
     return value
 
 
-# Batch-verifier artifacts (node bags) are required for Curve, Balancer and
-# FXN and are derived from the grouped RPC responses. The budget bounds one
-# encoded batch call and defaults to the target chain's transaction-size limit;
+# Batch-verifier artifacts (node bags) are attempted for Curve, Balancer and
+# FXN alongside the legacy proofs, using the grouped RPC responses. The budget
+# bounds one encoded batch call and defaults to the target chain's size limit;
 # override with --batch-max-bytes or VM_BATCH_MAX_BYTES. The collector is
 # reset for every protocol (one gauge controller) and keyed by block.
 BATCH_MAX_BYTES: Optional[int] = _parse_optional_positive_int_env(
@@ -164,13 +167,24 @@ def _bulk_proofs(
     )
     if supports_batch_verifier(protocol):
         # Keep the raw trie nodes for the batch-verifier artifacts (same response).
-        batch_stacks.record(
-            block_number,
-            data.user_nodes,
-            data.gauge_nodes,
-            data.storage_root,
-            saw_missing_root=data.saw_missing_storage_root,
-        )
+        try:
+            batch_stacks.record(
+                block_number,
+                data.user_nodes,
+                data.gauge_nodes,
+                data.storage_root,
+                saw_missing_root=data.saw_missing_storage_root,
+            )
+        except Exception as exc:
+            # A failed collector must not publish bags from partial state or
+            # prevent the already-generated legacy proofs from being used.
+            batch_stacks.blocks_without_root.add(block_number)
+            console.print(
+                f"Batch node collection unavailable for {protocol} at block "
+                f"{block_number}; keeping legacy proofs: {format_exception_safe(exc)}",
+                style="yellow",
+                markup=False,
+            )
 
     gauge_proof = None
     if gauge_epoch is not None:
@@ -874,7 +888,50 @@ def _publish_batch_artifacts(
     platform_entry: Dict[str, Any],
     header_block: Optional[int],
 ) -> None:
-    """Build complete node bags before publishing a compatible protocol."""
+    """Attach complete optional bags without affecting legacy publication."""
+    if not supports_batch_verifier(protocol):
+        return
+
+    # The gauge cache is shared between platforms. Build privately and commit
+    # only optional fields, so a failed context cannot change legacy data or
+    # remove another platform's successfully built artifacts.
+    candidate = deepcopy(platform_entry)
+    strip_batch_artifacts(candidate)
+    try:
+        _build_complete_batch_artifacts(
+            protocol, chain_id, platform_address, candidate, header_block
+        )
+    except Exception as exc:
+        strip_batch_artifacts(candidate)
+        console.print(
+            f"Batch artifacts unavailable for {protocol} on chain {chain_id}, "
+            f"platform {platform_address}; publishing legacy proofs only: "
+            f"{format_exception_safe(exc)}",
+            style="yellow",
+            markup=False,
+        )
+
+    platform_entry["gauges"] = {
+        gauge: dict(gauge_data)
+        for gauge, gauge_data in platform_entry.get("gauges", {}).items()
+    }
+    strip_batch_artifacts(platform_entry)
+    if "batch_points" in candidate:
+        platform_entry["batch_points"] = candidate["batch_points"]
+    for gauge, gauge_data in platform_entry["gauges"].items():
+        batch = candidate["gauges"][gauge].get("batch")
+        if batch is not None:
+            gauge_data["batch"] = batch
+
+
+def _build_complete_batch_artifacts(
+    protocol: str,
+    chain_id: str,
+    platform_address: str,
+    platform_entry: Dict[str, Any],
+    header_block: Optional[int],
+) -> None:
+    """Reject a partial candidate before attaching any bags to publication."""
     gauges = platform_entry.get("gauges", {})
     if not supports_batch_verifier(protocol) or not gauges:
         return
@@ -893,13 +950,6 @@ def _publish_batch_artifacts(
         max_bytes=BATCH_MAX_BYTES,
         header_block=header_block,
     )
-    if summary.gauges or summary.point_chunks:
-        console.print(
-            f"[dim]Batch artifacts for {platform_address} on chain {chain_id}: "
-            f"{summary.gauges} gauge(s), {summary.account_chunks} account chunk(s) / "
-            f"{summary.account_calldata_bytes:,} B calldata, {summary.point_chunks} point "
-            f"chunk(s) / {summary.point_calldata_bytes:,} B calldata[/dim]"
-        )
     errors = list(summary.skipped)
     point_members = {
         gauge.lower()
@@ -921,6 +971,13 @@ def _publish_batch_artifacts(
         raise RuntimeError(
             f"Incomplete batch artifacts for {protocol} on chain {chain_id}, "
             f"platform {platform_address}: " + "; ".join(errors)
+        )
+    if summary.gauges or summary.point_chunks:
+        console.print(
+            f"[dim]Batch artifacts for {platform_address} on chain {chain_id}: "
+            f"{summary.gauges} gauge(s), {summary.account_chunks} account chunk(s) / "
+            f"{summary.account_calldata_bytes:,} B calldata, {summary.point_chunks} point "
+            f"chunk(s) / {summary.point_calldata_bytes:,} B calldata[/dim]"
         )
 
 

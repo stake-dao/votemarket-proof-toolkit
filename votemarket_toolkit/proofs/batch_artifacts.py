@@ -14,7 +14,9 @@ nodes from grouped ``eth_getProof`` responses; this module builds the bags the
 Coverage is all-or-nothing per gauge: a ``batch`` artifact always covers
 every account published in the legacy fields of that gauge, otherwise it is
 omitted. Point artifacts list the gauges they do not cover. The active-proof
-pipeline rejects incomplete coverage before publication, with no legacy fallback. Only protocols the batch verifier supports get
+pipeline publishes optional bags only when they cover the platform's published
+inventory; otherwise it logs a diagnostic and keeps that platform's legacy
+proofs without batch fields. Only protocols the batch verifier supports get
 artifacts, and only for a platform whose anchored block is the one the
 published header / controller account proof belongs to (the verifier
 registers its storage root from that header).
@@ -23,7 +25,8 @@ The legacy fields are untouched: ``safe_attach_batch_artifacts`` works on
 private copies of the gauge entries (the script shares cached gauge objects
 between platforms) and returns build failures in ``BatchSummary.skipped``.
 The caller decides whether to reject publication; the active-proof pipeline
-requires complete artifacts for every compatible protocol.
+isolates batch failures from legacy publication, while the standalone batch
+exporter requires complete artifacts.
 
 Stacks are keyed by block: one collector serves one protocol (one gauge
 controller) and one epoch, whose platforms may anchor different blocks.

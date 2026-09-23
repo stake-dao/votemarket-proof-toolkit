@@ -4,6 +4,7 @@ import importlib.util
 import json
 import socket
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -350,8 +351,8 @@ async def test_active_proof_routing_is_automatic(
         "header_mismatch",
     ],
 )
-def test_active_publication_requires_complete_batches(
-    active_script, monkeypatch, case
+def test_active_publication_keeps_legacy_when_batches_are_unavailable(
+    active_script, monkeypatch, capsys, case
 ):
     monkeypatch.setattr(
         "votemarket_toolkit.shared.registry.get_gauge_controller",
@@ -403,6 +404,7 @@ def test_active_publication_requires_complete_batches(
     )
     protocol = "yb" if case == "unsupported" else "curve"
     header = BLOCK + 1 if case == "header_mismatch" else BLOCK
+    legacy = deepcopy(platform)
     if case in (
         "complete",
         "point_only",
@@ -428,10 +430,164 @@ def test_active_publication_requires_complete_batches(
             if case == "no_block"
             else "Incomplete batch artifacts"
         )
-        with pytest.raises(RuntimeError, match=expected_error):
-            active_script._publish_batch_artifacts(
-                protocol, "42161", "platform", platform, header
-            )
+        active_script._publish_batch_artifacts(
+            protocol, "42161", "platform", platform, header
+        )
+        assert platform == legacy
+        output = capsys.readouterr().out
+        assert "Batch artifacts unavailable for curve on chain 42161" in output
+        assert "publishing legacy proofs only" in output
+        assert expected_error in output
+        assert "Batch artifacts for platform" not in output
+
+
+@pytest.fixture
+def recorded_batch_data(active_script, monkeypatch):
+    monkeypatch.setattr(
+        "votemarket_toolkit.shared.registry.get_gauge_controller",
+        lambda protocol: CONTROLLER,
+    )
+    manager = RecordedCurveProvider().manager()
+    active_script.vm_proofs = manager
+    data = manager.get_proofs_bulk(
+        "curve", BLOCK, gauge_epochs=[(GAUGE, EPOCH)], users=[(GAUGE, USER)]
+    ).unwrap()
+    active_script.batch_stacks.record(
+        BLOCK, data.user_nodes, data.gauge_nodes, data.storage_root
+    )
+    return {
+        "point_data_proof": "0x"
+        + data.gauge_proofs[(GAUGE, EPOCH)]["point_data_proof"].hex(),
+        "users": {
+            USER: {
+                "storage_proof": "0x"
+                + data.user_proofs[(GAUGE, USER)]["storage_proof"].hex()
+            }
+        },
+        "listed_users": {},
+        "active_campaigns_ids": ["campaign"],
+    }
+
+
+def test_batch_failure_isolated_between_shared_platforms_and_written_outputs(
+    active_script, recorded_batch_data, monkeypatch, tmp_path
+):
+    shared = recorded_batch_data
+    legacy = deepcopy(shared)
+    good = {"block_data": {"block_number": BLOCK}, "gauges": {GAUGE: shared}}
+    bad = {"block_data": {"block_number": BLOCK}, "gauges": {GAUGE: shared}}
+
+    active_script._publish_batch_artifacts(
+        "curve", "42161", "good", good, BLOCK
+    )
+    good_snapshot = deepcopy(good)
+    monkeypatch.setattr(active_script, "BATCH_MAX_BYTES", 1)
+    active_script._publish_batch_artifacts("curve", "42161", "bad", bad, BLOCK)
+
+    assert good == good_snapshot
+    assert shared == bad["gauges"][GAUGE] == legacy
+    assert "batch_points" not in bad
+    assert good["gauges"][GAUGE]["batch"]["chunks"][0]["accounts"] == [USER]
+    good_legacy = deepcopy(good["gauges"][GAUGE])
+    good_legacy.pop("batch")
+    assert good_legacy == legacy
+
+    processed = {
+        "chains": {
+            "42161": {
+                "block_data": {"block_number": BLOCK},
+                "gauge_controller_proof": "0xc0",
+            }
+        },
+        "platforms": {"42161": {"good": good, "bad": bad}},
+        "votes": {},
+    }
+    active_script.write_protocol_data("curve", EPOCH, processed)
+    written = json.loads((tmp_path / "temp/curve/index.json").read_text())
+    assert (
+        written["platforms"]["good"]["42161"]["gauges"][GAUGE]
+        == good["gauges"][GAUGE]
+    )
+    assert written["platforms"]["bad"]["42161"]["gauges"][GAUGE] == legacy
+    assert "batch_points" not in written["platforms"]["bad"]["42161"]
+
+
+@pytest.mark.parametrize("failure", ["raises", "malformed"])
+def test_partial_batch_failure_never_contaminates_legacy_or_keeps_stale_bags(
+    active_script, recorded_batch_data, monkeypatch, capsys, failure
+):
+    legacy = deepcopy(recorded_batch_data)
+    platform = {
+        "block_data": {"block_number": BLOCK},
+        "gauges": {GAUGE: recorded_batch_data},
+    }
+    platform["batch_points"] = {"stale": True}
+    platform["gauges"][GAUGE]["batch"] = {"stale": True}
+
+    def broken_builder(candidate, *args, **kwargs):
+        candidate["gauges"][GAUGE]["users"][USER][
+            "storage_proof"
+        ] = "corrupted"
+        candidate["batch_points"] = {"chunks": [{"gauges": [GAUGE]}]}
+        candidate["gauges"][GAUGE]["batch"] = {"chunks": [{}]}
+        if failure == "raises":
+            raise RuntimeError("batch-only failure")
+        return batch_artifacts.BatchSummary()
+
+    monkeypatch.setattr(
+        active_script, "safe_attach_batch_artifacts", broken_builder
+    )
+    active_script._publish_batch_artifacts(
+        "curve", "42161", "platform", platform, BLOCK
+    )
+    assert platform == {
+        "block_data": {"block_number": BLOCK},
+        "gauges": {GAUGE: legacy},
+    }
+    assert "Batch artifacts unavailable" in capsys.readouterr().out
+
+
+def test_node_collection_failure_keeps_valid_legacy_proofs(
+    active_script, recorded_batch_data, monkeypatch, capsys
+):
+    def fail_collection(*args, **kwargs):
+        raise RuntimeError("collection failed")
+
+    monkeypatch.setattr(active_script.batch_stacks, "record", fail_collection)
+    gauge, users, failed = active_script._bulk_proofs(
+        "curve", GAUGE, BLOCK, [USER], gauge_epoch=EPOCH
+    )
+    assert (
+        "0x" + gauge["point_data_proof"].hex()
+        == recorded_batch_data["point_data_proof"]
+    )
+    assert users == {USER: recorded_batch_data["users"][USER]["storage_proof"]}
+    assert failed == []
+    assert BLOCK in active_script.batch_stacks.blocks_without_root
+    platform = {
+        "block_data": {"block_number": BLOCK},
+        "gauges": {GAUGE: recorded_batch_data},
+    }
+    expected = deepcopy(platform)
+    active_script._publish_batch_artifacts(
+        "curve", "42161", "platform", platform, BLOCK
+    )
+    assert platform == expected
+    output = capsys.readouterr().out
+    assert "Batch node collection unavailable" in output
+    assert "Batch artifacts unavailable" in output
+
+
+def test_actual_proof_rpc_failure_still_propagates(active_script):
+    active_script.vm_proofs = SimpleNamespace(
+        get_proofs_bulk=lambda **kwargs: Result(
+            success=False, data=None, errors=[]
+        )
+    )
+    with pytest.raises(Exception, match="Bulk proof generation failed"):
+        active_script._bulk_proofs(
+            "curve", GAUGE, BLOCK, [USER], gauge_epoch=EPOCH
+        )
 
 
 @pytest.mark.asyncio

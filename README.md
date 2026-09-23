@@ -270,7 +270,8 @@ result.data.user_proofs[(gauge.lower(), user.lower())]  # UserProof
 ```
 
 The active-proof pipeline automatically uses grouped RPC calls for Curve, Balancer
-and FXN and requires complete batch artifacts before writing the protocol output.
+and FXN and attempts to add complete batch artifacts beside the legacy output.
+Batch-specific failures are reported without blocking valid legacy publication.
 The production job needs only its usual two positional arguments:
 
 ```bash
@@ -306,12 +307,27 @@ bags from the same `eth_getProof` responses (no extra RPC call) for the protocol
 the batch verifier supports — curve, balancer, fxn (pendle/yb keep their own
 verifiers) — and publishes them **next to** the legacy fields, which are
 untouched: the legacy verifier and self-serve users keep working from the same
-files. Before writing a compatible protocol, the producer requires point bags
-covering every published gauge and account bags covering all its published eligible
-and listed users. A missing block, rejected build or incomplete coverage raises an
-error and makes the job fail. The migrated automation-jobs consumer also checks
-these required artifacts, with no legacy fallback. See the [current rollout checklist](docs/batch-verifier-rollout.md)
-for deployment, both Oracle authorizations and activation on the existing pipeline.
+files. Before attaching bags to a platform, the producer checks that point bags
+cover every published gauge and account bags cover all its published eligible
+and listed users. A missing block, rejected build or incomplete coverage removes
+that platform's optional batch fields and logs a diagnostic; its legacy fields
+remain available. Actual proof-generation errors retain their existing handling.
+
+Automation-jobs keeps legacy insertion by default. Only campaign tuples explicitly
+selected in `ContractRegistry.VOTEMARKET_BATCH_CAMPAIGNS` use the batch canary;
+those selected calls require valid, complete artifacts and an authorized deployment.
+The Arbitrum deployments are Curve `0xd59e30FAF4113b18BFe841aF482930206522Bf46`
+and FXN `0x1F7B08b5536AEC8952D7856b54a0d2CCd6Ab28dD`. At block 508120606
+(2026-09-23), both are owned by the DAO and authorize AllMight V2; neither has its
+two Oracle provider roles yet. Curve Arbitrum campaign **1986** is now selected in the
+automation configuration on `dev/votemarket-batch-verifier`: chain `42161`, VoteMarket
+`0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9`, gauge
+`0xB84637aB9Be835580821A67823f414FFd0bbf625`. Oracle authorization and production
+execution remain pending; this selection does not activate the verifier on-chain.
+Balancer and Optimism are outside this deployment scope. Proof generation is
+independent of the verifier addresses and does not activate them.
+See the [current rollout checklist](docs/batch-verifier-rollout.md) for authorization
+and canary activation.
 
 ```jsonc
 // <platform>/<chain>/<gauge>.json — per gauge, for setAccountDataBatch(gauge, epoch, accounts, node_bag)
@@ -332,11 +348,12 @@ for deployment, both Oracle authorizations and activation on the existing pipeli
 - **Coverage is all-or-nothing for the published gauge inventory**: a `batch` is
   published only when every account present in the gauge's legacy fields (eligible
   and listed users) has trie nodes at the platform's block; otherwise the gauge has
-  no `batch`. `batch_points.missing_gauges` names gauges a point bag does not cover.
-  Automation-jobs fails if any required member lacks batch coverage, even when its
-  legacy blob exists. This cannot detect users omitted before the inventory was
-  built. The producer rejects incomplete coverage before writing that protocol;
-  the API job stops before copying files when the producer exits with an error.
+  no `batch`. The reusable builder reports uncovered point gauges in
+  `batch_points.missing_gauges`; the active-proof publisher removes all optional
+  batch fields for a platform when its coverage is incomplete. Other platforms'
+  bags and legacy publication continue. The selected automation-jobs canary fails
+  if a needed member lacks batch coverage; the default legacy path ignores optional
+  bags. This cannot detect users omitted before the inventory was built.
   Accounts are sorted (lowercase) so chunks are canonical across runs; the order
   inside a chunk is the order to pass on-chain.
 - **Chunks are cut by encoded call size**, not by number of accounts: the ABI head,

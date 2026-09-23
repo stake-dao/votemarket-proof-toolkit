@@ -10,12 +10,15 @@ metadata:
 
 # Hand-off — Votemarket V2 batched proofs (BatchVerifier)
 
-> Update 2026-09-08: the historical design below has changed. BatchVerifier now proves the
+> Update 2026-09-23: the historical design below has changed. BatchVerifier now proves the
 > controller root and stores it in `Oracle.epochBlockNumber(epoch).stateRootHash`; the
 > `storageRootByEpoch` getter forwards that field. Registration always verifies header/account
 > proof, accepts an identical root and rejects a conflicting nonzero root. Both Oracle provider
-> roles are required. Production integration now lives in automation-jobs with mandatory batch
-> proofs for Curve/FXN/Balancer and no legacy fallback. See `batch-verifier-rollout.md` for the
+> roles and the verifier's relayer authorization for AllMight are required. Production
+> integration lives in automation-jobs: legacy insertion is the default, while exact
+> `(chain_id, votemarket_address, campaign_id)` selections in `VOTEMARKET_BATCH_CAMPAIGNS`
+> enable a batch canary for Curve/FXN/Balancer. The producer attempts both formats, and
+> batch-specific failures keep legacy publication available. See `batch-verifier-rollout.md` for the
 > current contract authorization requirements; the Guard rollout and old measurements below
 > are historical context.
 >
@@ -34,9 +37,10 @@ Read this first, then the linked notes for details: [[market-node-bag-plan]], [[
 
 Cut the cost and transaction count of inserting Votemarket V2 storage proofs (Curve-family gauge
 controllers) by reusing Warren's batched Merkle-Patricia library (`market` repo,
-`MerklePatriciaBatchVerifier`, "node bags"), while reusing the existing Oracle and production pipeline. Scope: **curve,
-balancer, fxn** on **Arbitrum + Optimism** (pendle/yb keep their own verifiers; Base/Polygon oracles
-are frozen). Pierre's decisions: contract lives in `contracts-monorepo` (not `market`);
+`MerklePatriciaBatchVerifier`, "node bags"), while reusing the existing Oracle and production pipeline.
+The tooling supports Curve, Balancer and FXN; the current deployments are **Curve + FXN on
+Arbitrum**, with a **Curve Arbitrum canary** planned. Balancer and Optimism are outside this
+rollout (Pendle/YB keep their own verifiers; Base/Polygon oracles are frozen). Pierre's decisions: contract lives in `contracts-monorepo` (not `market`);
 `ALREADY_REGISTERED` revert semantics like the legacy verifier (no skip); no durable fork test in the PR.
 
 ## Current branches (2026-09-08)
@@ -49,10 +53,21 @@ are frozen). Pierre's decisions: contract lives in `contracts-monorepo` (not `ma
 | `api` | `feat/votemarket-proofs-bulk` | [#61](https://github.com/stake-dao/api/pull/61), artifact publication |
 
 The Guard job and separate Maestro pipeline were superseded; their PRs were closed without
-merging. No deployment or Oracle authorization is established by these changes. The three
-BatchVerifier address registries in automation-jobs remain empty.
+merging. Curve BatchVerifier `0xd59e30FAF4113b18BFe841aF482930206522Bf46` and FXN BatchVerifier
+`0x1F7B08b5536AEC8952D7856b54a0d2CCd6Ab28dD` are now deployed on Arbitrum (42161).
+At block **508120606**, checked on **2026-09-23**, both are owned by DAO
+`0xB0552b6860CE5C0202976Db056b5e3Cc4f9CC765` and authorize AllMight V2. Both Oracle provider
+roles remain `false` for each verifier in this snapshot. These addresses belong in the
+corresponding consumer registries. `VOTEMARKET_BATCH_CAMPAIGNS` on automation branch
+`dev/votemarket-batch-verifier` selects only Curve Arbitrum campaign **1986**: chain `42161`, VoteMarket
+`0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9`, gauge
+`0xB84637aB9Be835580821A67823f414FFd0bbf625`
+([creation transaction](https://arbiscan.io/tx/0xaacee98421ef852509af600871d1fd770a699e9b2f343f6d5ad0bd46bf61104b)).
+Oracle authorization and production execution remain pending. This routing configuration
+neither grants Oracle roles nor activates the verifier on-chain. Proof generation is independent
+of these deployed addresses.
 
-Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` (committed).
+Cross-repo checklist and deployment snapshot: [batch-verifier-rollout.md](batch-verifier-rollout.md).
 
 ### Contracts (`packages/votemarket/`)
 - `src/verifiers/BatchVerifier.sol`: `registerStorageRoot(blockHeader, accountProof)` (header must hash to
@@ -60,13 +75,19 @@ Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` 
   root; controller root stored in `Oracle.epochBlockNumber(epoch).stateRootHash`, with
   `storageRootByEpoch` forwarding the same field), `setAccountDataBatch(gauge, epoch, accounts[], nodeBag)`, `setPointDataBatch(gauges[], epoch,
   nodeBag)`; constructor `(oracle, gaugeController, lastVoteSlot, userSlopeSlot, weightSlot,
-  hashStructBaseSlot)` — `true` = Curve (`RLPDecoder`), `false` = balancer/fxn (`RLPDecoderV2`); needs both
-  Oracle **data-provider and block-number-provider** roles; public `accountPaths()`/`pointPath()`; events.
+  hashStructBaseSlot, owner)` — `true` = Curve (`RLPDecoder`), `false` = balancer/fxn (`RLPDecoderV2`);
+  needs both Oracle **data-provider and block-number-provider** roles and an authorized relayer
+  for all three submission functions; public `accountPaths()`/`pointPath()`; events.
 - `src/utils/MerklePatriciaBatchVerifier.sol`: derived from `market` @ `75b24ec`; include local library changes in the review.
-- `script/verifier/DeployBatchVerifier.s.sol`: CREATE3 protected salts (broadcaster-prefixed, byte 21 =
-  0x00), governance == BOSS `0xB0552b6860CE5C0202976Db056b5e3Cc4f9CC765` check, prints
-  `setAuthorizedDataProvider` and `setAuthorizedBlockNumberProvider` calldata. Note: salts `CurveVerifierV3`… already exist for the LEGACY code
-  in `Deploy.s.sol` — hence the name BatchVerifier.
+- `script/verifier/DeployBatchVerifier.s.sol`: current targets are Curve and FXN on Arbitrum.
+  CREATE3 protected salts are broadcaster-prefixed, with byte 21 = 0x00. The script checks
+  Oracle governance against the Arbitrum DAO, deploys with the broadcaster as owner, authorizes
+  AllMight V2, then transfers ownership to the DAO. These are three separate transactions per
+  verifier (six planned for the current scope), so receipts and live state must be checked.
+  It prints, without broadcasting, `setAuthorizedDataProvider` and
+  `setAuthorizedBlockNumberProvider` calldata: two Oracle calls per verifier, four for both
+  deployments, or two for the Curve canary only. Note: salts `CurveVerifierV3`… already exist
+  for the LEGACY code in `Deploy.s.sol` — hence the name BatchVerifier.
 - Initial recorded test results (historical): 38 Foundry tests (`test/unit/oracle/BatchVerifier.t.sol`), fixtures `data/proofs/1730937600` (Curve, same as
   market's), `1785974400` (balancer/fxn era fixtures from market), `1787788800/curve_batch.json` (30 real
   accounts, exclusion, 5 points, generated). Package suite: 113 pass + 6 pre-existing FFI failures
@@ -78,7 +99,8 @@ Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` 
   (raw node stacks, pinned `storageHash`, retryable `ProofResponseMismatch`, `saw_missing_storage_root`),
   `proofs/batch_artifacts.py` (collector per protocol keyed by block, all-or-nothing per gauge, private
   copies per platform, header-block guard, exception boundary), `scripts/vm_active_proofs.py`
-  (automatic for Curve/Balancer/FXN; complete artifacts required before protocol output;
+  (automatic for Curve/Balancer/FXN; complete optional artifacts attached per platform;
+  batch-specific errors are diagnosed and isolated from legacy publication;
   optional `--batch-max-bytes` tuning),
   `scripts/export_batch_bags.py` (real bags for a Foundry check).
 - Published JSON: per gauge `batch{version, block_number, accounts_total, observed_storage_root,
@@ -103,19 +125,24 @@ Cross-repo checklist: `votemarket-proof-toolkit/docs/batch-verifier-rollout.md` 
 
 The Guard job and its separate Maestro pipeline were an earlier integration experiment. Their
 ceremony, fallback mode and activation steps are no longer part of this rollout. The current
-implementation keeps automation-jobs and its existing Maestro pipeline. Compatible protocols
-always use BatchVerifier, with no legacy fallback; Pendle/YB keep their specific verifiers.
-Headers register a missing shared Oracle root, then points/accounts use the publication's epoch
-and filter registered members. Writes use the existing Weiroll executor. The first three steps
+implementation keeps automation-jobs and its existing Maestro pipeline. Legacy insertion
+remains the default; an explicitly selected batch canary requires valid bags and an authorized
+deployment, without silently changing verifier on failure. Pendle/YB keep their specific verifiers.
+Batch headers register a missing shared Oracle root, then points/accounts use the publication's
+epoch and filter registered members. Writes use the existing Weiroll executor. The first three steps
 retain earlier mined hashes on an execution error; this does not extend to all downstream wrappers.
 
 ## What is left
 
 Follow the current [rollout checklist](batch-verifier-rollout.md): audit the selected revisions,
-ensure the API job resolves the toolkit with automatic batch generation and strict publication,
-run the manual recorded and mainnet-read tests, deploy, grant both Oracle roles, populate the
-consumer's registries and validate a canary through the existing pipeline. The API job needs
-no additional arguments. No Guard ceremony or replacement pipeline is required.
+ensure the API job resolves the toolkit with automatic dual output and isolated batch failures,
+run the manual recorded and mainnet-read tests, validate the deployed configuration, and grant
+both Curve Oracle roles. Check that the consumer's Arbitrum Curve/FXN entries match the deployed
+addresses. Review the selection of campaign 1986, make the jobs execute the coordinated
+revisions, then validate fresh artifacts, insertion, Oracle values and claims. DAO ownership and
+AllMight V2 authorization are already confirmed in the snapshot; recheck them before activation.
+The API job needs no additional arguments or verifier addresses. No Balancer/Optimism deployment,
+Guard ceremony or replacement pipeline is required for this canary.
 
 ## Gotchas
 - Use `uv run --frozen` during validation to avoid changing the toolkit lockfile.
