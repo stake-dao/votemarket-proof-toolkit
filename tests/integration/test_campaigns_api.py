@@ -7,11 +7,16 @@ Compares:
 - Campaign structure integrity
 """
 
+import os
+
 import httpx
 import pytest
 from votemarket_toolkit import CampaignService
 
-HUB_VOTEMARKET_BASE = "https://hub.stakedao.org/v1/votemarket"
+DATA_HUB_URL = (
+    os.getenv("DATA_HUB_URL") or "https://data-hub.contact-69d.workers.dev"
+).rstrip("/")
+HUB_VOTEMARKET_BASE = f"{DATA_HUB_URL}/v1/votemarket"
 CURVE_V2_PLATFORM = "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"
 
 
