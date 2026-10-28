@@ -1,5 +1,5 @@
 """
-Test: Toolkit campaign data matches V3 API.
+Test: Toolkit campaign data matches the Hub Votemarket API.
 
 Compares:
 - Campaign counts
@@ -7,19 +7,29 @@ Compares:
 - Campaign structure integrity
 """
 
+import os
+
 import httpx
 import pytest
 from votemarket_toolkit import CampaignService
 
-API_V3_BASE = "https://api-v3.stakedao.org/votemarket"
 CURVE_V2_PLATFORM = "0x8c2c5A295450DDFf4CB360cA73FCCC12243D14D9"
 
 
 def fetch_api_campaigns(protocol: str):
-    """Fetch campaigns from V3 API."""
-    response = httpx.get(f"{API_V3_BASE}/{protocol}", timeout=30)
+    """Fetch the complete, unpaginated campaign list from Hub."""
+    data_hub_url = (os.getenv("DATA_HUB_URL") or "").strip().rstrip("/")
+    if not data_hub_url:
+        pytest.skip("DATA_HUB_URL is required for live Hub integration tests")
+
+    response = httpx.get(
+        f"{data_hub_url}/v1/votemarket/{protocol}/campaigns", timeout=30
+    )
     response.raise_for_status()
-    return response.json().get("campaigns", [])
+    data = response.json()
+    assert isinstance(data, dict) and data.get("lastBlock") is not None, "Unavailable Hub campaign response"
+    assert isinstance(data.get("campaigns"), list), "Invalid Hub campaign response"
+    return data["campaigns"]
 
 
 @pytest.fixture
