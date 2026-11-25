@@ -26,6 +26,7 @@ Technical Implementation:
 import asyncio
 import time
 from decimal import Decimal, localcontext
+from math import isfinite
 from typing import Any, Dict, List, Optional, Tuple
 
 from eth_utils.address import to_checksum_address
@@ -2079,7 +2080,11 @@ class CampaignService:
         prices = get_erc20_prices_in_usd(
             config["chain_id"], [(config["emission_token"], 10**18)]
         )
-        token_price = prices[0][1] if prices else 1.0
+        if not prices or not isfinite(prices[0][1]) or prices[0][1] <= 0:
+            raise ValueError(
+                f"{protocol}: missing or invalid emission token price"
+            )
+        token_price = prices[0][1]
 
         # Calculate emission value (UI formula)
         emission_value = token_per_vetoken * token_price
@@ -2154,7 +2159,11 @@ class CampaignService:
         prices = get_erc20_prices_in_usd(
             chain_id, [(reward_token, 10**decimals)]
         )
-        reward_token_price = prices[0][1] if prices else 1.0
+        if not prices or not isfinite(prices[0][1]) or prices[0][1] <= 0:
+            raise ValueError(
+                f"{protocol}: missing or invalid reward token price"
+            )
+        reward_token_price = prices[0][1]
 
         # Calculate max reward for target efficiency
         # UI Formula: Min Efficiency = Emission Value / Max Reward
